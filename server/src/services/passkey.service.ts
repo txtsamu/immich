@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import aaguids from 'aaguids';
+import { Effect } from 'effect';
 import { DateTime, Duration } from 'luxon';
 import { IncomingHttpHeaders } from 'node:http';
 import type {
@@ -22,9 +23,9 @@ import {
   PasskeyUpdateDto,
   mapPasskey,
 } from 'src/dtos/passkey.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import { AuthChallengeType, JobName, JobStatus, Permission, QueueName } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
-import { findOrFail } from 'src/utils/misc.js';
 
 const RP_NAME = 'Immich';
 
@@ -45,31 +46,35 @@ const ANDROID_ORIGINS = ANDROID_CERTIFICATE_FINGERPRINTS.map(
 @Injectable()
 export class PasskeyService extends BaseService {
   async startRegistration(auth: AuthDto, headers: IncomingHttpHeaders): Promise<PasskeyRegistrationOptionsDto> {
-    this.requireSession(auth);
-    const config = await this.requireEnabled();
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        this.requireSession(auth);
+        const config = yield* this.requireEnabled();
 
-    const { rpId } = this.getRelyingParty(config, headers);
-    const passkeys = await this.passkeyRepository.search({ userId: auth.user.id });
+        const { rpId } = this.getRelyingParty(config, headers);
+        const passkeys = yield* this.fx.passkey.search({ userId: auth.user.id });
 
-    const options = await this.webAuthnRepository.generateRegistrationOptions({
-      rpName: RP_NAME,
-      rpID: rpId,
-      userID: new TextEncoder().encode(auth.user.id),
-      userName: auth.user.email,
-      userDisplayName: auth.user.name,
-      attestationType: 'none',
-      excludeCredentials: passkeys.map(({ credentialId, transports }) => ({ id: credentialId, transports })),
-      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
-    });
+        const options = yield* this.fx.webAuthn.generateRegistrationOptions({
+          rpName: RP_NAME,
+          rpID: rpId,
+          userID: new TextEncoder().encode(auth.user.id),
+          userName: auth.user.email,
+          userDisplayName: auth.user.name,
+          attestationType: 'none',
+          excludeCredentials: passkeys.map(({ credentialId, transports }) => ({ id: credentialId, transports })),
+          authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+        });
 
-    await this.authChallengeRepository.create({
-      type: AuthChallengeType.PasskeyRegistration,
-      challenge: options.challenge,
-      userId: auth.user.id,
-      expiresAt: DateTime.now().plus(CHALLENGE_TTL).toJSDate(),
-    });
+        yield* this.fx.authChallenge.create({
+          type: AuthChallengeType.PasskeyRegistration,
+          challenge: options.challenge,
+          userId: auth.user.id,
+          expiresAt: DateTime.now().plus(CHALLENGE_TTL).toJSDate(),
+        });
 
-    return options;
+        return options;
+      }),
+    );
   }
 
   async finishRegistration(
@@ -78,76 +83,88 @@ export class PasskeyService extends BaseService {
     headers: IncomingHttpHeaders,
     loginDetails: LoginDetails,
   ): Promise<PasskeyResponseDto> {
-    this.requireSession(auth);
-    const config = await this.requireEnabled();
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        this.requireSession(auth);
+        const config = yield* this.requireEnabled();
 
-    const { rpId, origin } = this.getRelyingParty(config, headers);
+        const { rpId, origin } = this.getRelyingParty(config, headers);
 
-    let result: VerifiedRegistrationResponse;
-    try {
-      result = await this.webAuthnRepository.verifyRegistrationResponse({
-        response: dto.response as RegistrationResponseJSON,
-        expectedChallenge: async (challenge) => {
-          const record = await this.authChallengeRepository.consume({
-            type: AuthChallengeType.PasskeyRegistration,
-            challenge,
-          });
-          return record?.userId === auth.user.id;
-        },
-        expectedOrigin: origin,
-        expectedRPID: rpId,
-      });
-    } catch (error: any) {
-      this.logger.warn(`Passkey registration failed for user ${auth.user.id}: ${error.message}`);
-      throw new BadRequestException('Passkey registration failed');
-    }
+        const result: VerifiedRegistrationResponse = yield* this.fx.webAuthn
+          .verifyRegistrationResponse({
+            response: dto.response as RegistrationResponseJSON,
+            expectedChallenge: async (challenge) => {
+              const record = await runPromise(
+                this.fx.authChallenge.consume({
+                  type: AuthChallengeType.PasskeyRegistration,
+                  challenge,
+                }),
+              );
+              return record?.userId === auth.user.id;
+            },
+            expectedOrigin: origin,
+            expectedRPID: rpId,
+          })
+          .pipe(
+            Effect.catch((error_) => {
+              const error = error_.cause as any;
+              this.logger.warn(`Passkey registration failed for user ${auth.user.id}: ${error?.message}`);
+              return Effect.fail(new BadRequestException('Passkey registration failed'));
+            }),
+          );
 
-    if (!result.verified) {
-      throw new BadRequestException('Passkey registration failed');
-    }
+        if (!result.verified) {
+          return yield* Effect.fail(new BadRequestException('Passkey registration failed'));
+        }
 
-    const { aaguid, credential, credentialBackedUp, credentialDeviceType } = result.registrationInfo;
+        const { aaguid, credential, credentialBackedUp, credentialDeviceType } = result.registrationInfo;
 
-    const duplicate = await this.passkeyRepository.getByCredentialId(credential.id);
-    if (duplicate) {
-      throw new BadRequestException('Passkey is already registered');
-    }
-    const passkey = await this.passkeyRepository.create({
-      userId: auth.user.id,
-      name:
-        dto.name ||
-        (aaguids as unknown as Record<string, string>)[aaguid] ||
-        [loginDetails.deviceType, loginDetails.deviceOS].filter(Boolean).join(' on ') ||
-        'Passkey',
-      credentialId: credential.id,
-      publicKey: Buffer.from(credential.publicKey),
-      counter: credential.counter,
-      transports: credential.transports ?? [],
-      backedUp: credentialBackedUp,
-      deviceType: credentialDeviceType,
-    });
+        const duplicate = yield* this.fx.passkey.getByCredentialId(credential.id);
+        if (duplicate) {
+          return yield* Effect.fail(new BadRequestException('Passkey is already registered'));
+        }
+        const passkey = yield* this.fx.passkey.create({
+          userId: auth.user.id,
+          name:
+            dto.name ||
+            (aaguids as unknown as Record<string, string>)[aaguid] ||
+            [loginDetails.deviceType, loginDetails.deviceOS].filter(Boolean).join(' on ') ||
+            'Passkey',
+          credentialId: credential.id,
+          publicKey: Buffer.from(credential.publicKey),
+          counter: credential.counter,
+          transports: credential.transports ?? [],
+          backedUp: credentialBackedUp,
+          deviceType: credentialDeviceType,
+        });
 
-    return mapPasskey(passkey);
+        return mapPasskey(passkey);
+      }),
+    );
   }
 
   async startAuthentication(headers: IncomingHttpHeaders): Promise<PasskeyAuthenticationOptionsDto> {
-    const config = await this.requireEnabled();
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.requireEnabled();
 
-    const { rpId } = this.getRelyingParty(config, headers);
+        const { rpId } = this.getRelyingParty(config, headers);
 
-    const options = await this.webAuthnRepository.generateAuthenticationOptions({
-      rpID: rpId,
-      userVerification: 'required',
-    });
+        const options = yield* this.fx.webAuthn.generateAuthenticationOptions({
+          rpID: rpId,
+          userVerification: 'required',
+        });
 
-    await this.authChallengeRepository.create({
-      type: AuthChallengeType.PasskeyAuthentication,
-      challenge: options.challenge,
-      userId: null,
-      expiresAt: DateTime.now().plus(CHALLENGE_TTL).toJSDate(),
-    });
+        yield* this.fx.authChallenge.create({
+          type: AuthChallengeType.PasskeyAuthentication,
+          challenge: options.challenge,
+          userId: null,
+          expiresAt: DateTime.now().plus(CHALLENGE_TTL).toJSDate(),
+        });
 
-    return options;
+        return options;
+      }),
+    );
   }
 
   async finishAuthentication(
@@ -155,80 +172,109 @@ export class PasskeyService extends BaseService {
     headers: IncomingHttpHeaders,
     loginDetails: LoginDetails,
   ): Promise<LoginResponseDto> {
-    const config = await this.requireEnabled();
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.requireEnabled();
 
-    const { rpId, origin } = this.getRelyingParty(config, headers);
+        const { rpId, origin } = this.getRelyingParty(config, headers);
 
-    const passkey = await this.passkeyRepository.getByCredentialId(dto.response.id);
-    const userHandle = dto.response.response.userHandle;
-    const userId = userHandle ? Buffer.from(userHandle, 'base64url').toString() : undefined;
-    if (!passkey || (userId && userId !== passkey.userId)) {
-      this.logger.warn(`Failed passkey login attempt from ip address ${loginDetails.clientIp}`);
-      throw new UnauthorizedException('Invalid passkey');
-    }
+        const passkey = yield* this.fx.passkey.getByCredentialId(dto.response.id);
+        const userHandle = dto.response.response.userHandle;
+        const userId = userHandle ? Buffer.from(userHandle, 'base64url').toString() : undefined;
+        if (!passkey || (userId && userId !== passkey.userId)) {
+          this.logger.warn(`Failed passkey login attempt from ip address ${loginDetails.clientIp}`);
+          return yield* Effect.fail(new UnauthorizedException('Invalid passkey'));
+        }
 
-    let result: VerifiedAuthenticationResponse;
-    try {
-      result = await this.webAuthnRepository.verifyAuthenticationResponse({
-        response: dto.response as unknown as AuthenticationResponseJSON,
-        expectedChallenge: async (challenge) => {
-          const record = await this.authChallengeRepository.consume({
-            type: AuthChallengeType.PasskeyAuthentication,
-            challenge,
-          });
-          return !!record;
-        },
-        expectedOrigin: origin,
-        expectedRPID: rpId,
-        credential: {
-          id: passkey.credentialId,
-          publicKey: new Uint8Array(passkey.publicKey),
-          counter: passkey.counter,
-          transports: passkey.transports,
-        },
-      });
-    } catch (error: any) {
-      this.logger.warn(`Failed passkey login attempt from ip address ${loginDetails.clientIp}: ${error.message}`);
-      throw new UnauthorizedException('Invalid passkey');
-    }
+        const result: VerifiedAuthenticationResponse = yield* this.fx.webAuthn
+          .verifyAuthenticationResponse({
+            response: dto.response as unknown as AuthenticationResponseJSON,
+            expectedChallenge: async (challenge) => {
+              const record = await runPromise(
+                this.fx.authChallenge.consume({
+                  type: AuthChallengeType.PasskeyAuthentication,
+                  challenge,
+                }),
+              );
+              return !!record;
+            },
+            expectedOrigin: origin,
+            expectedRPID: rpId,
+            credential: {
+              id: passkey.credentialId,
+              publicKey: new Uint8Array(passkey.publicKey),
+              counter: passkey.counter,
+              transports: passkey.transports,
+            },
+          })
+          .pipe(
+            Effect.catch((error_) => {
+              const error = error_.cause as any;
+              this.logger.warn(
+                `Failed passkey login attempt from ip address ${loginDetails.clientIp}: ${error?.message}`,
+              );
+              return Effect.fail(new UnauthorizedException('Invalid passkey'));
+            }),
+          );
 
-    if (!result.verified) {
-      throw new UnauthorizedException('Invalid passkey');
-    }
+        if (!result.verified) {
+          return yield* Effect.fail(new UnauthorizedException('Invalid passkey'));
+        }
 
-    const user = await this.userRepository.get(passkey.userId, {});
-    if (!user) {
-      throw new UnauthorizedException('Invalid passkey');
-    }
+        const user = yield* this.fx.user.get(passkey.userId, {});
+        if (!user) {
+          return yield* Effect.fail(new UnauthorizedException('Invalid passkey'));
+        }
 
-    await this.passkeyRepository.update(passkey.id, {
-      counter: result.authenticationInfo.newCounter,
-      usedAt: new Date(),
-    });
+        yield* this.fx.passkey.update(passkey.id, {
+          counter: result.authenticationInfo.newCounter,
+          usedAt: new Date(),
+        });
 
-    return this.createLoginResponse(user, loginDetails);
+        return yield* this.createLoginResponseFx(user, loginDetails);
+      }),
+    );
   }
 
   async search(auth: AuthDto, dto: PasskeySearchDto): Promise<PasskeyResponseDto[]> {
-    const passkeys = await this.passkeyRepository.search({ id: dto.id, userId: auth.user.id });
-    return passkeys.map((passkey) => mapPasskey(passkey));
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const passkeys = yield* this.fx.passkey.search({ id: dto.id, userId: auth.user.id });
+        return passkeys.map((passkey) => mapPasskey(passkey));
+      }),
+    );
   }
 
   async get(auth: AuthDto, id: string): Promise<PasskeyResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.PasskeyRead, ids: [id] });
-    const passkey = await findOrFail(() => this.passkeyRepository.get(id), 'Passkey');
-    return mapPasskey(passkey);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.PasskeyRead, ids: [id] });
+        const passkey = yield* this.fx.passkey.get(id);
+        if (!passkey) {
+          return yield* Effect.fail(new BadRequestException('Passkey not found'));
+        }
+        return mapPasskey(passkey);
+      }),
+    );
   }
 
   async update(auth: AuthDto, id: string, dto: PasskeyUpdateDto): Promise<PasskeyResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.PasskeyUpdate, ids: [id] });
-    const passkey = await this.passkeyRepository.update(id, { name: dto.name });
-    return mapPasskey(passkey);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.PasskeyUpdate, ids: [id] });
+        const passkey = yield* this.fx.passkey.update(id, { name: dto.name });
+        return mapPasskey(passkey);
+      }),
+    );
   }
 
   async delete(auth: AuthDto, id: string): Promise<void> {
-    await this.requireAccess({ auth, permission: Permission.PasskeyDelete, ids: [id] });
-    await this.passkeyRepository.delete(id);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.PasskeyDelete, ids: [id] });
+        yield* this.fx.passkey.delete(id);
+      }),
+    );
   }
 
   private requireSession(auth: AuthDto) {
@@ -238,33 +284,41 @@ export class PasskeyService extends BaseService {
   }
 
   async getWellKnown(): Promise<{ origins: string[] }> {
-    const { passkey } = await this.getConfig({ withCache: true });
-    if (!passkey.enabled || !passkey.domain) {
-      throw new NotFoundException();
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { passkey } = yield* this.getConfigFx({ withCache: true });
+        if (!passkey.enabled || !passkey.domain) {
+          return yield* Effect.fail(new NotFoundException());
+        }
 
-    return {
-      origins: [passkey.domain, ...passkey.additionalDomains].map((value) => new URL(value).origin),
-    };
+        return {
+          origins: [passkey.domain, ...passkey.additionalDomains].map((value) => new URL(value).origin),
+        };
+      }),
+    );
   }
 
   @OnJob({ name: JobName.AuthChallengeCleanup, queue: QueueName.BackgroundTask })
   async handleCleanup(): Promise<JobStatus> {
-    const count = await this.authChallengeRepository.deleteExpired();
-    if (count > 0) {
-      this.logger.log(`Deleted ${count} expired auth challenges`);
-    }
-    return JobStatus.Success;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const count = yield* this.fx.authChallenge.deleteExpired();
+        if (count > 0) {
+          this.logger.log(`Deleted ${count} expired auth challenges`);
+        }
+        return JobStatus.Success;
+      }),
+    );
   }
 
-  private async requireEnabled() {
-    const { passkey } = await this.getConfig({ withCache: false });
+  private requireEnabled = Effect.fn('PasskeyService.requireEnabled')(function* (this: PasskeyService) {
+    const { passkey } = yield* this.getConfigFx({ withCache: false });
     if (!passkey.enabled) {
-      throw new BadRequestException('Passkeys are disabled');
+      return yield* Effect.fail(new BadRequestException('Passkeys are disabled'));
     }
 
     return passkey;
-  }
+  });
 
   private getRelyingParty(
     config: SystemConfig['passkey'],

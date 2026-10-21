@@ -7,6 +7,7 @@ import {
   WorkflowTrigger,
 } from '@immich/plugin-sdk';
 import { HttpException, UnauthorizedException } from '@nestjs/common';
+import { Cause, Effect } from 'effect';
 import { join } from 'node:path';
 import type { ArgOf } from 'src/repositories/event.repository.js';
 import type { JobOf } from 'src/types.js';
@@ -16,6 +17,7 @@ import { BulkIdsDto } from 'src/dtos/asset-ids.response.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { PluginManifestDto } from 'src/dtos/plugin-manifest.dto.js';
 import { TagBulkAssetsDto } from 'src/dtos/tag.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import {
   BootstrapEventPriority,
   DatabaseLock,
@@ -39,9 +41,16 @@ const dummy = () => {
   );
 };
 
+/** Run a Promise-based collaborator as an Effect; the error stays the original thrown value. */
+const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (cause) => cause });
+
+/** The original thrown value behind a wrapped repository error (`DatabaseError`, `LibraryError`, ...). */
+const unwrap = (error: unknown) =>
+  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
+
 type ExecuteOptions<T extends WorkflowType> = {
-  read: (type: T) => Promise<{ authUserId: string; data: WorkflowEventData<T>; entityId?: string }>;
-  write: (auth: AuthDto, changes: WorkflowChanges<T>) => Promise<void>;
+  read: (type: T) => Effect.Effect<{ authUserId: string; data: WorkflowEventData<T>; entityId?: string }, unknown>;
+  write: (auth: AuthDto, changes: WorkflowChanges<T>) => Effect.Effect<void, unknown>;
 };
 
 type AssetTrigger = { userId: string; assetId: string; trigger: WorkflowTrigger };
@@ -55,108 +64,136 @@ export class WorkflowExecutionService extends BaseService {
 
   @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.PluginSync, workers: [ImmichWorker.Microservices] })
   async onPluginSync() {
-    await this.databaseRepository.withLock(DatabaseLock.PluginImport, async () => {
-      // TODO avoid importing plugins in each worker
-      // Can this use system metadata similar to geocoding?
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.fx.database.withLock(DatabaseLock.PluginImport, () =>
+          runPromise(
+            Effect.gen({ self: this }, function* () {
+              // TODO avoid importing plugins in each worker
+              // Can this use system metadata similar to geocoding?
 
-      const { environment, resourcePaths, plugins } = this.configRepository.getEnv();
-      await this.importFolder(resourcePaths.corePlugin, { force: environment === ImmichEnvironment.Development });
+              const { environment, resourcePaths, plugins } = yield* this.fx.config.getEnv();
+              yield* this.importFolder(resourcePaths.corePlugin, {
+                force: environment === ImmichEnvironment.Development,
+              });
 
-      if (plugins.external.allow && plugins.external.installFolder) {
-        await this.importFolders(plugins.external.installFolder);
-      }
-    });
+              if (plugins.external.allow && plugins.external.installFolder) {
+                yield* this.importFolders(plugins.external.installFolder);
+              }
+            }),
+          ),
+        );
+      }),
+    );
   }
 
   @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.PluginLoad, workers: [ImmichWorker.Microservices] })
   async onPluginLoad() {
-    this.jwtSecret = this.cryptoRepository.randomBytesAsText(32);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        this.jwtSecret = yield* this.fx.crypto.randomBytesAsText(32);
 
-    const albumService = BaseService.create(AlbumService, this);
-    const tagService = BaseService.create(TagService, this);
+        const albumService = BaseService.create(AlbumService, this);
+        const tagService = BaseService.create(TagService, this);
 
-    const searchAlbums = this.wrap<[dto: GetAlbumsDto]>((authDto, ctx, args) => albumService.getAll(authDto, ...args));
-    const createAlbum = this.wrap<[dto: CreateAlbumDto]>((authDto, ctx, args) => albumService.create(authDto, ...args));
-    const addAssetsToAlbum = this.wrap<[id: string, dto: BulkIdsDto]>((authDto, ctx, args) =>
-      albumService.addAssets(authDto, ...args),
-    );
-    const addAssetsToAlbums = this.wrap<[dto: AlbumsAddAssetsDto]>((authDto, ctx, args) =>
-      albumService.addAssetsToAlbums(authDto, ...args),
-    );
-    const httpRequest = this.wrap<
-      [
-        url: string,
-        options?: {
-          method?: string;
-          headers?: Record<string, string>;
-          body?: string;
-        },
-      ]
-    >(async (authDto, context, args) => {
-      const hostname = new URL(args[0]).hostname;
-      if (!isAllowedHost(hostname, context.allowedHosts)) {
-        throw new Error('Hostname did not match any listed in methods[].allowedHosts in the plugin manifest');
-      }
+        const searchAlbums = this.wrap<[dto: GetAlbumsDto]>((authDto, ctx, args) =>
+          albumService.getAll(authDto, ...args),
+        );
+        const createAlbum = this.wrap<[dto: CreateAlbumDto]>((authDto, ctx, args) =>
+          albumService.create(authDto, ...args),
+        );
+        const addAssetsToAlbum = this.wrap<[id: string, dto: BulkIdsDto]>((authDto, ctx, args) =>
+          albumService.addAssets(authDto, ...args),
+        );
+        const addAssetsToAlbums = this.wrap<[dto: AlbumsAddAssetsDto]>((authDto, ctx, args) =>
+          albumService.addAssetsToAlbums(authDto, ...args),
+        );
+        const httpRequest = this.wrap<
+          [
+            url: string,
+            options?: {
+              method?: string;
+              headers?: Record<string, string>;
+              body?: string;
+            },
+          ]
+        >(async (authDto, context, args) => {
+          const hostname = new URL(args[0]).hostname;
+          if (!isAllowedHost(hostname, context.allowedHosts)) {
+            throw new Error('Hostname did not match any listed in methods[].allowedHosts in the plugin manifest');
+          }
 
-      // eslint-disable-next-line unicorn/no-invalid-argument-count
-      const res = await fetch(...args);
+          // eslint-disable-next-line unicorn/no-invalid-argument-count
+          const res = await fetch(...args);
 
-      return {
-        ok: res.ok,
-        status: res.status,
-        body: await res.text(),
-      };
-    });
-    const bulkTagAssets = this.wrap<[dto: TagBulkAssetsDto]>((authDto, ctx, args) =>
-      tagService.bulkTagAssets(authDto, ...args),
-    );
+          return {
+            ok: res.ok,
+            status: res.status,
+            body: await res.text(),
+          };
+        });
+        const bulkTagAssets = this.wrap<[dto: TagBulkAssetsDto]>((authDto, ctx, args) =>
+          tagService.bulkTagAssets(authDto, ...args),
+        );
 
-    const functions = {
-      searchAlbums,
-      createAlbum,
-      addAssetsToAlbum,
-      addAssetsToAlbums,
-      httpRequest,
-      bulkTagAssets,
-    };
+        const functions = {
+          searchAlbums,
+          createAlbum,
+          addAssetsToAlbum,
+          addAssetsToAlbums,
+          httpRequest,
+          bulkTagAssets,
+        };
 
-    const stubs: typeof functions = {
-      searchAlbums: dummy,
-      createAlbum: dummy,
-      addAssetsToAlbum: dummy,
-      addAssetsToAlbums: dummy,
-      httpRequest: dummy,
-      bulkTagAssets: dummy,
-    };
+        const stubs: typeof functions = {
+          searchAlbums: dummy,
+          createAlbum: dummy,
+          addAssetsToAlbum: dummy,
+          addAssetsToAlbums: dummy,
+          httpRequest: dummy,
+          bulkTagAssets: dummy,
+        };
 
-    const plugins = await this.pluginRepository.getForLoad();
-    for (const { id, name, version, wasmBytes, methods } of plugins) {
-      const isMethod = methods.some(({ hostFunctions }) => !hostFunctions);
-      if (isMethod) {
-        const label = `${name}@${version}`;
-        const key = this.getPluginKey({ id, hostFunctions: false });
-        try {
-          await this.pluginRepository.load({ key, label, wasmBytes }, { runInWorker: false, functions: stubs });
-          this.logger.log(`Loaded plugin: ${label}`);
-        } catch (error) {
-          this.logger.error(`Unable to load plugin ${label} (${id})`, error);
+        const plugins = yield* this.fx.plugin.getForLoad();
+        for (const { id, name, version, wasmBytes, methods } of plugins) {
+          const isMethod = methods.some(({ hostFunctions }) => !hostFunctions);
+          if (isMethod) {
+            const label = `${name}@${version}`;
+            const key = this.getPluginKey({ id, hostFunctions: false });
+            yield* Effect.gen({ self: this }, function* () {
+              yield* attempt(() =>
+                this.pluginRepository.load({ key, label, wasmBytes }, { runInWorker: false, functions: stubs }),
+              );
+              this.logger.log(`Loaded plugin: ${label}`);
+            }).pipe(
+              Effect.catch((error) => {
+                this.logger.error(`Unable to load plugin ${label} (${id})`, error);
+                return Effect.void;
+              }),
+            );
+          }
+
+          const isMethodWithFunction = methods.some(({ hostFunctions }) => hostFunctions);
+          if (!isMethodWithFunction) {
+            continue;
+          }
+
+          const label = `${name}@${version}/worker`;
+          const key = this.getPluginKey({ id, hostFunctions: true });
+          yield* Effect.gen({ self: this }, function* () {
+            yield* attempt(() =>
+              this.pluginRepository.load({ key, label, wasmBytes }, { runInWorker: true, functions }),
+            );
+            this.logger.log(`Loaded plugin with host functions: ${label}`);
+          }).pipe(
+            Effect.catch((error) => {
+              this.logger.error(`Unable to load plugin with host functions ${label} (${id})`, error);
+              return Effect.void;
+            }),
+          );
         }
-      }
-
-      const isMethodWithFunction = methods.some(({ hostFunctions }) => hostFunctions);
-      if (!isMethodWithFunction) {
-        continue;
-      }
-
-      const label = `${name}@${version}/worker`;
-      const key = this.getPluginKey({ id, hostFunctions: true });
-      try {
-        await this.pluginRepository.load({ key, label, wasmBytes }, { runInWorker: true, functions });
-        this.logger.log(`Loaded plugin with host functions: ${label}`);
-      } catch (error) {
-        this.logger.error(`Unable to load plugin with host functions ${label} (${id})`, error);
-      }
-    }
+      }),
+    );
   }
 
   private getPluginKey({ id, hostFunctions }: { id: string; hostFunctions: boolean }) {
@@ -204,30 +241,33 @@ export class WorkflowExecutionService extends BaseService {
     };
   }
 
-  private async importFolders(installFolder: string): Promise<void> {
-    try {
-      const entries = await this.storageRepository.readdirWithTypes(installFolder);
+  private importFolders(installFolder: string) {
+    return Effect.gen({ self: this }, function* () {
+      const entries = yield* this.fx.storage.readdirWithTypes(installFolder);
       for (const entry of entries) {
         if (!entry.isDirectory()) {
           continue;
         }
 
-        await this.importFolder(join(installFolder, entry.name));
+        yield* this.importFolder(join(installFolder, entry.name));
       }
-    } catch (error) {
-      this.logger.error(`Failed to import plugins folder ${installFolder}:`, error);
-    }
+    }).pipe(
+      Effect.catchCause((cause) => {
+        this.logger.error(`Failed to import plugins folder ${installFolder}:`, unwrap(Cause.squash(cause)));
+        return Effect.void;
+      }),
+    );
   }
 
-  private async importFolder(folder: string, options?: { force?: boolean }) {
-    try {
+  private importFolder(folder: string, options?: { force?: boolean }) {
+    return Effect.gen({ self: this }, function* () {
       const manifestPath = join(folder, 'manifest.json');
-      const bytes = await this.storageRepository.readFile(manifestPath);
+      const bytes = yield* this.fx.storage.readFile(manifestPath);
       const contents = bytes.toString('utf8');
-      const sha256hash = this.cryptoRepository.hashSha256(contents) as Buffer;
+      const sha256hash = (yield* this.fx.crypto.hashSha256(contents)) as Buffer;
 
       if (!options?.force) {
-        const match = await this.pluginRepository.getByHash(sha256hash);
+        const match = yield* this.fx.plugin.getByHash(sha256hash);
         if (match) {
           this.logger.log(`Plugin up to date (name=${match.name}@${match.version}, hash=${sha256hash.toString('hex')}`);
           return;
@@ -243,11 +283,11 @@ export class WorkflowExecutionService extends BaseService {
       }
       const manifest = result.data;
 
-      const existing = await this.pluginRepository.getByName(manifest.name);
+      const existing = yield* this.fx.plugin.getByName(manifest.name);
       const wasmPath = `${folder}/${manifest.wasmPath}`;
-      const wasmBytes = await this.storageRepository.readFile(wasmPath);
+      const wasmBytes = yield* this.fx.storage.readFile(wasmPath);
 
-      const plugin = await this.pluginRepository.upsert(
+      const plugin = yield* this.fx.plugin.upsert(
         {
           // NOTE: new properties here need to be added to the on conflict clause in the repository
           enabled: true,
@@ -274,9 +314,12 @@ export class WorkflowExecutionService extends BaseService {
       }
 
       return manifest;
-    } catch {
-      this.logger.warn(`Failed to import plugin from ${folder}:`);
-    }
+    }).pipe(
+      Effect.catchCause(() => {
+        this.logger.warn(`Failed to import plugin from ${folder}:`);
+        return Effect.succeed(undefined);
+      }),
+    );
   }
 
   private validate(authToken: string): AuthDto {
@@ -323,192 +366,218 @@ export class WorkflowExecutionService extends BaseService {
   }
 
   private async onAssetTrigger({ userId, assetId, trigger }: AssetTrigger) {
-    const items = await this.workflowRepository.search({ userId, trigger });
-    await this.jobRepository.queueAll(
-      items.map((workflow) => ({
-        name: JobName.WorkflowAssetTrigger,
-        data: { workflowId: workflow.id, assetId, trigger },
-      })),
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const items = yield* this.fx.workflow.search({ userId, trigger });
+        yield* this.fx.job.queueAll(
+          items.map((workflow) => ({
+            name: JobName.WorkflowAssetTrigger,
+            data: { workflowId: workflow.id, assetId, trigger },
+          })),
+        );
+      }),
     );
   }
 
   @OnJob({ name: JobName.WorkflowAssetTrigger, queue: QueueName.Workflow })
   handleAssetTrigger({ workflowId, assetId }: JobOf<JobName.WorkflowAssetTrigger>) {
-    return this.execute(workflowId, (type) => {
-      const assetService = BaseService.create(AssetService, this);
+    return runPromise(
+      this.execute(workflowId, (type) => {
+        const assetService = BaseService.create(AssetService, this);
 
-      switch (type) {
-        case WorkflowType.AssetV1: {
-          return {
-            read: async () => {
-              const asset = await this.workflowRepository.getForAssetV1(assetId);
-              return {
-                data: { asset } as any,
-                authUserId: asset.ownerId,
-                entityId: asset.id,
-              };
-            },
-            write: async (auth, changes) => {
-              const asset = changes.asset;
-              if (!asset) {
-                return;
-              }
+        switch (type) {
+          case WorkflowType.AssetV1: {
+            return {
+              read: () =>
+                Effect.gen({ self: this }, function* () {
+                  const asset = yield* this.fx.workflow.getForAssetV1(assetId);
+                  return {
+                    data: { asset } as any,
+                    authUserId: asset.ownerId,
+                    entityId: asset.id,
+                  };
+                }),
+              write: (auth, changes) =>
+                Effect.gen(function* () {
+                  const asset = changes.asset;
+                  if (!asset) {
+                    return;
+                  }
 
-              await assetService.update(auth, assetId, {
-                isFavorite: asset.isFavorite,
-                visibility: asset.visibility,
-                dateTimeOriginal: asset.exifInfo?.dateTimeOriginal ?? undefined,
-                // TODO allow setting to null
-                longitude: asset.exifInfo?.longitude ?? undefined,
-                // TODO allow setting to null
-                latitude: asset.exifInfo?.latitude ?? undefined,
-                // TODO allow setting to null
-                description: asset.exifInfo?.description ?? undefined,
-                rating: asset.exifInfo?.rating,
+                  yield* attempt(() =>
+                    assetService.update(auth, assetId, {
+                      isFavorite: asset.isFavorite,
+                      visibility: asset.visibility,
+                      dateTimeOriginal: asset.exifInfo?.dateTimeOriginal ?? undefined,
+                      // TODO allow setting to null
+                      longitude: asset.exifInfo?.longitude ?? undefined,
+                      // TODO allow setting to null
+                      latitude: asset.exifInfo?.latitude ?? undefined,
+                      // TODO allow setting to null
+                      description: asset.exifInfo?.description ?? undefined,
+                      rating: asset.exifInfo?.rating,
 
-                // TODO add to update dto
-                // make: asset.exifInfo?.make,
-                // model: asset.exifInfo?.model,
-                // city: asset.exifInfo?.city,
-                // state: asset.exifInfo?.state,
-                // country: asset.exifInfo?.country,
-                // lensModel: asset.exifInfo?.lensModel,
-                // fNumber: asset.exifInfo?.fNumber,
-                // fps: asset.exifInfo?.fps,
-                // iso: asset.exifInfo?.iso,
-              });
-            },
-          } satisfies ExecuteOptions<typeof type>;
+                      // TODO add to update dto
+                      // make: asset.exifInfo?.make,
+                      // model: asset.exifInfo?.model,
+                      // city: asset.exifInfo?.city,
+                      // state: asset.exifInfo?.state,
+                      // country: asset.exifInfo?.country,
+                      // lensModel: asset.exifInfo?.lensModel,
+                      // fNumber: asset.exifInfo?.fNumber,
+                      // fps: asset.exifInfo?.fps,
+                      // iso: asset.exifInfo?.iso,
+                    }),
+                  );
+                }),
+            } satisfies ExecuteOptions<typeof type>;
+          }
         }
-      }
-    });
+      }),
+    );
   }
 
-  private async execute<T extends WorkflowType>(
-    workflowId: string,
-    getHandler: (type: T) => ExecuteOptions<T> | undefined,
-  ) {
-    const workflow = await this.workflowRepository.getForWorkflowRun(workflowId);
-    if (!workflow) {
-      return;
-    }
-
-    // TODO infer from steps
-    let type: T | undefined;
-    for (const targetType of Object.values(WorkflowType)) {
-      const isMissing = workflow.steps.some((step) => !step.types.includes(targetType));
-      if (!isMissing) {
-        type = targetType as unknown as T;
-        break;
+  private execute<T extends WorkflowType>(workflowId: string, getHandler: (type: T) => ExecuteOptions<T> | undefined) {
+    return Effect.gen({ self: this }, function* () {
+      const workflow = yield* this.fx.workflow.getForWorkflowRun(workflowId);
+      if (!workflow) {
+        return;
       }
-    }
 
-    if (!type) {
-      throw new Error('Unable to infer workflow event type from steps');
-    }
-
-    const handler = getHandler(type);
-    if (!handler) {
-      this.logger.error(`Misconfigured workflow ${workflowId}: no handler for type ${type}`);
-      return;
-    }
-
-    const { read, write } = handler;
-    const readResult = await read(type);
-    let data = readResult.data;
-    const runId = crypto.randomUUID();
-
-    for (const step of workflow.steps) {
-      try {
-        const payload: WorkflowEventPayload<typeof type> = {
-          trigger: workflow.trigger,
-          type,
-          config: step.config ?? {},
-          workflow: {
-            id: workflowId,
-            authToken: this.sign(readResult.authUserId),
-            stepId: step.id,
-          },
-          data,
-        };
-
-        const context: HostContext = {
-          allowedHosts: step.allowedHosts,
-        };
-
-        if (step.methodName.startsWith('noop')) {
-          continue;
+      // TODO infer from steps
+      let type: T | undefined;
+      for (const targetType of Object.values(WorkflowType)) {
+        const isMissing = workflow.steps.some((step) => !step.types.includes(targetType));
+        if (!isMissing) {
+          type = targetType as unknown as T;
+          break;
         }
+      }
 
-        const result = await this.pluginRepository.callMethod<WorkflowResponse<T>>(
-          {
-            pluginKey: this.getPluginKey({ id: step.pluginId, hostFunctions: step.hostFunctions }),
-            methodName: step.methodName,
-          },
-          payload,
-          context,
-        );
-        if (result?.changes) {
-          await write(
-            {
-              user: {
-                id: readResult.authUserId,
-              },
-              session: {
-                id: DummyValue.UUID,
-                hasElevatedPermission: true,
-              },
-            } as AuthDto,
-            result.changes,
-          );
-          ({ data } = await read(type));
-        }
+      if (!type) {
+        return yield* Effect.fail(new Error('Unable to infer workflow event type from steps'));
+      }
 
-        if (result?.config) {
-          await this.workflowRepository.updateStep(step.id, { config: result.config });
-        }
+      const handler = getHandler(type);
+      if (!handler) {
+        this.logger.error(`Misconfigured workflow ${workflowId}: no handler for type ${type}`);
+        return;
+      }
 
-        const shouldContinue = result?.workflow?.continue ?? true;
-        if (!shouldContinue) {
-          if (workflow.logging) {
-            await this.workflowRepository.log({
-              workflowId,
-              result: WorkflowResult.Halted,
-              workflowStepId: step.id,
-              triggerDataId: readResult.entityId,
-              runId,
-            });
+      const { read, write } = handler;
+      const readResult = yield* read(type);
+      let data = readResult.data;
+      const runId = crypto.randomUUID();
+
+      for (const step of workflow.steps) {
+        // 'next' and 'skip' continue with the next step, 'stop' ends the run, 'failed' ends it with a failed job
+        const outcome = yield* Effect.gen({ self: this }, function* () {
+          const payload: WorkflowEventPayload<typeof type> = {
+            trigger: workflow.trigger,
+            type,
+            config: step.config ?? {},
+            workflow: {
+              id: workflowId,
+              authToken: this.sign(readResult.authUserId),
+              stepId: step.id,
+            },
+            data,
+          };
+
+          const context: HostContext = {
+            allowedHosts: step.allowedHosts,
+          };
+
+          if (step.methodName.startsWith('noop')) {
+            return 'skip' as const;
           }
 
-          this.logger.debug(`Workflow ${workflowId} run ${runId} stopped on step ${step.id}`);
+          const result = yield* attempt(() =>
+            this.pluginRepository.callMethod<WorkflowResponse<T>>(
+              {
+                pluginKey: this.getPluginKey({ id: step.pluginId, hostFunctions: step.hostFunctions }),
+                methodName: step.methodName,
+              },
+              payload,
+              context,
+            ),
+          );
+          if (result?.changes) {
+            yield* write(
+              {
+                user: {
+                  id: readResult.authUserId,
+                },
+                session: {
+                  id: DummyValue.UUID,
+                  hasElevatedPermission: true,
+                },
+              } as AuthDto,
+              result.changes,
+            );
+            ({ data } = yield* read(type));
+          }
+
+          if (result?.config) {
+            yield* this.fx.workflow.updateStep(step.id, { config: result.config });
+          }
+
+          const shouldContinue = result?.workflow?.continue ?? true;
+          if (!shouldContinue) {
+            if (workflow.logging) {
+              yield* this.fx.workflow.log({
+                workflowId,
+                result: WorkflowResult.Halted,
+                workflowStepId: step.id,
+                triggerDataId: readResult.entityId,
+                runId,
+              });
+            }
+
+            this.logger.debug(`Workflow ${workflowId} run ${runId} stopped on step ${step.id}`);
+            return 'stop' as const;
+          }
+
+          return 'next' as const;
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.gen({ self: this }, function* () {
+              this.logger.error(`Error executing workflow ${workflowId} run ${runId}:`, unwrap(Cause.squash(cause)));
+
+              if (workflow.logging) {
+                yield* this.fx.workflow.log({
+                  workflowId,
+                  result: WorkflowResult.Error,
+                  workflowStepId: step.id,
+                  triggerDataId: readResult.entityId,
+                  runId,
+                });
+              }
+
+              return 'failed' as const;
+            }),
+          ),
+        );
+
+        if (outcome === 'stop') {
           return;
         }
-      } catch (error) {
-        this.logger.error(`Error executing workflow ${workflowId} run ${runId}:`, error);
 
-        if (workflow.logging) {
-          await this.workflowRepository.log({
-            workflowId,
-            result: WorkflowResult.Error,
-            workflowStepId: step.id,
-            triggerDataId: readResult.entityId,
-            runId,
-          });
+        if (outcome === 'failed') {
+          return JobStatus.Failed;
         }
-
-        return JobStatus.Failed;
       }
-    }
 
-    if (workflow.logging) {
-      await this.workflowRepository.log({
-        workflowId,
-        result: WorkflowResult.Completed,
-        triggerDataId: readResult.entityId,
-        runId,
-      });
-    }
+      if (workflow.logging) {
+        yield* this.fx.workflow.log({
+          workflowId,
+          result: WorkflowResult.Completed,
+          triggerDataId: readResult.entityId,
+          runId,
+        });
+      }
 
-    this.logger.debug(`Workflow ${workflowId} run ${runId} executed successfully`);
+      this.logger.debug(`Workflow ${workflowId} run ${runId} executed successfully`);
+    });
   }
 }

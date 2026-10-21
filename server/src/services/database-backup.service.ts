@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { Cause, Effect } from 'effect';
 import { debounce } from 'lodash-es';
 import { DateTime } from 'luxon';
 import path, { basename } from 'node:path';
@@ -10,18 +11,20 @@ import { serverVersion } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
 import { DatabaseBackupListResponseDto } from 'src/dtos/database-backup.dto.js';
+import { effectOf } from 'src/effect/bridge.js';
+import { runPromise } from 'src/effect/run.js';
 import { CacheControl, DatabaseLock, ImmichWorker, JobName, JobStatus, QueueName, StorageFolder } from 'src/enum.js';
 import { MaintenanceHealthRepository } from 'src/maintenance/maintenance-health.repository.js';
-import { ConfigRepository } from 'src/repositories/config.repository.js';
-import { CronRepository } from 'src/repositories/cron.repository.js';
-import { DatabaseRepository } from 'src/repositories/database.repository.js';
+import { ConfigRepo, ConfigRepository } from 'src/repositories/config.repository.js';
+import { CronRepo, CronRepository } from 'src/repositories/cron.repository.js';
+import { DatabaseRepo, DatabaseRepository } from 'src/repositories/database.repository.js';
 import { JobRepository } from 'src/repositories/job.repository.js';
-import { LoggingRepository } from 'src/repositories/logging.repository.js';
-import { ProcessRepository } from 'src/repositories/process.repository.js';
-import { StorageRepository } from 'src/repositories/storage.repository.js';
-import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
-import { UserRepository } from 'src/repositories/user.repository.js';
-import { getConfig } from 'src/utils/config.js';
+import { LoggingRepo, LoggingRepository } from 'src/repositories/logging.repository.js';
+import { ProcessRepo, ProcessRepository } from 'src/repositories/process.repository.js';
+import { StorageRepo, StorageRepository } from 'src/repositories/storage.repository.js';
+import { SystemMetadataRepo, SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
+import { UserRepo, UserRepository } from 'src/repositories/user.repository.js';
+import { getConfigFx } from 'src/utils/config.js';
 import {
   UnsupportedPostgresError,
   findDatabaseBackupVersion,
@@ -31,6 +34,10 @@ import {
 } from 'src/utils/database-backups.js';
 import { ImmichFileResponse } from 'src/utils/file.js';
 import { handlePromiseError } from 'src/utils/misc.js';
+
+/** Effect errors wrap the original thrown value in `cause`; services log and rethrow the original. */
+const unwrapCause = (error: unknown) =>
+  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
 
 @Injectable()
 export class DatabaseBackupService {
@@ -54,6 +61,33 @@ export class DatabaseBackupService {
 
   private backupLock = false;
 
+  private fxRepos?: {
+    logger: ReturnType<typeof effectOf<typeof LoggingRepo>>;
+    storage: ReturnType<typeof effectOf<typeof StorageRepo>>;
+    config: ReturnType<typeof effectOf<typeof ConfigRepo>>;
+    systemMetadata: ReturnType<typeof effectOf<typeof SystemMetadataRepo>>;
+    process: ReturnType<typeof effectOf<typeof ProcessRepo>>;
+    database: ReturnType<typeof effectOf<typeof DatabaseRepo>>;
+    user: ReturnType<typeof effectOf<typeof UserRepo>>;
+  };
+
+  /**
+   * The repositories as Effect services. This service does not extend `BaseService`, and the cron, job and
+   * maintenance health repositories are optional, so those are lifted at their (guarded) call sites instead.
+   */
+  private get fx() {
+    this.fxRepos ??= {
+      logger: effectOf(LoggingRepo, this.logger),
+      storage: effectOf(StorageRepo, this.storageRepository),
+      config: effectOf(ConfigRepo, this.configRepository),
+      systemMetadata: effectOf(SystemMetadataRepo, this.systemMetadataRepository),
+      process: effectOf(ProcessRepo, this.processRepository),
+      database: effectOf(DatabaseRepo, this.databaseRepository),
+      user: effectOf(UserRepo, this.userRepository),
+    };
+    return this.fxRepos;
+  }
+
   @OnEvent({ name: 'ConfigInit', workers: [ImmichWorker.Microservices] })
   async onConfigInit({
     newConfig: {
@@ -64,16 +98,21 @@ export class DatabaseBackupService {
       return;
     }
 
-    this.backupLock = await this.databaseRepository.tryLock(DatabaseLock.BackupDatabase);
+    const cronRepository = this.cronRepository;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        this.backupLock = yield* this.fx.database.tryLock(DatabaseLock.BackupDatabase);
 
-    if (this.backupLock) {
-      this.cronRepository.create({
-        name: 'backupDatabase',
-        expression: database.cronExpression,
-        onTick: () => handlePromiseError(this.jobRepository.queue({ name: JobName.DatabaseBackup }), this.logger),
-        start: database.enabled,
-      });
-    }
+        if (this.backupLock) {
+          yield* effectOf(CronRepo, cronRepository).create({
+            name: 'backupDatabase',
+            expression: database.cronExpression,
+            onTick: () => handlePromiseError(this.jobRepository.queue({ name: JobName.DatabaseBackup }), this.logger),
+            start: database.enabled,
+          });
+        }
+      }),
+    );
   }
 
   @OnEvent({ name: 'ConfigUpdate', server: true })
@@ -91,18 +130,22 @@ export class DatabaseBackupService {
 
   @OnJob({ name: JobName.DatabaseBackup, queue: QueueName.BackupDatabase })
   async handleBackupDatabase(): Promise<JobStatus> {
-    try {
-      await this.createDatabaseBackup();
-    } catch (error) {
-      if (error instanceof UnsupportedPostgresError) {
-        return JobStatus.Failed;
-      }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const failed = yield* this.createDatabaseBackupFx().pipe(
+          Effect.as(false),
+          Effect.catch((error) =>
+            unwrapCause(error) instanceof UnsupportedPostgresError ? Effect.succeed(true) : Effect.fail(error),
+          ),
+        );
+        if (failed) {
+          return JobStatus.Failed;
+        }
 
-      throw error;
-    }
-
-    await this.cleanupDatabaseBackups();
-    return JobStatus.Success;
+        yield* this.cleanupDatabaseBackupsFx();
+        return JobStatus.Success;
+      }),
+    );
   }
 
   async buildPostgresLaunchArguments(
@@ -118,117 +161,136 @@ export class DatabaseBackupService {
     databaseVersion: string;
     databaseMajorVersion?: number;
   }> {
-    const {
-      database: { config: databaseConfig },
-    } = this.configRepository.getEnv();
-    const isUrlConnection = databaseConfig.connectionType === 'url';
+    return runPromise(this.buildPostgresLaunchArgumentsFx(bin, options));
+  }
 
-    const databaseVersion = await this.databaseRepository.getPostgresVersion();
-    const databaseSemver = coerce(databaseVersion);
-    const databaseMajorVersion = databaseSemver?.major;
+  private readonly buildPostgresLaunchArgumentsFx = Effect.fn('DatabaseBackupService.buildPostgresLaunchArguments')(
+    function* (
+      this: DatabaseBackupService,
+      bin: 'pg_dump' | 'pg_dumpall' | 'psql',
+      options: {
+        singleTransaction?: boolean;
+      } = {},
+    ) {
+      const {
+        database: { config: databaseConfig },
+      } = yield* this.fx.config.getEnv();
+      const isUrlConnection = databaseConfig.connectionType === 'url';
 
-    const args: string[] = [];
-    let databaseUsername;
-    let databasePassword;
+      const databaseVersion = yield* this.fx.database.getPostgresVersion();
+      const databaseSemver = coerce(databaseVersion);
+      const databaseMajorVersion = databaseSemver?.major;
 
-    if (isUrlConnection) {
-      if (bin !== 'pg_dump') {
-        args.push('--dbname');
+      const args: string[] = [];
+      let databaseUsername;
+      let databasePassword;
+
+      if (isUrlConnection) {
+        if (bin !== 'pg_dump') {
+          args.push('--dbname');
+        }
+
+        let url = databaseConfig.url;
+        if (URL.canParse(databaseConfig.url)) {
+          const parsedUrl = new URL(databaseConfig.url);
+          // remove known bad parameters
+          parsedUrl.searchParams.delete('uselibpqcompat');
+
+          databaseUsername = parsedUrl.username || parsedUrl.searchParams.get('user');
+          databasePassword = parsedUrl.password;
+
+          url = parsedUrl.href;
+        }
+
+        // assume typical values if we can't parse URL or not present
+        databaseUsername ??= 'postgres';
+        databasePassword ??= '';
+
+        args.push(url);
+      } else {
+        databaseUsername = databaseConfig.username;
+        databasePassword = databaseConfig.password;
+
+        args.push(
+          '--username',
+          databaseUsername,
+          '--host',
+          databaseConfig.host,
+          '--port',
+          databaseConfig.port.toString(),
+        );
+
+        switch (bin) {
+          case 'pg_dump': {
+            break;
+          }
+          case 'pg_dumpall': {
+            args.push('--database');
+            break;
+          }
+          case 'psql': {
+            args.push('--dbname');
+            break;
+          }
+        }
+
+        args.push(databaseConfig.database);
       }
-
-      let url = databaseConfig.url;
-      if (URL.canParse(databaseConfig.url)) {
-        const parsedUrl = new URL(databaseConfig.url);
-        // remove known bad parameters
-        parsedUrl.searchParams.delete('uselibpqcompat');
-
-        databaseUsername = parsedUrl.username || parsedUrl.searchParams.get('user');
-        databasePassword = parsedUrl.password;
-
-        url = parsedUrl.href;
-      }
-
-      // assume typical values if we can't parse URL or not present
-      databaseUsername ??= 'postgres';
-      databasePassword ??= '';
-
-      args.push(url);
-    } else {
-      databaseUsername = databaseConfig.username;
-      databasePassword = databaseConfig.password;
-
-      args.push(
-        '--username',
-        databaseUsername,
-        '--host',
-        databaseConfig.host,
-        '--port',
-        databaseConfig.port.toString(),
-      );
 
       switch (bin) {
-        case 'pg_dump': {
-          break;
-        }
+        case 'pg_dump':
         case 'pg_dumpall': {
-          args.push('--database');
+          args.push('--clean', '--if-exists');
           break;
         }
         case 'psql': {
-          args.push('--dbname');
+          if (options.singleTransaction) {
+            args.push(
+              // don't commit any transaction on failure
+              '--single-transaction',
+              // exit with non-zero code on error
+              '--set',
+              'ON_ERROR_STOP=on',
+            );
+          }
+
+          args.push(
+            // used for progress monitoring
+            '--echo-all',
+            '--output=/dev/null',
+          );
           break;
         }
       }
 
-      args.push(databaseConfig.database);
-    }
-
-    switch (bin) {
-      case 'pg_dump':
-      case 'pg_dumpall': {
-        args.push('--clean', '--if-exists');
-        break;
+      if (!databaseMajorVersion || !databaseSemver || !satisfies(databaseSemver, '>=14.0.0 <19.0.0')) {
+        this.logger.error(`Database Restore Failure: Unsupported PostgreSQL version: ${databaseVersion}`);
+        return yield* Effect.fail(new UnsupportedPostgresError(databaseVersion));
       }
-      case 'psql': {
-        if (options.singleTransaction) {
-          args.push(
-            // don't commit any transaction on failure
-            '--single-transaction',
-            // exit with non-zero code on error
-            '--set',
-            'ON_ERROR_STOP=on',
-          );
-        }
 
-        args.push(
-          // used for progress monitoring
-          '--echo-all',
-          '--output=/dev/null',
-        );
-        break;
-      }
-    }
-
-    if (!databaseMajorVersion || !databaseSemver || !satisfies(databaseSemver, '>=14.0.0 <19.0.0')) {
-      this.logger.error(`Database Restore Failure: Unsupported PostgreSQL version: ${databaseVersion}`);
-      throw new UnsupportedPostgresError(databaseVersion);
-    }
-
-    return {
-      bin: `/usr/lib/postgresql/${databaseMajorVersion}/bin/${bin}`,
-      args,
-      databaseUsername,
-      databasePassword,
-      databaseVersion,
-      databaseMajorVersion,
-    };
-  }
+      return {
+        bin: `/usr/lib/postgresql/${databaseMajorVersion}/bin/${bin}`,
+        args,
+        databaseUsername,
+        databasePassword,
+        databaseVersion,
+        databaseMajorVersion,
+      };
+    },
+  );
 
   async createDatabaseBackup(filenamePrefix: string = ''): Promise<string> {
+    return runPromise(this.createDatabaseBackupFx(filenamePrefix));
+  }
+
+  private readonly createDatabaseBackupFx = Effect.fn('DatabaseBackupService.createDatabaseBackup')(function* (
+    this: DatabaseBackupService,
+    filenamePrefix: string = '',
+  ) {
     this.logger.debug(`Database Backup Started`);
 
     const { bin, args, databasePassword, databaseVersion, databaseMajorVersion } =
-      await this.buildPostgresLaunchArguments('pg_dump');
+      yield* this.buildPostgresLaunchArgumentsFx('pg_dump');
 
     this.logger.log(`Database Backup Starting. Database Version: ${databaseMajorVersion}`);
 
@@ -239,43 +301,57 @@ export class DatabaseBackupService {
     let pgdump: Duplex | undefined;
     let gzip: Duplex | undefined;
 
-    try {
-      pgdump = this.processRepository.spawnDuplexStream(bin, args, {
+    yield* Effect.gen({ self: this }, function* () {
+      pgdump = yield* this.fx.process.spawnDuplexStream(bin, args, {
         env: {
           PATH: process.env.PATH,
           PGPASSWORD: databasePassword,
         },
       });
 
-      gzip = this.processRepository.spawnDuplexStream('gzip', ['--rsyncable']);
-      const fileStream = this.storageRepository.createWriteStream(temporaryFilePath);
+      gzip = yield* this.fx.process.spawnDuplexStream('gzip', ['--rsyncable']);
+      const fileStream = yield* this.fx.storage.createWriteStream(temporaryFilePath);
 
-      await pipeline(pgdump, gzip, fileStream);
-      await this.storageRepository.rename(temporaryFilePath, backupFilePath);
-    } catch (error) {
-      this.logger.error(`Database Backup Failure: ${error}`);
-      pgdump?.destroy();
-      gzip?.destroy();
-      await this.storageRepository
-        .unlink(temporaryFilePath)
-
-        .catch((error) => this.logger.error(`Failed to delete failed backup file: ${error}`));
-      throw error;
-    }
+      const source = pgdump;
+      const middle = gzip;
+      yield* Effect.tryPromise({ try: () => pipeline(source, middle, fileStream), catch: (cause) => cause });
+      yield* this.fx.storage.rename(temporaryFilePath, backupFilePath);
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.gen({ self: this }, function* () {
+          const error = unwrapCause(Cause.squash(cause));
+          this.logger.error(`Database Backup Failure: ${error}`);
+          pgdump?.destroy();
+          gzip?.destroy();
+          yield* this.fx.storage
+            .unlink(temporaryFilePath)
+            .pipe(
+              Effect.catch((error) =>
+                Effect.sync(() => this.logger.error(`Failed to delete failed backup file: ${unwrapCause(error)}`)),
+              ),
+            );
+          return yield* Effect.fail(error);
+        }),
+      ),
+    );
 
     this.logger.log(`Database Backup Success`);
     return backupFilePath;
-  }
+  });
 
   async uploadBackup(file: Express.Multer.File): Promise<void> {
     const backupsFolder = StorageCore.getBaseFolder(StorageFolder.Backups);
     const fn = basename(file.originalname);
-    if (!isValidDatabaseBackupName(fn)) {
-      throw new BadRequestException('Invalid backup name!');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        if (!isValidDatabaseBackupName(fn)) {
+          return yield* Effect.fail(new BadRequestException('Invalid backup name!'));
+        }
 
-    const filePath = path.join(backupsFolder, `uploaded-${fn}`);
-    await this.storageRepository.createOrOverwriteFile(filePath, file.buffer);
+        const filePath = path.join(backupsFolder, `uploaded-${fn}`);
+        yield* this.fx.storage.createOrOverwriteFile(filePath, file.buffer);
+      }),
+    );
   }
 
   downloadBackup(fileName: string): ImmichFileResponse {
@@ -294,46 +370,67 @@ export class DatabaseBackupService {
   }
 
   async listBackups(): Promise<DatabaseBackupListResponseDto> {
-    const backupsFolder = StorageCore.getBaseFolder(StorageFolder.Backups);
-    const files = await this.storageRepository.readdir(backupsFolder);
-    const timezone = DateTime.local().zoneName;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const backupsFolder = StorageCore.getBaseFolder(StorageFolder.Backups);
+        const files = yield* this.fx.storage.readdir(backupsFolder);
+        const timezone = DateTime.local().zoneName;
 
-    const validFiles = files
-      .filter((fn) => isValidDatabaseBackupName(fn))
-      .toSorted((a, b) => (a.startsWith('uploaded-') === b.startsWith('uploaded-') ? a.localeCompare(b) : 1))
-      .toReversed();
+        const validFiles = files
+          .filter((fn) => isValidDatabaseBackupName(fn))
+          .toSorted((a, b) => (a.startsWith('uploaded-') === b.startsWith('uploaded-') ? a.localeCompare(b) : 1))
+          .toReversed();
 
-    const backups = await Promise.all(
-      validFiles.map(async (filename) => {
-        const stats = await this.storageRepository.stat(path.join(backupsFolder, filename));
-        return { filename, filesize: stats.size, timezone };
+        const backups = yield* Effect.all(
+          validFiles.map((filename) =>
+            Effect.gen({ self: this }, function* () {
+              const stats = yield* this.fx.storage.stat(path.join(backupsFolder, filename));
+              return { filename, filesize: stats.size, timezone };
+            }),
+          ),
+          { concurrency: 'unbounded' },
+        );
+
+        return {
+          backups,
+        };
       }),
     );
-
-    return {
-      backups,
-    };
   }
 
   async deleteBackup(files: string[]): Promise<void> {
     const backupsFolder = StorageCore.getBaseFolder(StorageFolder.Backups);
 
-    if (files.some((filename) => !isValidDatabaseBackupName(filename))) {
-      throw new BadRequestException('Invalid backup name!');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        if (files.some((filename) => !isValidDatabaseBackupName(filename))) {
+          return yield* Effect.fail(new BadRequestException('Invalid backup name!'));
+        }
 
-    await Promise.all(files.map((filename) => this.storageRepository.unlink(path.join(backupsFolder, filename))));
+        yield* Effect.all(
+          files.map((filename) => this.fx.storage.unlink(path.join(backupsFolder, filename))),
+          { concurrency: 'unbounded' },
+        );
+      }),
+    );
   }
 
   async cleanupDatabaseBackups() {
+    return runPromise(this.cleanupDatabaseBackupsFx());
+  }
+
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly cleanupDatabaseBackupsFx = Effect.fn('DatabaseBackupService.cleanupDatabaseBackups')(function* (
+    this: DatabaseBackupService,
+  ) {
     this.logger.debug(`Database Backup Cleanup Started`);
     const {
       backup: { database: config },
-    } = await getConfig(
+    } = yield* getConfigFx(
       {
-        configRepo: this.configRepository,
-        metadataRepo: this.systemMetadataRepository,
-        logger: this.logger,
+        configRepo: this.fx.config,
+        metadataRepo: this.fx.systemMetadata,
+        logger: this.fx.logger,
       },
       {
         withCache: false,
@@ -341,7 +438,7 @@ export class DatabaseBackupService {
     );
 
     const backupsFolder = StorageCore.getBaseFolder(StorageFolder.Backups);
-    const files = await this.storageRepository.readdir(backupsFolder);
+    const files = yield* this.fx.storage.readdir(backupsFolder);
     const backups = files
       .filter((filename) => isValidDatabaseRoutineBackupName(filename))
       .toSorted()
@@ -352,26 +449,34 @@ export class DatabaseBackupService {
     toDelete.push(...failedBackups);
 
     for (const file of toDelete) {
-      await this.storageRepository.unlink(path.join(backupsFolder, file));
+      yield* this.fx.storage.unlink(path.join(backupsFolder, file));
     }
 
     this.logger.debug(`Database Backup Cleanup Finished, deleted ${toDelete.length} backups`);
-  }
+  });
 
   async restoreDatabaseBackup(
     filename: string,
     progressCb?: (action: 'backup' | 'restore' | 'migrations' | 'rollback', progress: number) => void,
   ): Promise<void> {
+    return runPromise(this.restoreDatabaseBackupFx(filename, progressCb));
+  }
+
+  private readonly restoreDatabaseBackupFx = Effect.fn('DatabaseBackupService.restoreDatabaseBackup')(function* (
+    this: DatabaseBackupService,
+    filename: string,
+    progressCb?: (action: 'backup' | 'restore' | 'migrations' | 'rollback', progress: number) => void,
+  ) {
     this.logger.debug(`Database Restore Started`);
 
     let isComplete = false;
-    try {
+    yield* Effect.gen({ self: this }, function* () {
       if (!isValidDatabaseBackupName(filename)) {
-        throw new Error('Invalid backup file format!');
+        return yield* Effect.fail(new Error('Invalid backup file format!'));
       }
 
       const backupFilePath = path.join(StorageCore.getBaseFolder(StorageFolder.Backups), filename);
-      await this.storageRepository.stat(backupFilePath); // => check file exists
+      yield* this.fx.storage.stat(backupFilePath); // => check file exists
 
       let isPgClusterDump = false;
       const version = findDatabaseBackupVersion(filename);
@@ -380,28 +485,28 @@ export class DatabaseBackupService {
       }
 
       const { bin, args, databaseUsername, databasePassword, databaseMajorVersion } =
-        await this.buildPostgresLaunchArguments('psql', {
+        yield* this.buildPostgresLaunchArgumentsFx('psql', {
           singleTransaction: !isPgClusterDump,
         });
 
       progressCb?.('backup', 0.05);
 
-      const restorePointFilePath = await this.createDatabaseBackup('restore-point-');
+      const restorePointFilePath = yield* this.createDatabaseBackupFx('restore-point-');
 
       this.logger.log(`Database Restore Starting. Database Version: ${databaseMajorVersion}`);
 
       let inputStream: Readable;
       if (backupFilePath.endsWith('.gz')) {
-        const fileStream = this.storageRepository.createPlainReadStream(backupFilePath);
-        const gunzip = this.storageRepository.createGunzip();
+        const fileStream = yield* this.fx.storage.createPlainReadStream(backupFilePath);
+        const gunzip = yield* this.fx.storage.createGunzip();
         fileStream.pipe(gunzip);
         inputStream = gunzip;
       } else {
-        inputStream = this.storageRepository.createPlainReadStream(backupFilePath);
+        inputStream = yield* this.fx.storage.createPlainReadStream(backupFilePath);
       }
 
       const sqlStream = Readable.from(sql(inputStream, databaseUsername, isPgClusterDump));
-      const psql = this.processRepository.spawnDuplexStream(bin, args, {
+      const psql = yield* this.fx.process.spawnDuplexStream(bin, args, {
         env: {
           PATH: process.env.PATH,
           PGPASSWORD: databasePassword,
@@ -417,57 +522,80 @@ export class DatabaseBackupService {
         progressCb?.('restore', progress);
       });
 
-      await pipeline(sqlStream, createSqlOwnerTransformStream(databaseUsername), progressSource, psql, progressSink);
+      yield* Effect.tryPromise({
+        try: () =>
+          pipeline(sqlStream, createSqlOwnerTransformStream(databaseUsername), progressSource, psql, progressSink),
+        catch: (cause) => cause,
+      });
 
-      try {
+      yield* Effect.gen({ self: this }, function* () {
         progressCb?.('migrations', 0.9);
 
-        await this.databaseRepository.runMigrations();
+        yield* this.fx.database.runMigrations();
 
-        const hasAdmin = await this.userRepository.hasAdmin();
+        const hasAdmin = yield* this.fx.user.hasAdmin();
         if (!hasAdmin) {
-          throw new Error('Server health check failed, no admin exists.');
+          return yield* Effect.fail(new Error('Server health check failed, no admin exists.'));
         }
 
-        await this.maintenanceHealthRepository.checkApiHealth();
-      } catch (error) {
-        progressCb?.('rollback', 0);
-
-        const fileStream = this.storageRepository.createPlainReadStream(restorePointFilePath);
-        const gunzip = this.storageRepository.createGunzip();
-        fileStream.pipe(gunzip);
-        inputStream = gunzip;
-
-        const sqlStream = Readable.from(sqlRollback(inputStream, databaseUsername));
-        const psql = this.processRepository.spawnDuplexStream(bin, args, {
-          env: {
-            PATH: process.env.PATH,
-            PGPASSWORD: databasePassword,
-          },
+        yield* Effect.tryPromise({
+          try: async () => await this.maintenanceHealthRepository.checkApiHealth(),
+          catch: (cause) => cause,
         });
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.gen({ self: this }, function* () {
+            const error = unwrapCause(Cause.squash(cause));
+            progressCb?.('rollback', 0);
 
-        const [progressSource, progressSink] = createSqlProgressStreams((progress) => {
-          if (isComplete) {
-            return;
-          }
+            const fileStream = yield* this.fx.storage.createPlainReadStream(restorePointFilePath);
+            const gunzip = yield* this.fx.storage.createGunzip();
+            fileStream.pipe(gunzip);
+            inputStream = gunzip;
 
-          this.logger.log(`Rollback progress ~ ${(progress * 100).toFixed(2)}%`);
-          progressCb?.('rollback', progress);
-        });
+            const sqlStream = Readable.from(sqlRollback(inputStream, databaseUsername));
+            const psql = yield* this.fx.process.spawnDuplexStream(bin, args, {
+              env: {
+                PATH: process.env.PATH,
+                PGPASSWORD: databasePassword,
+              },
+            });
 
-        await pipeline(sqlStream, progressSource, psql, progressSink);
+            const [progressSource, progressSink] = createSqlProgressStreams((progress) => {
+              if (isComplete) {
+                return;
+              }
 
-        throw error;
-      }
-    } catch (error) {
-      this.logger.error(`Database Restore Failure: ${error}`);
-      throw error;
-    } finally {
-      isComplete = true;
-    }
+              this.logger.log(`Rollback progress ~ ${(progress * 100).toFixed(2)}%`);
+              progressCb?.('rollback', progress);
+            });
+
+            yield* Effect.tryPromise({
+              try: () => pipeline(sqlStream, progressSource, psql, progressSink),
+              catch: (cause) => cause,
+            });
+
+            return yield* Effect.fail(error);
+          }),
+        ),
+      );
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.gen({ self: this }, function* () {
+          const error = unwrapCause(Cause.squash(cause));
+          this.logger.error(`Database Restore Failure: ${error}`);
+          return yield* Effect.fail(error);
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          isComplete = true;
+        }),
+      ),
+    );
 
     this.logger.log(`Database Restore Success`);
-  }
+  });
 }
 
 const SQL_DROP_CONNECTIONS = `

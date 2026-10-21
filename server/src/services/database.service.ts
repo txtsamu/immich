@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { coerce, eq, gt, lt, satisfies } from 'semver';
 import type { VectorExtension } from 'src/types.js';
 import { EXTENSION_NAMES, ErrorMessages, VECTOR_EXTENSIONS } from 'src/constants.js';
 import { OnEvent } from 'src/decorators.js';
+import { runPromise } from 'src/effect/run.js';
 import { BootstrapEventPriority, DatabaseExtension, DatabaseLock } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 
@@ -12,6 +14,10 @@ type DropFailedArgs = { name: string; extension: string };
 type NightlyVersionArgs = { name: string; extension: string; version: string };
 type OutOfRangeArgs = { name: string; extension: string; version: string; range: string };
 type InvalidDowngradeArgs = { name: string; extension: string; installedVersion: string; availableVersion: string };
+
+/** The original thrown value behind an Effect error that wraps it in `cause` (see `src/effect/errors.ts`). */
+const unwrapCause = (error: unknown) =>
+  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
 
 const messages = {
   notInstalled: (name: string) =>
@@ -55,105 +61,138 @@ const messages = {
 export class DatabaseService extends BaseService {
   @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.DatabaseService })
   async onBootstrap() {
-    const version = await this.databaseRepository.getPostgresVersion();
-    const current = coerce(version);
-    const postgresRange = this.databaseRepository.getPostgresVersionRange();
-    if (!current || !satisfies(current, postgresRange)) {
-      throw new Error(
-        `Invalid PostgreSQL version. Found ${version}, but needed ${postgresRange}. Please use a supported version.`,
-      );
-    }
+    await runPromise(
+      Effect.gen({ self: this }, function* () {
+        const version = yield* this.fx.database.getPostgresVersion();
+        const current = coerce(version);
+        const postgresRange = yield* this.fx.database.getPostgresVersionRange();
+        if (!current || !satisfies(current, postgresRange)) {
+          return yield* Effect.fail(
+            new Error(
+              `Invalid PostgreSQL version. Found ${version}, but needed ${postgresRange}. Please use a supported version.`,
+            ),
+          );
+        }
 
-    await this.databaseRepository.withLock(DatabaseLock.Migrations, async () => {
-      const extension = await this.databaseRepository.getVectorExtension();
-      const name = EXTENSION_NAMES[extension];
-      const extensionRange = this.databaseRepository.getExtensionVersionRange(extension);
+        yield* this.fx.database.withLock(DatabaseLock.Migrations, () =>
+          // the lock callback is Promise based: run the Effect and rethrow the original error
+          runPromise(
+            Effect.gen({ self: this }, function* () {
+              const extension = yield* this.fx.database.getVectorExtension();
+              const name = EXTENSION_NAMES[extension];
+              const extensionRange = yield* this.fx.database.getExtensionVersionRange(extension);
 
-      const extensionVersions = await this.databaseRepository.getExtensionVersions(VECTOR_EXTENSIONS);
-      const { installedVersion, availableVersion } = extensionVersions.find((v) => v.name === extension) ?? {};
-      if (!availableVersion) {
-        throw new Error(messages.notInstalled(name));
-      }
+              const extensionVersions = yield* this.fx.database.getExtensionVersions(VECTOR_EXTENSIONS);
+              const { installedVersion, availableVersion } = extensionVersions.find((v) => v.name === extension) ?? {};
+              if (!availableVersion) {
+                return yield* Effect.fail(new Error(messages.notInstalled(name)));
+              }
 
-      if ([availableVersion, installedVersion].some((version) => version && eq(version, '0.0.0'))) {
-        throw new Error(messages.nightlyVersion({ name, extension, version: '0.0.0' }));
-      }
+              if ([availableVersion, installedVersion].some((version) => version && eq(version, '0.0.0'))) {
+                return yield* Effect.fail(new Error(messages.nightlyVersion({ name, extension, version: '0.0.0' })));
+              }
 
-      if (!satisfies(availableVersion, extensionRange)) {
-        throw new Error(messages.outOfRange({ name, extension, version: availableVersion, range: extensionRange }));
-      }
+              if (!satisfies(availableVersion, extensionRange)) {
+                return yield* Effect.fail(
+                  new Error(messages.outOfRange({ name, extension, version: availableVersion, range: extensionRange })),
+                );
+              }
 
-      if (!installedVersion) {
-        await this.createExtension(extension);
-      }
+              if (!installedVersion) {
+                yield* this.createExtension(extension);
+              }
 
-      if (installedVersion && gt(availableVersion, installedVersion)) {
-        await this.updateExtension(extension, availableVersion);
-      } else if (installedVersion && !satisfies(installedVersion, extensionRange)) {
-        throw new Error(messages.outOfRange({ name, extension, version: installedVersion, range: extensionRange }));
-      } else if (installedVersion && lt(availableVersion, installedVersion)) {
-        throw new Error(messages.invalidDowngrade({ name, extension, availableVersion, installedVersion }));
-      }
+              if (installedVersion && gt(availableVersion, installedVersion)) {
+                yield* this.updateExtension(extension, availableVersion);
+              } else if (installedVersion && !satisfies(installedVersion, extensionRange)) {
+                return yield* Effect.fail(
+                  new Error(messages.outOfRange({ name, extension, version: installedVersion, range: extensionRange })),
+                );
+              } else if (installedVersion && lt(availableVersion, installedVersion)) {
+                return yield* Effect.fail(
+                  new Error(messages.invalidDowngrade({ name, extension, availableVersion, installedVersion })),
+                );
+              }
 
-      for (const { name: dbName, installedVersion } of extensionVersions) {
-        const isDepended = dbName === DatabaseExtension.Vector && extension === DatabaseExtension.VectorChord;
-        if (dbName !== extension && installedVersion && !isDepended) {
-          await this.dropExtension(dbName);
+              for (const { name: dbName, installedVersion } of extensionVersions) {
+                const isDepended = dbName === DatabaseExtension.Vector && extension === DatabaseExtension.VectorChord;
+                if (dbName !== extension && installedVersion && !isDepended) {
+                  yield* this.dropExtension(dbName);
+                }
+              }
+
+              const preparation: Effect.Effect<unknown, unknown>[] = [];
+              const { database } = this.configRepository.getEnv();
+              if (!database.skipMigrations) {
+                const migrationCount = yield* this.fx.database.runMigrations();
+                preparation.push(this.checkSchemaDrift());
+                if (migrationCount > 0) {
+                  preparation.push(this.fx.database.vacuum({ analyze: true }));
+                }
+              }
+              yield* Effect.all(preparation, { concurrency: 'unbounded' });
+            }),
+          ),
+        );
+      }),
+    );
+  }
+
+  private checkSchemaDrift() {
+    return Effect.gen({ self: this }, function* () {
+      this.logger.log('Checking for schema drift');
+      const drift = yield* this.fx.database.getSchemaDrift();
+      if (drift.items.length === 0) {
+        this.logger.log('No schema drift detected');
+      } else {
+        this.logger.warn(`${ErrorMessages.SchemaDrift} or run \`immich-admin schema-check\``);
+        for (const warning of drift.asHuman()) {
+          this.logger.warn(`  - ${warning}`);
         }
       }
-
-      const preparation = [];
-      const { database } = this.configRepository.getEnv();
-      if (!database.skipMigrations) {
-        const migrationCount = await this.databaseRepository.runMigrations();
-        preparation.push(this.checkSchemaDrift());
-        if (migrationCount > 0) {
-          preparation.push(this.databaseRepository.vacuum({ analyze: true }));
-        }
-      }
-      await Promise.all(preparation);
     });
   }
 
-  private async checkSchemaDrift() {
-    this.logger.log('Checking for schema drift');
-    const drift = await this.databaseRepository.getSchemaDrift();
-    if (drift.items.length === 0) {
-      this.logger.log('No schema drift detected');
-    } else {
-      this.logger.warn(`${ErrorMessages.SchemaDrift} or run \`immich-admin schema-check\``);
-      for (const warning of drift.asHuman()) {
-        this.logger.warn(`  - ${warning}`);
-      }
-    }
-  }
+  private createExtension = Effect.fn('DatabaseService.createExtension')(function* (
+    this: DatabaseService,
+    extension: DatabaseExtension,
+  ) {
+    yield* this.fx.database.createExtension(extension).pipe(
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          const name = EXTENSION_NAMES[extension];
+          this.logger.fatal(messages.createFailed({ name, extension }));
+        }),
+      ),
+    );
+  });
 
-  private async createExtension(extension: DatabaseExtension) {
-    try {
-      await this.databaseRepository.createExtension(extension);
-    } catch (error) {
-      const name = EXTENSION_NAMES[extension];
-      this.logger.fatal(messages.createFailed({ name, extension }));
-      throw error;
-    }
-  }
-
-  private async updateExtension(extension: VectorExtension, availableVersion: string) {
+  private updateExtension = Effect.fn('DatabaseService.updateExtension')(function* (
+    this: DatabaseService,
+    extension: VectorExtension,
+    availableVersion: string,
+  ) {
     this.logger.log(`Updating ${EXTENSION_NAMES[extension]} extension to ${availableVersion}`);
-    try {
-      await this.databaseRepository.updateVectorExtension(extension, availableVersion);
-    } catch (error) {
-      this.logger.warn(messages.updateFailed({ name: EXTENSION_NAMES[extension], extension, availableVersion }));
-      throw error;
-    }
-  }
+    yield* this.fx.database.updateVectorExtension(extension, availableVersion).pipe(
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          this.logger.warn(messages.updateFailed({ name: EXTENSION_NAMES[extension], extension, availableVersion }));
+        }),
+      ),
+    );
+  });
 
-  private async dropExtension(extension: DatabaseExtension) {
-    try {
-      await this.databaseRepository.dropExtension(extension);
-    } catch (error) {
-      const name = EXTENSION_NAMES[extension];
-      this.logger.warn(messages.dropFailed({ name, extension }), error);
-    }
-  }
+  private dropExtension = Effect.fn('DatabaseService.dropExtension')(function* (
+    this: DatabaseService,
+    extension: DatabaseExtension,
+  ) {
+    yield* this.fx.database.dropExtension(extension).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          const name = EXTENSION_NAMES[extension];
+          this.logger.warn(messages.dropFailed({ name, extension }), unwrapCause(error));
+        }),
+      ),
+    );
+  });
 }

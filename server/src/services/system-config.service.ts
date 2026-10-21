@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { isEqual } from 'lodash-es';
 import type { ArgOf } from 'src/repositories/event.repository.js';
 import { OnEvent } from 'src/decorators.js';
@@ -11,22 +12,35 @@ import {
   mapPublicConfig,
   mapUserConfig,
 } from 'src/dtos/config.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import { BootstrapEventPriority } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { clearConfigCache } from 'src/utils/config.js';
 import { toPlainObject } from 'src/utils/object.js';
 
+/** The original thrown value behind an Effect error that wraps it in `cause` (see `src/effect/errors.ts`). */
+const unwrapCause = (error: unknown) =>
+  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
+
 @Injectable()
 export class SystemConfigService extends BaseService {
   @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.SystemConfig })
   async onBootstrap() {
-    const config = await this.getConfig({ withCache: false });
-    await this.eventRepository.emit('ConfigInit', { newConfig: config });
+    await runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        yield* this.fx.event.emit('ConfigInit', { newConfig: config });
+      }),
+    );
   }
 
   async getAdminConfig(): Promise<AdminConfigDto> {
-    const config = await this.getConfig({ withCache: false });
-    return mapAdminConfig(config);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        return mapAdminConfig(config);
+      }),
+    );
   }
 
   getAdminConfigDefaults(): AdminConfigDto {
@@ -34,8 +48,12 @@ export class SystemConfigService extends BaseService {
   }
 
   async getUserConfig(): Promise<UserConfigDto> {
-    const config = await this.getConfig({ withCache: false });
-    return mapUserConfig(config);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        return mapUserConfig(config);
+      }),
+    );
   }
 
   getUserConfigDefaults(): UserConfigDto {
@@ -43,8 +61,12 @@ export class SystemConfigService extends BaseService {
   }
 
   async getPublicConfig(): Promise<PublicConfigDto> {
-    const config = await this.getConfig({ withCache: false });
-    return mapPublicConfig(config);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        return mapPublicConfig(config);
+      }),
+    );
   }
 
   getPublicConfigDefaults(): PublicConfigDto {
@@ -75,29 +97,40 @@ export class SystemConfigService extends BaseService {
   }
 
   async updateAdminConfig(dto: AdminConfigDto): Promise<AdminConfigDto> {
-    const { configFile } = this.configRepository.getEnv();
-    if (configFile) {
-      throw new BadRequestException('Cannot update configuration while IMMICH_CONFIG_FILE is in use');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { configFile } = this.configRepository.getEnv();
+        if (configFile) {
+          return yield* Effect.fail(
+            new BadRequestException('Cannot update configuration while IMMICH_CONFIG_FILE is in use'),
+          );
+        }
 
-    const oldConfig = await this.getConfig({ withCache: false });
+        const oldConfig = yield* this.getConfigFx({ withCache: false });
 
-    try {
-      await this.eventRepository.emit('ConfigValidate', { newConfig: toPlainObject(dto), oldConfig });
-    } catch (error) {
-      this.logger.warn(`Unable to save system config due to a validation error: ${error}`);
-      throw new BadRequestException(error instanceof Error ? error.message : error);
-    }
+        yield* this.fx.event.emit('ConfigValidate', { newConfig: toPlainObject(dto), oldConfig }).pipe(
+          Effect.catch((error_) => {
+            const error = unwrapCause(error_);
+            this.logger.warn(`Unable to save system config due to a validation error: ${error}`);
+            return Effect.fail(new BadRequestException(error instanceof Error ? error.message : (error as string)));
+          }),
+        );
 
-    const newConfig = await this.updateConfig(dto);
+        const newConfig = yield* this.updateConfigFx(dto);
 
-    await this.eventRepository.emit('ConfigUpdate', { newConfig, oldConfig });
+        yield* this.fx.event.emit('ConfigUpdate', { newConfig, oldConfig });
 
-    return mapAdminConfig(newConfig);
+        return mapAdminConfig(newConfig);
+      }),
+    );
   }
 
   async getCustomCss(): Promise<string> {
-    const { theme } = await this.getConfig({ withCache: false });
-    return theme.customCss;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { theme } = yield* this.getConfigFx({ withCache: false });
+        return theme.customCss;
+      }),
+    );
   }
 }

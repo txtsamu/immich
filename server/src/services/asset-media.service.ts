@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Cause, Effect } from 'effect';
 import sanitize from 'sanitize-filename';
 import type { UploadFile, UploadRequest } from 'src/types.js';
 import { StorageCore } from 'src/cores/storage.core.js';
@@ -19,6 +20,7 @@ import {
 } from 'src/dtos/asset-media.dto.js';
 import { AssetDownloadOriginalDto } from 'src/dtos/asset.dto.js';
 import { AuthDto, isEditedOnly, isMetadataHidden } from 'src/dtos/auth.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetVisibility,
@@ -37,6 +39,10 @@ import { ImmichFileResponse, getFileNameWithoutExtension, getFilenameExtension }
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { fromChecksum } from 'src/utils/request.js';
 
+/** The value originally thrown, for errors that wrap it in `cause` (see `src/effect/errors.ts`). */
+const originalError = (error: unknown) =>
+  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
+
 export interface AssetMediaRedirectResponse {
   targetSize: AssetMediaSize | 'original';
 }
@@ -48,14 +54,18 @@ export class AssetMediaService extends BaseService {
       return;
     }
 
-    await this.requireAccess({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetUpload, ids: [auth.user.id] });
 
-    const assetId = await this.assetRepository.getUploadAssetIdByChecksum(auth.user.id, fromChecksum(checksum));
-    if (!assetId) {
-      return;
-    }
+        const assetId = yield* this.fx.asset.getUploadAssetIdByChecksum(auth.user.id, fromChecksum(checksum));
+        if (!assetId) {
+          return;
+        }
 
-    return { id: assetId, status: AssetMediaStatus.DUPLICATE };
+        return { id: assetId, status: AssetMediaStatus.DUPLICATE };
+      }),
+    );
   }
 
   canUploadFile({ auth, fieldName, file, body }: UploadRequest): true {
@@ -117,11 +127,15 @@ export class AssetMediaService extends BaseService {
   }
 
   async onUploadError(request: AuthRequest, file: Express.Multer.File) {
-    const uploadFilename = this.getUploadFilename(asUploadRequest(request, file));
-    const uploadFolder = this.getUploadFolder(asUploadRequest(request, file));
-    const uploadPath = `${uploadFolder}/${uploadFilename}`;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const uploadFilename = this.getUploadFilename(asUploadRequest(request, file));
+        const uploadFolder = this.getUploadFolder(asUploadRequest(request, file));
+        const uploadPath = `${uploadFolder}/${uploadFilename}`;
 
-    await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [uploadPath] } });
+        yield* this.fx.job.queue({ name: JobName.FileDelete, data: { files: [uploadPath] } });
+      }),
+    );
   }
 
   async uploadAsset(
@@ -131,119 +145,138 @@ export class AssetMediaService extends BaseService {
     sidecarFile?: UploadFile,
   ): Promise<AssetMediaResponseDto> {
     let asset: Asset | undefined;
-    try {
-      await this.requireAccess({
-        auth,
-        permission: Permission.AssetUpload,
-        // do not need an id here, but the interface requires it
-        ids: [auth.user.id],
-      });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        return yield* Effect.gen({ self: this }, function* () {
+          yield* this.requireAccessFx({
+            auth,
+            permission: Permission.AssetUpload,
+            // do not need an id here, but the interface requires it
+            ids: [auth.user.id],
+          });
 
-      this.requireQuota(auth, file.size);
+          yield* Effect.try({ try: () => this.requireQuota(auth, file.size), catch: (cause) => cause });
 
-      if (dto.livePhotoVideoId) {
-        await onBeforeLink(
-          { asset: this.assetRepository, event: this.eventRepository },
-          { userId: auth.user.id, livePhotoVideoId: dto.livePhotoVideoId },
+          const livePhotoVideoId = dto.livePhotoVideoId;
+          if (livePhotoVideoId) {
+            yield* Effect.tryPromise({
+              try: () =>
+                onBeforeLink(
+                  { asset: this.assetRepository, event: this.eventRepository },
+                  { userId: auth.user.id, livePhotoVideoId },
+                ),
+              catch: (cause) => cause,
+            });
+          }
+
+          asset = yield* this.fx.asset.create({
+            ownerId: auth.user.id,
+            libraryId: null,
+
+            checksum: file.checksum,
+            checksumAlgorithm: ChecksumAlgorithm.sha1File,
+            originalPath: file.originalPath,
+
+            fileCreatedAt: dto.fileCreatedAt,
+            fileModifiedAt: dto.fileModifiedAt,
+            localDateTime: dto.fileCreatedAt,
+
+            type: mimeTypes.assetType(file.originalPath),
+            isFavorite: dto.isFavorite,
+            duration: dto.duration || null,
+            visibility: dto.visibility ?? AssetVisibility.Timeline,
+            livePhotoVideoId: dto.livePhotoVideoId,
+            originalFileName: dto.filename || file.originalName,
+          });
+
+          if (dto.metadata?.length) {
+            yield* this.fx.asset.upsertMetadata(asset.id, dto.metadata);
+          }
+
+          if (sidecarFile) {
+            yield* this.fx.asset.upsertFile({
+              assetId: asset.id,
+              path: sidecarFile.originalPath,
+              type: AssetFileType.Sidecar,
+            });
+            yield* this.fx.storage.utimes(sidecarFile.originalPath, new Date(), new Date(dto.fileModifiedAt));
+          }
+          yield* this.fx.storage.utimes(file.originalPath, new Date(), new Date(dto.fileModifiedAt));
+          yield* this.fx.asset.upsertExif({
+            exif: { assetId: asset.id, fileSizeInByte: file.size },
+            lockedPropertiesBehavior: 'override',
+          });
+
+          yield* this.fx.job.queue({ name: JobName.AssetExtractMetadata, data: { id: asset.id, source: 'upload' } });
+
+          if (auth.sharedLink) {
+            yield* this.addToSharedLink(auth.sharedLink, asset.id);
+          }
+
+          yield* this.fx.event.emit('AssetCreate', { asset, file });
+
+          return { id: asset.id, status: AssetMediaStatus.CREATED } as AssetMediaResponseDto;
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.gen({ self: this }, function* () {
+              const error: any = originalError(Cause.squash(cause));
+
+              // clean up files
+              yield* this.fx.job.queue({
+                name: JobName.FileDelete,
+                data: { files: [file.originalPath, sidecarFile?.originalPath] },
+              });
+
+              // handle duplicates with a success response
+              if (isAssetChecksumConstraint(error)) {
+                const duplicateId = yield* this.fx.asset.getUploadAssetIdByChecksum(auth.user.id, file.checksum);
+                if (!duplicateId) {
+                  this.logger.error(`Error locating duplicate for checksum constraint`);
+                  return yield* Effect.fail(new InternalServerErrorException());
+                }
+
+                if (auth.sharedLink) {
+                  yield* this.addToSharedLink(auth.sharedLink, duplicateId);
+                }
+
+                this.logger.debug(`Duplicate asset upload rejected: existing asset ${duplicateId}`);
+                return { status: AssetMediaStatus.DUPLICATE, id: duplicateId } as AssetMediaResponseDto;
+              }
+
+              // clean up the asset row if one was created
+              if (asset) {
+                yield* this.fx.asset.remove({ id: asset.id });
+              }
+
+              this.logger.error(`Error uploading file ${error}`, error?.stack);
+              return yield* Effect.fail(error);
+            }),
+          ),
         );
-      }
-
-      asset = await this.assetRepository.create({
-        ownerId: auth.user.id,
-        libraryId: null,
-
-        checksum: file.checksum,
-        checksumAlgorithm: ChecksumAlgorithm.sha1File,
-        originalPath: file.originalPath,
-
-        fileCreatedAt: dto.fileCreatedAt,
-        fileModifiedAt: dto.fileModifiedAt,
-        localDateTime: dto.fileCreatedAt,
-
-        type: mimeTypes.assetType(file.originalPath),
-        isFavorite: dto.isFavorite,
-        duration: dto.duration || null,
-        visibility: dto.visibility ?? AssetVisibility.Timeline,
-        livePhotoVideoId: dto.livePhotoVideoId,
-        originalFileName: dto.filename || file.originalName,
-      });
-
-      if (dto.metadata?.length) {
-        await this.assetRepository.upsertMetadata(asset.id, dto.metadata);
-      }
-
-      if (sidecarFile) {
-        await this.assetRepository.upsertFile({
-          assetId: asset.id,
-          path: sidecarFile.originalPath,
-          type: AssetFileType.Sidecar,
-        });
-        await this.storageRepository.utimes(sidecarFile.originalPath, new Date(), new Date(dto.fileModifiedAt));
-      }
-      await this.storageRepository.utimes(file.originalPath, new Date(), new Date(dto.fileModifiedAt));
-      await this.assetRepository.upsertExif({
-        exif: { assetId: asset.id, fileSizeInByte: file.size },
-        lockedPropertiesBehavior: 'override',
-      });
-
-      await this.jobRepository.queue({ name: JobName.AssetExtractMetadata, data: { id: asset.id, source: 'upload' } });
-
-      if (auth.sharedLink) {
-        await this.addToSharedLink(auth.sharedLink, asset.id);
-      }
-
-      await this.eventRepository.emit('AssetCreate', { asset, file });
-
-      return { id: asset.id, status: AssetMediaStatus.CREATED };
-    } catch (error: any) {
-      // clean up files
-      await this.jobRepository.queue({
-        name: JobName.FileDelete,
-        data: { files: [file.originalPath, sidecarFile?.originalPath] },
-      });
-
-      // handle duplicates with a success response
-      if (isAssetChecksumConstraint(error)) {
-        const duplicateId = await this.assetRepository.getUploadAssetIdByChecksum(auth.user.id, file.checksum);
-        if (!duplicateId) {
-          this.logger.error(`Error locating duplicate for checksum constraint`);
-          throw new InternalServerErrorException();
-        }
-
-        if (auth.sharedLink) {
-          await this.addToSharedLink(auth.sharedLink, duplicateId);
-        }
-
-        this.logger.debug(`Duplicate asset upload rejected: existing asset ${duplicateId}`);
-        return { status: AssetMediaStatus.DUPLICATE, id: duplicateId };
-      }
-
-      // clean up the asset row if one was created
-      if (asset) {
-        await this.assetRepository.remove({ id: asset.id });
-      }
-
-      this.logger.error(`Error uploading file ${error}`, error?.stack);
-      throw error;
-    }
+      }),
+    );
   }
 
   async downloadOriginal(auth: AuthDto, id: string, dto: AssetDownloadOriginalDto): Promise<ImmichFileResponse> {
-    await this.requireAccess({ auth, permission: Permission.AssetDownload, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetDownload, ids: [id] });
 
-    const { originalPath, originalFileName, editedPath } = await this.assetRepository.getForOriginal(
-      id,
-      isEditedOnly(auth, dto.edited),
+        const { originalPath, originalFileName, editedPath } = yield* this.fx.asset.getForOriginal(
+          id,
+          isEditedOnly(auth, dto.edited),
+        );
+
+        const path = editedPath ?? originalPath!;
+
+        return new ImmichFileResponse({
+          path,
+          fileName: getFileNameWithoutExtension(originalFileName) + getFilenameExtension(path),
+          contentType: mimeTypes.lookup(path),
+          cacheControl: CacheControl.PrivateWithCache,
+        });
+      }),
     );
-
-    const path = editedPath ?? originalPath!;
-
-    return new ImmichFileResponse({
-      path,
-      fileName: getFileNameWithoutExtension(originalFileName) + getFilenameExtension(path),
-      contentType: mimeTypes.lookup(path),
-      cacheControl: CacheControl.PrivateWithCache,
-    });
   }
 
   async viewThumbnail(
@@ -251,109 +284,126 @@ export class AssetMediaService extends BaseService {
     id: string,
     dto: AssetMediaOptionsDto,
   ): Promise<ImmichFileResponse | AssetMediaRedirectResponse> {
-    await this.requireAccess({ auth, permission: Permission.AssetView, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetView, ids: [id] });
 
-    if (dto.size === AssetMediaSize.Original) {
-      throw new BadRequestException('May not request original file');
-    }
+        if (dto.size === AssetMediaSize.Original) {
+          return yield* Effect.fail(new BadRequestException('May not request original file'));
+        }
 
-    const edited = isEditedOnly(auth, dto.edited);
-    const size = (dto.size ?? AssetMediaSize.THUMBNAIL) as unknown as AssetFileType;
-    const { originalPath, originalFileName, path } = await this.assetRepository.getForThumbnail(id, size, edited);
+        const edited = isEditedOnly(auth, dto.edited);
+        const size = (dto.size ?? AssetMediaSize.THUMBNAIL) as unknown as AssetFileType;
+        const { originalPath, originalFileName, path } = yield* this.fx.asset.getForThumbnail(id, size, edited);
 
-    if (size === AssetFileType.FullSize && mimeTypes.isWebSupportedImage(originalPath) && !edited) {
-      // use original file for web supported images
-      return { targetSize: 'original' };
-    }
+        if (size === AssetFileType.FullSize && mimeTypes.isWebSupportedImage(originalPath) && !edited) {
+          // use original file for web supported images
+          return { targetSize: 'original' } as AssetMediaRedirectResponse;
+        }
 
-    if (dto.size === AssetMediaSize.FULLSIZE && !path) {
-      // downgrade to preview if fullsize is not available.
-      // e.g. disabled or not yet (re)generated
-      return { targetSize: AssetMediaSize.PREVIEW };
-    }
+        if (dto.size === AssetMediaSize.FULLSIZE && !path) {
+          // downgrade to preview if fullsize is not available.
+          // e.g. disabled or not yet (re)generated
+          return { targetSize: AssetMediaSize.PREVIEW } as AssetMediaRedirectResponse;
+        }
 
-    if (!path) {
-      throw new NotFoundException('Asset media not found');
-    }
+        if (!path) {
+          return yield* Effect.fail(new NotFoundException('Asset media not found'));
+        }
 
-    const fileNameBase = isMetadataHidden(auth) ? id : getFileNameWithoutExtension(originalFileName);
-    const fileName = `${fileNameBase}_${size}${getFilenameExtension(path)}`;
+        const fileNameBase = isMetadataHidden(auth) ? id : getFileNameWithoutExtension(originalFileName);
+        const fileName = `${fileNameBase}_${size}${getFilenameExtension(path)}`;
 
-    return new ImmichFileResponse({
-      fileName,
-      path,
-      contentType: mimeTypes.lookup(path),
-      cacheControl: CacheControl.PrivateWithCache,
-    });
+        return new ImmichFileResponse({
+          fileName,
+          path,
+          contentType: mimeTypes.lookup(path),
+          cacheControl: CacheControl.PrivateWithCache,
+        });
+      }),
+    );
   }
 
   async playbackVideo(auth: AuthDto, id: string): Promise<ImmichFileResponse> {
-    await this.requireAccess({ auth, permission: Permission.AssetView, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetView, ids: [id] });
 
-    const asset = await this.assetRepository.getForVideo(id);
+        const asset = yield* this.fx.asset.getForVideo(id);
 
-    if (!asset) {
-      throw new NotFoundException('Asset not found or asset is not a video');
-    }
+        if (!asset) {
+          return yield* Effect.fail(new NotFoundException('Asset not found or asset is not a video'));
+        }
 
-    const filepath = asset.encodedVideoPath || asset.originalPath;
+        const filepath = asset.encodedVideoPath || asset.originalPath;
 
-    return new ImmichFileResponse({
-      path: filepath,
-      contentType: mimeTypes.lookup(filepath),
-      cacheControl: CacheControl.PrivateWithCache,
-    });
+        return new ImmichFileResponse({
+          path: filepath,
+          contentType: mimeTypes.lookup(filepath),
+          cacheControl: CacheControl.PrivateWithCache,
+        });
+      }),
+    );
   }
 
   async bulkUploadCheck(auth: AuthDto, dto: AssetBulkUploadCheckDto): Promise<AssetBulkUploadCheckResponseDto> {
-    const checksums: Buffer[] = dto.assets.map((asset) => fromChecksum(asset.checksum));
-    const results = await this.assetRepository.getByChecksums(auth.user.id, checksums);
-    const checksumMap: Record<string, { id: string; isTrashed: boolean }> = {};
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const checksums: Buffer[] = dto.assets.map((asset) => fromChecksum(asset.checksum));
+        const results = yield* this.fx.asset.getByChecksums(auth.user.id, checksums);
+        const checksumMap: Record<string, { id: string; isTrashed: boolean }> = {};
 
-    for (const { id, deletedAt, checksum } of results) {
-      checksumMap[checksum.toString('hex')] = { id, isTrashed: !!deletedAt };
-    }
-
-    return {
-      results: dto.assets.map(({ id, checksum }) => {
-        const duplicate = checksumMap[fromChecksum(checksum).toString('hex')];
-        if (duplicate) {
-          return {
-            id,
-            action: AssetUploadAction.REJECT,
-            reason: AssetRejectReason.DUPLICATE,
-            assetId: duplicate.id,
-            isTrashed: duplicate.isTrashed,
-          };
+        for (const { id, deletedAt, checksum } of results) {
+          checksumMap[checksum.toString('hex')] = { id, isTrashed: !!deletedAt };
         }
 
         return {
-          id,
-          action: AssetUploadAction.ACCEPT,
+          results: dto.assets.map(({ id, checksum }) => {
+            const duplicate = checksumMap[fromChecksum(checksum).toString('hex')];
+            if (duplicate) {
+              return {
+                id,
+                action: AssetUploadAction.REJECT,
+                reason: AssetRejectReason.DUPLICATE,
+                assetId: duplicate.id,
+                isTrashed: duplicate.isTrashed,
+              };
+            }
+
+            return {
+              id,
+              action: AssetUploadAction.ACCEPT,
+            };
+          }),
         };
       }),
-    };
+    );
   }
 
-  private async addToSharedLink(sharedLink: AuthSharedLink, assetId: string) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private addToSharedLink = Effect.fn('AssetMediaService.addToSharedLink')(function* (
+    this: AssetMediaService,
+    sharedLink: AuthSharedLink,
+    assetId: string,
+  ) {
     if (!sharedLink.albumId) {
-      await this.sharedLinkRepository.addAssets(sharedLink.id, [assetId]);
+      yield* this.fx.sharedLink.addAssets(sharedLink.id, [assetId]);
       return;
     }
 
-    const album = await this.albumRepository.getById(sharedLink.albumId);
+    const album = yield* this.fx.album.getById(sharedLink.albumId);
     if (!album) {
       return;
     }
 
-    await this.albumRepository.addAssetIds(album.id, [assetId]);
+    yield* this.fx.album.addAssetIds(album.id, [assetId]);
     const userIds = album.albumUsers.map(({ user }) => user.id);
-    await this.eventRepository.emit('AlbumUpdate', {
+    yield* this.fx.event.emit('AlbumUpdate', {
       id: album.id,
       userIds,
       recipientIds: userIds,
     });
-  }
+  });
 
   private requireQuota(auth: AuthDto, size: number) {
     if (auth.user.quotaSizeInBytes !== null && auth.user.quotaSizeInBytes < auth.user.quotaUsageInBytes + size) {

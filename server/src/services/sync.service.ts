@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { Insertable } from 'kysely';
 import { DateTime, Duration } from 'luxon';
 import { Writable } from 'node:stream';
@@ -13,6 +14,7 @@ import {
   SyncStreamDto,
   syncAlbumV2ToV1,
 } from 'src/dtos/sync.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import { JobName, MemoryType, QueueName, SyncEntityType, SyncRequestType } from 'src/enum.js';
 import { SyncQueryOptions } from 'src/repositories/sync.repository.js';
 import { SessionSyncCheckpointTable } from 'src/schema/tables/sync-checkpoint.table.js';
@@ -102,7 +104,7 @@ export class SyncService extends BaseService {
       return throwSessionRequired();
     }
 
-    return this.syncCheckpointRepository.getAll(sessionId);
+    return runPromise(this.fx.syncCheckpoint.getAll(sessionId));
   }
 
   async setAcks(auth: AuthDto, dto: SyncAckSetDto) {
@@ -111,23 +113,27 @@ export class SyncService extends BaseService {
       return throwSessionRequired();
     }
 
-    const checkpoints: Record<string, Insertable<SessionSyncCheckpointTable>> = {};
-    for (const ack of dto.acks) {
-      const { type } = fromAck(ack);
-      if (type === SyncEntityType.SyncResetV1) {
-        await this.sessionRepository.resetSyncProgress(sessionId);
-        return;
-      }
-      // TODO proper ack validation via class validator
-      if (!Object.values(SyncEntityType).includes(type)) {
-        throw new BadRequestException(`Invalid ack type: ${type}`);
-      }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const checkpoints: Record<string, Insertable<SessionSyncCheckpointTable>> = {};
+        for (const ack of dto.acks) {
+          const { type } = fromAck(ack);
+          if (type === SyncEntityType.SyncResetV1) {
+            yield* this.fx.session.resetSyncProgress(sessionId);
+            return;
+          }
+          // TODO proper ack validation via class validator
+          if (!Object.values(SyncEntityType).includes(type)) {
+            return yield* Effect.fail(new BadRequestException(`Invalid ack type: ${type}`));
+          }
 
-      // TODO pick the latest ack for each type, instead of using the last one
-      checkpoints[type] = { sessionId, type, ack };
-    }
+          // TODO pick the latest ack for each type, instead of using the last one
+          checkpoints[type] = { sessionId, type, ack };
+        }
 
-    await this.syncCheckpointRepository.upsertAll(Object.values(checkpoints));
+        yield* this.fx.syncCheckpoint.upsertAll(Object.values(checkpoints));
+      }),
+    );
   }
 
   async deleteAcks(auth: AuthDto, dto: SyncAckDeleteDto) {
@@ -136,7 +142,7 @@ export class SyncService extends BaseService {
       return throwSessionRequired();
     }
 
-    await this.syncCheckpointRepository.deleteAll(sessionId, dto.types);
+    await runPromise(this.fx.syncCheckpoint.deleteAll(sessionId, dto.types));
   }
 
   async stream(auth: AuthDto, response: Writable, dto: SyncStreamDto) {
@@ -158,27 +164,45 @@ export class SyncService extends BaseService {
       return throwSessionRequired();
     }
 
-    if (dto.reset) {
-      await this.sessionRepository.resetSyncProgress(session.id);
-    }
+    const prelude = await runPromise(
+      Effect.gen({ self: this }, function* () {
+        if (dto.reset) {
+          yield* this.fx.session.resetSyncProgress(session.id);
+        }
 
-    const isPendingSyncReset = await this.sessionRepository.isPendingSyncReset(session.id);
-    if (isPendingSyncReset) {
-      await send(response, { type: SyncEntityType.SyncResetV1, ids: ['reset'], data: {} });
-      response.end();
+        const isPendingSyncReset = yield* this.fx.session.isPendingSyncReset(session.id);
+        if (isPendingSyncReset) {
+          yield* Effect.tryPromise({
+            try: () => send(response, { type: SyncEntityType.SyncResetV1, ids: ['reset'], data: {} }),
+            catch: (cause) => cause,
+          });
+          response.end();
+          return;
+        }
+
+        const checkpoints = yield* this.fx.syncCheckpoint.getAll(session.id);
+        const checkpointMap: CheckpointMap = Object.fromEntries(
+          checkpoints.map(({ type, ack }) => [type, fromAck(ack)]),
+        );
+
+        if (this.needsFullSync(checkpointMap)) {
+          yield* Effect.tryPromise({
+            try: () => send(response, { type: SyncEntityType.SyncResetV1, ids: ['reset'], data: {} }),
+            catch: (cause) => cause,
+          });
+          response.end();
+          return;
+        }
+
+        const { nowId } = yield* this.fx.syncCheckpoint.getNow();
+        return { checkpointMap, nowId };
+      }),
+    );
+    if (!prelude) {
       return;
     }
 
-    const checkpoints = await this.syncCheckpointRepository.getAll(session.id);
-    const checkpointMap: CheckpointMap = Object.fromEntries(checkpoints.map(({ type, ack }) => [type, fromAck(ack)]));
-
-    if (this.needsFullSync(checkpointMap)) {
-      await send(response, { type: SyncEntityType.SyncResetV1, ids: ['reset'], data: {} });
-      response.end();
-      return;
-    }
-
-    const { nowId } = await this.syncCheckpointRepository.getNow();
+    const { checkpointMap, nowId } = prelude;
     const options: SyncQueryOptions = { nowId, userId: auth.user.id };
 
     const handlers: Record<SyncRequestType, () => Promise<void>> = {
@@ -232,18 +256,30 @@ export class SyncService extends BaseService {
   async onAuditTableCleanup() {
     const pruneThreshold = MAX_DAYS + 1;
 
-    await this.syncRepository.album.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.albumUser.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.albumToAsset.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.asset.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.assetMetadata.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.assetEdit.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.memory.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.memoryToAsset.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.partner.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.stack.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.user.cleanupAuditTable(pruneThreshold);
-    await this.syncRepository.userMetadata.cleanupAuditTable(pruneThreshold);
+    // `cleanupAuditTable` only exists on the Promise adapter's per-table classes (the Effect service exposes a
+    // generic `auditCleanup(table, days)`), so these stay Promise calls wrapped with tryPromise.
+    const repo = this.syncRepository;
+    const cleanups = [
+      () => repo.album.cleanupAuditTable(pruneThreshold),
+      () => repo.albumUser.cleanupAuditTable(pruneThreshold),
+      () => repo.albumToAsset.cleanupAuditTable(pruneThreshold),
+      () => repo.asset.cleanupAuditTable(pruneThreshold),
+      () => repo.assetMetadata.cleanupAuditTable(pruneThreshold),
+      () => repo.assetEdit.cleanupAuditTable(pruneThreshold),
+      () => repo.memory.cleanupAuditTable(pruneThreshold),
+      () => repo.memoryToAsset.cleanupAuditTable(pruneThreshold),
+      () => repo.partner.cleanupAuditTable(pruneThreshold),
+      () => repo.stack.cleanupAuditTable(pruneThreshold),
+      () => repo.user.cleanupAuditTable(pruneThreshold),
+      () => repo.userMetadata.cleanupAuditTable(pruneThreshold),
+    ];
+    await runPromise(
+      Effect.gen(function* () {
+        for (const cleanup of cleanups) {
+          yield* Effect.tryPromise({ try: cleanup, catch: (cause) => cause });
+        }
+      }),
+    );
   }
 
   private needsFullSync(checkpointMap: CheckpointMap) {
@@ -351,10 +387,9 @@ export class SyncService extends BaseService {
 
     const backfillType = SyncEntityType.PartnerAssetBackfillV2;
     const backfillCheckpoint = checkpointMap[backfillType];
-    const partners = await this.syncRepository.partner.getCreatedAfter({
-      ...options,
-      afterCreateId: backfillCheckpoint?.updateId,
-    });
+    const partners = await runPromise(
+      this.fx.sync.partner.getCreatedAfter({ ...options, afterCreateId: backfillCheckpoint?.updateId }),
+    );
     const upsertType = SyncEntityType.PartnerAssetV2;
     const upsertCheckpoint = checkpointMap[upsertType];
     if (upsertCheckpoint) {
@@ -427,10 +462,9 @@ export class SyncService extends BaseService {
   ) {
     const backfillType = SyncEntityType.PartnerAssetExifBackfillV1;
     const backfillCheckpoint = checkpointMap[backfillType];
-    const partners = await this.syncRepository.partner.getCreatedAfter({
-      ...options,
-      afterCreateId: backfillCheckpoint?.updateId,
-    });
+    const partners = await runPromise(
+      this.fx.sync.partner.getCreatedAfter({ ...options, afterCreateId: backfillCheckpoint?.updateId }),
+    );
 
     const upsertType = SyncEntityType.PartnerAssetExifV1;
     const upsertCheckpoint = checkpointMap[upsertType];
@@ -479,7 +513,7 @@ export class SyncService extends BaseService {
     const upsertType = SyncEntityType.AlbumV1;
     const upserts = this.syncRepository.album.getUpserts({ ...options, ack: checkpointMap[upsertType] });
     for await (const { updateId, ...data } of upserts) {
-      const albumUsers = await this.syncRepository.album.getAlbumUsers(data.id);
+      const albumUsers = await runPromise(this.fx.sync.album.getAlbumUsers(data.id));
       await send(response, {
         type: upsertType,
         ids: [updateId],
@@ -522,10 +556,9 @@ export class SyncService extends BaseService {
 
     const backfillType = SyncEntityType.AlbumUserBackfillV1;
     const backfillCheckpoint = checkpointMap[backfillType];
-    const albums = await this.syncRepository.album.getCreatedAfter({
-      ...options,
-      afterCreateId: backfillCheckpoint?.updateId,
-    });
+    const albums = await runPromise(
+      this.fx.sync.album.getCreatedAfter({ ...options, afterCreateId: backfillCheckpoint?.updateId }),
+    );
     const upsertType = SyncEntityType.AlbumUserV1;
     const upsertCheckpoint = checkpointMap[upsertType];
     if (upsertCheckpoint) {
@@ -577,10 +610,9 @@ export class SyncService extends BaseService {
   ) {
     const backfillType = SyncEntityType.AlbumAssetBackfillV2;
     const backfillCheckpoint = checkpointMap[backfillType];
-    const albums = await this.syncRepository.album.getCreatedAfter({
-      ...options,
-      afterCreateId: backfillCheckpoint?.updateId,
-    });
+    const albums = await runPromise(
+      this.fx.sync.album.getCreatedAfter({ ...options, afterCreateId: backfillCheckpoint?.updateId }),
+    );
     const updateType = SyncEntityType.AlbumAssetUpdateV2;
     const createType = SyncEntityType.AlbumAssetCreateV2;
     const updateCheckpoint = checkpointMap[updateType];
@@ -649,10 +681,9 @@ export class SyncService extends BaseService {
   ) {
     const backfillType = SyncEntityType.AlbumAssetExifBackfillV1;
     const backfillCheckpoint = checkpointMap[backfillType];
-    const albums = await this.syncRepository.album.getCreatedAfter({
-      ...options,
-      afterCreateId: backfillCheckpoint?.updateId,
-    });
+    const albums = await runPromise(
+      this.fx.sync.album.getCreatedAfter({ ...options, afterCreateId: backfillCheckpoint?.updateId }),
+    );
     const updateType = SyncEntityType.AlbumAssetExifUpdateV1;
     const createType = SyncEntityType.AlbumAssetExifCreateV1;
     const upsertCheckpoint = checkpointMap[updateType];
@@ -726,10 +757,9 @@ export class SyncService extends BaseService {
 
     const backfillType = SyncEntityType.AlbumToAssetBackfillV1;
     const backfillCheckpoint = checkpointMap[backfillType];
-    const albums = await this.syncRepository.album.getCreatedAfter({
-      ...options,
-      afterCreateId: backfillCheckpoint?.updateId,
-    });
+    const albums = await runPromise(
+      this.fx.sync.album.getCreatedAfter({ ...options, afterCreateId: backfillCheckpoint?.updateId }),
+    );
     const upsertType = SyncEntityType.AlbumToAssetV1;
     const upsertCheckpoint = checkpointMap[upsertType];
     if (upsertCheckpoint) {
@@ -853,10 +883,9 @@ export class SyncService extends BaseService {
 
     const backfillType = SyncEntityType.PartnerStackBackfillV1;
     const backfillCheckpoint = checkpointMap[backfillType];
-    const partners = await this.syncRepository.partner.getCreatedAfter({
-      ...options,
-      afterCreateId: backfillCheckpoint?.updateId,
-    });
+    const partners = await runPromise(
+      this.fx.sync.partner.getCreatedAfter({ ...options, afterCreateId: backfillCheckpoint?.updateId }),
+    );
     const upsertType = SyncEntityType.PartnerStackV1;
     const upsertCheckpoint = checkpointMap[upsertType];
     if (upsertCheckpoint) {
@@ -943,16 +972,18 @@ export class SyncService extends BaseService {
 
   private async upsertBackfillCheckpoint(item: { type: SyncEntityType; sessionId: string; createId: string }) {
     const { type, sessionId, createId } = item;
-    await this.syncCheckpointRepository.upsertAll([
-      {
-        type,
-        sessionId,
-        ack: toAck({
+    await runPromise(
+      this.fx.syncCheckpoint.upsertAll([
+        {
           type,
-          updateId: createId,
-          extraId: COMPLETE_ID,
-        }),
-      },
-    ]);
+          sessionId,
+          ack: toAck({
+            type,
+            updateId: createId,
+            extraId: COMPLETE_ID,
+          }),
+        },
+      ]),
+    );
   }
 }

@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { SALT_ROUNDS } from 'src/constants.js';
 import { AssetStatsDto, AssetStatsResponseDto, mapStats } from 'src/dtos/asset.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
@@ -13,153 +14,209 @@ import {
   UserAdminUpdateDto,
   mapUserAdmin,
 } from 'src/dtos/user.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import { JobName, UserMetadataKey, UserStatus } from 'src/enum.js';
 import { UserFindOptions } from 'src/repositories/user.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { getCalendarHeatmap } from 'src/services/shared/user-methods.js';
-import { findOrFail } from 'src/utils/misc.js';
 import { getPreferences, getPreferencesPartial, mergePreferences } from 'src/utils/preferences.js';
 
 @Injectable()
 export class UserAdminService extends BaseService {
   async search(auth: AuthDto, dto: UserAdminSearchDto): Promise<UserAdminResponseDto[]> {
-    const users = await this.userRepository.getList({
-      id: dto.id,
-      withDeleted: dto.withDeleted,
-    });
-    return users.map((user) => mapUserAdmin(user));
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const users = yield* this.fx.user.getList({
+          id: dto.id,
+          withDeleted: dto.withDeleted,
+        });
+        return users.map((user) => mapUserAdmin(user));
+      }),
+    );
   }
 
   async create(dto: UserAdminCreateDto): Promise<UserAdminResponseDto> {
-    const { notify, ...userDto } = dto;
-    const config = await this.getConfig({ withCache: false });
-    if (!config.oauth.enabled && !userDto.password) {
-      throw new BadRequestException('password is required');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { notify, ...userDto } = dto;
+        const config = yield* this.getConfigFx({ withCache: false });
+        if (!config.oauth.enabled && !userDto.password) {
+          return yield* Effect.fail(new BadRequestException('password is required'));
+        }
 
-    const user = await this.createUser(userDto);
+        const user = yield* this.createUserFx(userDto);
 
-    await this.eventRepository.emit('UserSignup', {
-      notify: !!notify,
-      id: user.id,
-      password: userDto.password,
-    });
+        yield* this.fx.event.emit('UserSignup', {
+          notify: !!notify,
+          id: user.id,
+          password: userDto.password,
+        });
 
-    return mapUserAdmin(user);
+        return mapUserAdmin(user);
+      }),
+    );
   }
 
   async get(auth: AuthDto, id: string): Promise<UserAdminResponseDto> {
-    const user = await this.findOrFail(id, { withDeleted: true });
-    return mapUserAdmin(user);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const user = yield* this.findOrFail(id, { withDeleted: true });
+        return mapUserAdmin(user);
+      }),
+    );
   }
 
   async update(auth: AuthDto, id: string, dto: UserAdminUpdateDto): Promise<UserAdminResponseDto> {
-    const user = await this.findOrFail(id, {});
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const user = yield* this.findOrFail(id, {});
 
-    if (dto.isAdmin !== undefined && dto.isAdmin !== auth.user.isAdmin && auth.user.id === id) {
-      throw new BadRequestException('Admin status can only be changed by another admin');
-    }
+        if (dto.isAdmin !== undefined && dto.isAdmin !== auth.user.isAdmin && auth.user.id === id) {
+          return yield* Effect.fail(new BadRequestException('Admin status can only be changed by another admin'));
+        }
 
-    if (dto.quotaSizeInBytes && user.quotaSizeInBytes !== dto.quotaSizeInBytes) {
-      await this.userRepository.syncUsage(id);
-    }
+        if (dto.quotaSizeInBytes && user.quotaSizeInBytes !== dto.quotaSizeInBytes) {
+          yield* this.fx.user.syncUsage(id);
+        }
 
-    if (dto.email) {
-      const duplicate = await this.userRepository.getByEmail(dto.email);
-      if (duplicate && duplicate.id !== id) {
-        this.logger.debug('Email already in use by another account');
-        throw new BadRequestException('Email is not available');
-      }
-    }
+        if (dto.email) {
+          const duplicate = yield* this.fx.user.getByEmail(dto.email);
+          if (duplicate && duplicate.id !== id) {
+            this.logger.debug('Email already in use by another account');
+            return yield* Effect.fail(new BadRequestException('Email is not available'));
+          }
+        }
 
-    if (dto.storageLabel) {
-      const duplicate = await this.userRepository.getByStorageLabel(dto.storageLabel);
-      if (duplicate && duplicate.id !== id) {
-        throw new BadRequestException('Storage label already in use by another account');
-      }
-    }
+        if (dto.storageLabel) {
+          const duplicate = yield* this.fx.user.getByStorageLabel(dto.storageLabel);
+          if (duplicate && duplicate.id !== id) {
+            return yield* Effect.fail(new BadRequestException('Storage label already in use by another account'));
+          }
+        }
 
-    if (dto.password) {
-      dto.password = await this.cryptoRepository.hashBcrypt(dto.password, SALT_ROUNDS);
-    }
+        if (dto.password) {
+          dto.password = yield* this.fx.crypto.hashBcrypt(dto.password, SALT_ROUNDS);
+        }
 
-    if (dto.pinCode) {
-      dto.pinCode = await this.cryptoRepository.hashBcrypt(dto.pinCode, SALT_ROUNDS);
-    }
+        if (dto.pinCode) {
+          dto.pinCode = yield* this.fx.crypto.hashBcrypt(dto.pinCode, SALT_ROUNDS);
+        }
 
-    if (dto.storageLabel === '') {
-      dto.storageLabel = null;
-    }
+        if (dto.storageLabel === '') {
+          dto.storageLabel = null;
+        }
 
-    const updatedUser = await this.userRepository.update(id, { ...dto, updatedAt: new Date() });
+        const updatedUser = yield* this.fx.user.update(id, { ...dto, updatedAt: new Date() });
 
-    return mapUserAdmin(updatedUser);
+        return mapUserAdmin(updatedUser);
+      }),
+    );
   }
 
   async delete(auth: AuthDto, id: string, dto: UserAdminDeleteDto): Promise<UserAdminResponseDto> {
-    const { force } = dto;
-    await this.findOrFail(id, {});
-    if (auth.user.id === id) {
-      throw new ForbiddenException('Cannot delete your own account');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { force } = dto;
+        yield* this.findOrFail(id, {});
+        if (auth.user.id === id) {
+          return yield* Effect.fail(new ForbiddenException('Cannot delete your own account'));
+        }
 
-    await this.albumRepository.softDeleteAll(id);
+        yield* this.fx.album.softDeleteAll(id);
 
-    const status = force ? UserStatus.Removing : UserStatus.Deleted;
-    const user = await this.userRepository.update(id, { status, deletedAt: new Date() });
+        const status = force ? UserStatus.Removing : UserStatus.Deleted;
+        const user = yield* this.fx.user.update(id, { status, deletedAt: new Date() });
 
-    await this.eventRepository.emit('UserTrash', user);
+        yield* this.fx.event.emit('UserTrash', user);
 
-    if (force) {
-      await this.jobRepository.queue({ name: JobName.UserDelete, data: { id: user.id, force } });
-    }
+        if (force) {
+          yield* this.fx.job.queue({ name: JobName.UserDelete, data: { id: user.id, force } });
+        }
 
-    return mapUserAdmin(user);
+        return mapUserAdmin(user);
+      }),
+    );
   }
 
   async restore(auth: AuthDto, id: string): Promise<UserAdminResponseDto> {
-    await this.findOrFail(id, { withDeleted: true });
-    await this.albumRepository.restoreAll(id);
-    const user = await this.userRepository.restore(id);
-    await this.eventRepository.emit('UserRestore', user);
-    return mapUserAdmin(user);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.findOrFail(id, { withDeleted: true });
+        yield* this.fx.album.restoreAll(id);
+        const user = yield* this.fx.user.restore(id);
+        yield* this.fx.event.emit('UserRestore', user);
+        return mapUserAdmin(user);
+      }),
+    );
   }
 
   async getCalendarHeatmap(auth: AuthDto, id: string, dto: CalendarHeatmapDto): Promise<CalendarHeatmapResponseDto> {
-    await this.findOrFail(id, { withDeleted: false });
-    return getCalendarHeatmap(id, dto, { asset: this.assetRepository });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.findOrFail(id, { withDeleted: false });
+        return yield* Effect.tryPromise({
+          try: () => getCalendarHeatmap(id, dto, { asset: this.assetRepository }),
+          catch: (cause) => cause,
+        });
+      }),
+    );
   }
 
   async getSessions(auth: AuthDto, id: string): Promise<SessionResponseDto[]> {
-    const sessions = await this.sessionRepository.getByUserId(id);
-    return sessions.map((session) => mapSession(session));
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const sessions = yield* this.fx.session.getByUserId(id);
+        return sessions.map((session) => mapSession(session));
+      }),
+    );
   }
 
   async getStatistics(auth: AuthDto, id: string, dto: AssetStatsDto): Promise<AssetStatsResponseDto> {
-    const stats = await this.assetRepository.getStatistics(id, dto);
-    return mapStats(stats);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const stats = yield* this.fx.asset.getStatistics(id, dto);
+        return mapStats(stats);
+      }),
+    );
   }
 
   async getPreferences(auth: AuthDto, id: string): Promise<UserPreferencesResponseDto> {
-    await this.findOrFail(id, { withDeleted: true });
-    const metadata = await this.userRepository.getMetadata(id);
-    return mapPreferences(getPreferences(metadata));
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.findOrFail(id, { withDeleted: true });
+        const metadata = yield* this.fx.user.getMetadata(id);
+        return mapPreferences(getPreferences(metadata));
+      }),
+    );
   }
 
   async updatePreferences(auth: AuthDto, id: string, dto: UserPreferencesUpdateDto) {
-    await this.findOrFail(id, { withDeleted: false });
-    const metadata = await this.userRepository.getMetadata(id);
-    const newPreferences = mergePreferences(getPreferences(metadata), dto);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.findOrFail(id, { withDeleted: false });
+        const metadata = yield* this.fx.user.getMetadata(id);
+        const newPreferences = mergePreferences(getPreferences(metadata), dto);
 
-    await this.userRepository.upsertMetadata(id, {
-      key: UserMetadataKey.Preferences,
-      value: getPreferencesPartial(newPreferences),
-    });
+        yield* this.fx.user.upsertMetadata(id, {
+          key: UserMetadataKey.Preferences,
+          value: getPreferencesPartial(newPreferences),
+        });
 
-    return mapPreferences(newPreferences);
+        return mapPreferences(newPreferences);
+      }),
+    );
   }
 
-  private findOrFail(id: string, options: UserFindOptions) {
-    return findOrFail(() => this.userRepository.get(id, options), 'User');
-  }
+  private readonly findOrFail = Effect.fn('UserAdmin.findOrFail')(function* (
+    this: UserAdminService,
+    id: string,
+    options: UserFindOptions,
+  ) {
+    const value = yield* this.fx.user.get(id, options);
+    if (!value) {
+      return yield* Effect.fail(new BadRequestException('User not found'));
+    }
+
+    return value;
+  });
 }

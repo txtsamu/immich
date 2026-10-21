@@ -111,60 +111,167 @@ export type FxSource = {
   workflowRepository: WorkflowRepository;
 };
 
+// Getters, so a repository a service was never constructed with (e.g. in medium tests) only fails when used.
 export const createFx = (source: FxSource) => ({
-  logger: effectOf(LoggingRepo, source.logger),
-  access: effectOf(AccessRepo, source.accessRepository),
-  activity: effectOf(ActivityRepo, source.activityRepository),
-  album: effectOf(AlbumRepo, source.albumRepository),
-  albumUser: effectOf(AlbumUserRepo, source.albumUserRepository),
-  apiKey: effectOf(ApiKeyRepo, source.apiKeyRepository),
-  app: effectOf(AppRepo, source.appRepository),
-  asset: effectOf(AssetRepo, source.assetRepository),
-  assetEdit: effectOf(AssetEditRepo, source.assetEditRepository),
-  assetFile: effectOf(AssetFileRepo, source.assetFileRepository),
-  assetJob: effectOf(AssetJobRepo, source.assetJobRepository),
-  authChallenge: effectOf(AuthChallengeRepo, source.authChallengeRepository),
-  config: effectOf(ConfigRepo, source.configRepository),
-  cron: effectOf(CronRepo, source.cronRepository),
-  crypto: effectOf(CryptoRepo, source.cryptoRepository),
-  database: effectOf(DatabaseRepo, source.databaseRepository),
-  download: effectOf(DownloadRepo, source.downloadRepository),
-  email: effectOf(EmailRepo, source.emailRepository),
-  event: effectOf(EventRepo, source.eventRepository),
-  integrity: effectOf(IntegrityRepo, source.integrityRepository),
-  job: effectOf(JobRepo, source.jobRepository),
-  library: effectOf(LibraryRepo, source.libraryRepository),
-  map: effectOf(MapRepo, source.mapRepository),
-  media: effectOf(MediaRepo, source.mediaRepository),
-  memory: effectOf(MemoryRepo, source.memoryRepository),
-  metadata: effectOf(MetadataRepo, source.metadataRepository),
-  move: effectOf(MoveRepo, source.moveRepository),
-  notification: effectOf(NotificationRepo, source.notificationRepository),
-  oauth: effectOf(OAuthRepo, source.oauthRepository),
-  partner: effectOf(PartnerRepo, source.partnerRepository),
-  passkey: effectOf(PasskeyRepo, source.passkeyRepository),
-  plugin: effectOf(PluginRepo, source.pluginRepository),
-  process: effectOf(ProcessRepo, source.processRepository),
-  search: effectOf(SearchRepo, source.searchRepository),
-  serverInfo: effectOf(ServerInfoRepo, source.serverInfoRepository),
-  session: effectOf(SessionRepo, source.sessionRepository),
-  sharedLink: effectOf(SharedLinkRepo, source.sharedLinkRepository),
-  sharedLinkAsset: effectOf(SharedLinkAssetRepo, source.sharedLinkAssetRepository),
-  stack: effectOf(StackRepo, source.stackRepository),
-  storage: effectOf(StorageRepo, source.storageRepository),
-  sync: effectOf(SyncRepo, source.syncRepository),
-  syncCheckpoint: effectOf(SyncCheckpointRepo, source.syncCheckpointRepository),
-  systemMetadata: effectOf(SystemMetadataRepo, source.systemMetadataRepository),
-  tag: effectOf(TagRepo, source.tagRepository),
-  telemetry: effectOf(TelemetryRepo, source.telemetryRepository),
-  trash: effectOf(TrashRepo, source.trashRepository),
-  user: effectOf(UserRepo, source.userRepository),
-  version: effectOf(VersionHistoryRepo, source.versionRepository),
-  videoStream: effectOf(VideoStreamRepo, source.videoStreamRepository),
-  view: effectOf(ViewRepo, source.viewRepository),
-  webAuthn: effectOf(WebAuthnRepo, source.webAuthnRepository),
-  websocket: effectOf(WebsocketRepo, source.websocketRepository),
-  workflow: effectOf(WorkflowRepo, source.workflowRepository),
+  get logger() {
+    return effectOf(LoggingRepo, source.logger);
+  },
+  get access() {
+    return effectOf(AccessRepo, source.accessRepository);
+  },
+  get activity() {
+    return effectOf(ActivityRepo, source.activityRepository);
+  },
+  get album() {
+    return effectOf(AlbumRepo, source.albumRepository);
+  },
+  get albumUser() {
+    return effectOf(AlbumUserRepo, source.albumUserRepository);
+  },
+  get apiKey() {
+    return effectOf(ApiKeyRepo, source.apiKeyRepository);
+  },
+  get app() {
+    return effectOf(AppRepo, source.appRepository);
+  },
+  get asset() {
+    return effectOf(AssetRepo, source.assetRepository);
+  },
+  get assetEdit() {
+    return effectOf(AssetEditRepo, source.assetEditRepository);
+  },
+  get assetFile() {
+    return effectOf(AssetFileRepo, source.assetFileRepository);
+  },
+  get assetJob() {
+    return effectOf(AssetJobRepo, source.assetJobRepository);
+  },
+  get authChallenge() {
+    return effectOf(AuthChallengeRepo, source.authChallengeRepository);
+  },
+  get config() {
+    return effectOf(ConfigRepo, source.configRepository);
+  },
+  get cron() {
+    return effectOf(CronRepo, source.cronRepository);
+  },
+  get crypto() {
+    return effectOf(CryptoRepo, source.cryptoRepository);
+  },
+  get database() {
+    return effectOf(DatabaseRepo, source.databaseRepository);
+  },
+  get download() {
+    return effectOf(DownloadRepo, source.downloadRepository);
+  },
+  get email() {
+    return effectOf(EmailRepo, source.emailRepository);
+  },
+  get event() {
+    return effectOf(EventRepo, source.eventRepository);
+  },
+  get integrity() {
+    return effectOf(IntegrityRepo, source.integrityRepository);
+  },
+  get job() {
+    return effectOf(JobRepo, source.jobRepository);
+  },
+  get library() {
+    return effectOf(LibraryRepo, source.libraryRepository);
+  },
+  get map() {
+    return effectOf(MapRepo, source.mapRepository);
+  },
+  get media() {
+    return effectOf(MediaRepo, source.mediaRepository);
+  },
+  get memory() {
+    return effectOf(MemoryRepo, source.memoryRepository);
+  },
+  get metadata() {
+    return effectOf(MetadataRepo, source.metadataRepository);
+  },
+  get move() {
+    return effectOf(MoveRepo, source.moveRepository);
+  },
+  get notification() {
+    return effectOf(NotificationRepo, source.notificationRepository);
+  },
+  get oauth() {
+    return effectOf(OAuthRepo, source.oauthRepository);
+  },
+  get partner() {
+    return effectOf(PartnerRepo, source.partnerRepository);
+  },
+  get passkey() {
+    return effectOf(PasskeyRepo, source.passkeyRepository);
+  },
+  get plugin() {
+    return effectOf(PluginRepo, source.pluginRepository);
+  },
+  get process() {
+    return effectOf(ProcessRepo, source.processRepository);
+  },
+  get search() {
+    return effectOf(SearchRepo, source.searchRepository);
+  },
+  get serverInfo() {
+    return effectOf(ServerInfoRepo, source.serverInfoRepository);
+  },
+  get session() {
+    return effectOf(SessionRepo, source.sessionRepository);
+  },
+  get sharedLink() {
+    return effectOf(SharedLinkRepo, source.sharedLinkRepository);
+  },
+  get sharedLinkAsset() {
+    return effectOf(SharedLinkAssetRepo, source.sharedLinkAssetRepository);
+  },
+  get stack() {
+    return effectOf(StackRepo, source.stackRepository);
+  },
+  get storage() {
+    return effectOf(StorageRepo, source.storageRepository);
+  },
+  get sync() {
+    return effectOf(SyncRepo, source.syncRepository);
+  },
+  get syncCheckpoint() {
+    return effectOf(SyncCheckpointRepo, source.syncCheckpointRepository);
+  },
+  get systemMetadata() {
+    return effectOf(SystemMetadataRepo, source.systemMetadataRepository);
+  },
+  get tag() {
+    return effectOf(TagRepo, source.tagRepository);
+  },
+  get telemetry() {
+    return effectOf(TelemetryRepo, source.telemetryRepository);
+  },
+  get trash() {
+    return effectOf(TrashRepo, source.trashRepository);
+  },
+  get user() {
+    return effectOf(UserRepo, source.userRepository);
+  },
+  get version() {
+    return effectOf(VersionHistoryRepo, source.versionRepository);
+  },
+  get videoStream() {
+    return effectOf(VideoStreamRepo, source.videoStreamRepository);
+  },
+  get view() {
+    return effectOf(ViewRepo, source.viewRepository);
+  },
+  get webAuthn() {
+    return effectOf(WebAuthnRepo, source.webAuthnRepository);
+  },
+  get websocket() {
+    return effectOf(WebsocketRepo, source.websocketRepository);
+  },
+  get workflow() {
+    return effectOf(WorkflowRepo, source.workflowRepository);
+  },
 });
 
 export type Fx = ReturnType<typeof createFx>;

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Effect } from 'effect';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import type { ArgOf } from 'src/repositories/event.repository.js';
@@ -8,6 +9,7 @@ import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent } from 'src/decorators.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { ConfigFFmpegDto } from 'src/dtos/config.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import { CacheControl, ImmichWorker, Permission } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { PendingEvents } from 'src/utils/event.js';
@@ -47,40 +49,55 @@ export class HlsService extends BaseService {
   }
 
   async getMainPlaylist(auth: AuthDto, assetId: string) {
-    await this.requireAccess({ auth, permission: Permission.AssetView, ids: [assetId] });
-    const { ffmpeg } = await this.getConfig({ withCache: true });
-    if (!ffmpeg.realtime.enabled) {
-      throw new BadRequestException('Real-time transcoding is not enabled');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetView, ids: [assetId] });
+        const { ffmpeg } = yield* this.getConfigFx({ withCache: true });
+        if (!ffmpeg.realtime.enabled) {
+          return yield* Effect.fail(new BadRequestException('Real-time transcoding is not enabled'));
+        }
 
-    const asset = await this.videoStreamRepository.getForMainPlaylist(assetId);
-    if (!asset) {
-      throw new NotFoundException('Asset metadata is not yet ready for streaming');
-    }
+        const asset = yield* this.fx.videoStream.getForMainPlaylist(assetId);
+        if (!asset) {
+          return yield* Effect.fail(new NotFoundException('Asset metadata is not yet ready for streaming'));
+        }
 
-    // Sharing the sessionId allows only one microservices worker to successfully insert to the session table.
-    // The microservices worker that creates a session owns the transcoding lifecycle for it.
-    const sessionId = this.cryptoRepository.randomUUID();
-    this.websocketRepository.serverSend('HlsSessionRequest', { sessionId, assetId, ownerId: auth.user.id });
-    await this.pendingSessions.wait(sessionId);
-    this.trackSession(sessionId);
+        // Sharing the sessionId allows only one microservices worker to successfully insert to the session table.
+        // The microservices worker that creates a session owns the transcoding lifecycle for it.
+        const sessionId = yield* this.fx.crypto.randomUUID();
+        // The wait is registered before the request is sent: the Effect hops between `serverSend` and a later
+        // `wait` would otherwise let a fast reply arrive before anyone is listening.
+        const sessionReady = this.pendingSessions.wait(sessionId);
+        sessionReady.catch(() => {});
+        yield* this.fx.websocket.serverSend('HlsSessionRequest', { sessionId, assetId, ownerId: auth.user.id });
+        yield* Effect.tryPromise({ try: () => sessionReady, catch: (cause) => cause });
+        this.trackSession(sessionId);
 
-    return this.generateMainPlaylist(sessionId, ffmpeg, asset);
+        return yield* Effect.try({
+          try: () => this.generateMainPlaylist(sessionId, ffmpeg, asset),
+          catch: (cause) => cause,
+        });
+      }),
+    );
   }
 
   async getMediaPlaylist(auth: AuthDto, assetId: string, sessionId: string, variantIndex: number, position?: number) {
-    await this.requireAccess({ auth, permission: Permission.AssetView, ids: [assetId] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetView, ids: [assetId] });
 
-    const asset = await this.videoStreamRepository.getForMediaPlaylist(assetId, sessionId);
-    if (!asset) {
-      throw new NotFoundException('Asset not found or metadata not yet ready for streaming');
-    }
+        const asset = yield* this.fx.videoStream.getForMediaPlaylist(assetId, sessionId);
+        if (!asset) {
+          return yield* Effect.fail(new NotFoundException('Asset not found or metadata not yet ready for streaming'));
+        }
 
-    const segmentation = this.getSegmentation(asset);
-    const hintedSegment = position === undefined ? undefined : this.positionToSegmentIndex(segmentation, position);
-    this.prewarmVariant(assetId, sessionId, variantIndex, hintedSegment);
+        const segmentation = this.getSegmentation(asset);
+        const hintedSegment = position === undefined ? undefined : this.positionToSegmentIndex(segmentation, position);
+        yield* this.prewarmVariant(assetId, sessionId, variantIndex, hintedSegment);
 
-    return this.generateMediaPlaylist(asset, segmentation);
+        return this.generateMediaPlaylist(asset, segmentation);
+      }),
+    );
   }
 
   async getSegment(
@@ -91,39 +108,50 @@ export class HlsService extends BaseService {
     filename: string,
     initSegment?: number,
   ) {
-    await this.requireAccess({ auth, permission: Permission.AssetView, ids: [assetId] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetView, ids: [assetId] });
 
-    const session = await this.videoStreamRepository.getSession(sessionId);
-    if (!session) {
-      throw new NotFoundException('Session not found');
-    }
+        const session = yield* this.fx.videoStream.getSession(sessionId);
+        if (!session) {
+          return yield* Effect.fail(new NotFoundException('Session not found'));
+        }
 
-    const variantDir = StorageCore.getHlsVariantFolder({ ownerId: auth.user.id, sessionId, variantIndex });
-    const path = join(variantDir, filename);
-    const response = new ImmichFileResponse({
-      path,
-      contentType: 'video/mp4',
-      cacheControl: CacheControl.PrivateWithCache,
-    });
+        const variantDir = StorageCore.getHlsVariantFolder({ ownerId: auth.user.id, sessionId, variantIndex });
+        const path = join(variantDir, filename);
+        const response = new ImmichFileResponse({
+          path,
+          contentType: 'video/mp4',
+          cacheControl: CacheControl.PrivateWithCache,
+        });
 
-    const apiSession = this.trackSession(sessionId, variantIndex);
-    const segmentIndex = this.getSegmentIndex(apiSession, filename, initSegment);
-    this.websocketRepository.serverSend('HlsHeartbeat', { sessionId, variantIndex, segmentIndex });
+        const apiSession = this.trackSession(sessionId, variantIndex);
+        const segmentIndex = this.getSegmentIndex(apiSession, filename, initSegment);
+        yield* this.fx.websocket.serverSend('HlsHeartbeat', { sessionId, variantIndex, segmentIndex });
 
-    if (await this.storageRepository.checkFileExists(path, constants.R_OK)) {
-      return response;
-    }
+        if (yield* this.fx.storage.checkFileExists(path, constants.R_OK)) {
+          return response;
+        }
 
-    this.websocketRepository.serverSend('HlsSegmentRequest', { sessionId, assetId, variantIndex, segmentIndex });
-    await this.pendingSegments.wait(this.getSegmentKey({ sessionId, variantIndex, segmentIndex }));
+        // registered before the request is sent, see `getMainPlaylist`
+        const segmentReady = this.pendingSegments.wait(this.getSegmentKey({ sessionId, variantIndex, segmentIndex }));
+        segmentReady.catch(() => {});
+        yield* this.fx.websocket.serverSend('HlsSegmentRequest', { sessionId, assetId, variantIndex, segmentIndex });
+        yield* Effect.tryPromise({ try: () => segmentReady, catch: (cause) => cause });
 
-    return response;
+        return response;
+      }),
+    );
   }
 
   async endSession(auth: AuthDto, assetId: string, sessionId: string): Promise<void> {
-    await this.requireAccess({ auth, permission: Permission.AssetView, ids: [assetId] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetView, ids: [assetId] });
 
-    this.websocketRepository.serverSend('HlsSessionEnd', { sessionId });
+        yield* this.fx.websocket.serverSend('HlsSessionEnd', { sessionId });
+      }),
+    );
   }
 
   private generateMainPlaylist(sessionId: string, ffmpeg: ConfigFFmpegDto, asset: AssetWithStreamInfo) {
@@ -188,7 +216,14 @@ export class HlsService extends BaseService {
     return lines.join('\n');
   }
 
-  private prewarmVariant(assetId: string, sessionId: string, variantIndex: number, hintedSegment?: number) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly prewarmVariant = Effect.fn('Hls.prewarmVariant')(function* (
+    this: HlsService,
+    assetId: string,
+    sessionId: string,
+    variantIndex: number,
+    hintedSegment?: number,
+  ) {
     const session = this.sessions.get(sessionId);
     if (session?.lastVariantIndex === variantIndex) {
       return;
@@ -197,9 +232,9 @@ export class HlsService extends BaseService {
     const nextSegment = session && session.lastRequestedSegment !== null ? session.lastRequestedSegment + 1 : undefined;
     const segmentIndex = hintedSegment ?? nextSegment;
     if (segmentIndex !== undefined) {
-      this.websocketRepository.serverSend('HlsSegmentRequest', { sessionId, assetId, variantIndex, segmentIndex });
+      yield* this.fx.websocket.serverSend('HlsSegmentRequest', { sessionId, assetId, variantIndex, segmentIndex });
     }
-  }
+  });
 
   private getSegmentKey({ sessionId, variantIndex, segmentIndex }: ArgOf<'HlsSegmentResult'>) {
     return `${sessionId}:${variantIndex}:${segmentIndex}`;

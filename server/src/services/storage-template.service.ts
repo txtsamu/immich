@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Cause, Effect } from 'effect';
 import handlebar from 'handlebars';
 import { DateTime } from 'luxon';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import type { JobOf, StorageAsset } from 'src/types.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
 import { ConfigTemplateStorageOptionDto } from 'src/dtos/config.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetPathType,
@@ -73,6 +75,13 @@ interface RenderMetadata {
   lensModel: string | null;
 }
 
+/** Run a Promise-based collaborator as an Effect; the error stays the original thrown value. */
+const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (cause) => cause });
+
+/** The original thrown value behind a wrapped repository error (`DatabaseError`, `LibraryError`, ...). */
+const unwrap = (error: unknown) =>
+  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
+
 @Injectable()
 export class StorageTemplateService extends BaseService {
   private _template: {
@@ -137,142 +146,188 @@ export class StorageTemplateService extends BaseService {
 
   @OnEvent({ name: 'AssetMetadataExtracted' })
   async onAssetMetadataExtracted({ source, assetId }: ArgOf<'AssetMetadataExtracted'>) {
-    await this.jobRepository.queue({ name: JobName.StorageTemplateMigrationSingle, data: { source, id: assetId } });
+    return runPromise(
+      this.fx.job.queue({ name: JobName.StorageTemplateMigrationSingle, data: { source, id: assetId } }),
+    );
   }
 
   @OnJob({ name: JobName.StorageTemplateMigrationSingle, queue: QueueName.StorageTemplateMigration })
   async handleMigrationSingle({ id }: JobOf<JobName.StorageTemplateMigrationSingle>): Promise<JobStatus> {
-    const config = await this.getConfig({ withCache: true });
-    const isStorageTemplateEnabled = config.storageTemplate.enabled;
-    if (!isStorageTemplateEnabled) {
-      return JobStatus.Skipped;
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: true });
+        const isStorageTemplateEnabled = config.storageTemplate.enabled;
+        if (!isStorageTemplateEnabled) {
+          return JobStatus.Skipped;
+        }
 
-    const asset = await this.assetJobRepository.getForStorageTemplateJob(id);
-    if (!asset) {
-      return JobStatus.Failed;
-    }
+        const asset = yield* this.fx.assetJob.getForStorageTemplateJob(id);
+        if (!asset) {
+          return JobStatus.Failed;
+        }
 
-    const user = await this.userRepository.get(asset.ownerId, {});
-    const storageLabel = user?.storageLabel || null;
-    const filename = asset.originalFileName || asset.id;
-    await this.moveAsset(asset, { storageLabel, filename });
+        const user = yield* this.fx.user.get(asset.ownerId, {});
+        const storageLabel = user?.storageLabel || null;
+        const filename = asset.originalFileName || asset.id;
+        yield* this.moveAssetFx(asset, { storageLabel, filename });
 
-    // move motion part of live photo
-    if (asset.livePhotoVideoId) {
-      const livePhotoVideo = await this.assetJobRepository.getForStorageTemplateJob(asset.livePhotoVideoId, {
-        includeHidden: true,
-      });
-      if (!livePhotoVideo) {
-        return JobStatus.Failed;
-      }
-      const motionFilename = getLivePhotoMotionFilename(filename, livePhotoVideo.originalPath);
-      await this.moveAsset(livePhotoVideo, { storageLabel, filename: motionFilename }, asset);
-    }
-    return JobStatus.Success;
+        // move motion part of live photo
+        if (asset.livePhotoVideoId) {
+          const livePhotoVideo = yield* this.fx.assetJob.getForStorageTemplateJob(asset.livePhotoVideoId, {
+            includeHidden: true,
+          });
+          if (!livePhotoVideo) {
+            return JobStatus.Failed;
+          }
+          const motionFilename = getLivePhotoMotionFilename(filename, livePhotoVideo.originalPath);
+          yield* this.moveAssetFx(livePhotoVideo, { storageLabel, filename: motionFilename }, asset);
+        }
+        return JobStatus.Success;
+      }),
+    );
   }
 
   @OnJob({ name: JobName.StorageTemplateMigration, queue: QueueName.StorageTemplateMigration })
   async handleMigration(): Promise<JobStatus> {
-    this.logger.log('Starting storage template migration');
-    const { storageTemplate } = await this.getConfig({ withCache: true });
-    const { enabled } = storageTemplate;
-    if (!enabled) {
-      this.logger.log('Storage template migration disabled, skipping');
-      return JobStatus.Skipped;
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        this.logger.log('Starting storage template migration');
+        const { storageTemplate } = yield* this.getConfigFx({ withCache: true });
+        const { enabled } = storageTemplate;
+        if (!enabled) {
+          this.logger.log('Storage template migration disabled, skipping');
+          return JobStatus.Skipped;
+        }
 
-    await this.moveRepository.cleanMoveHistory();
+        yield* this.fx.move.cleanMoveHistory();
 
-    const assets = this.assetJobRepository.streamForStorageTemplateJob();
-    const users = await this.userRepository.getList();
+        const assets = yield* this.fx.assetJob.streamForStorageTemplateJob();
+        const users = yield* this.fx.user.getList();
 
-    for await (const asset of assets) {
-      const user = users.find((user) => user.id === asset.ownerId);
-      const storageLabel = user?.storageLabel || null;
-      const filename = asset.originalFileName || asset.id;
-      await this.moveAsset(asset, { storageLabel, filename });
+        const iterator = assets[Symbol.asyncIterator]();
+        // mirrors `for await`: the iterator is closed when the loop exits early or fails
+        yield* Effect.ensuring(
+          Effect.gen({ self: this }, function* () {
+            while (true) {
+              const next = yield* attempt(() => iterator.next());
+              if (next.done) {
+                break;
+              }
 
-      if (!asset.livePhotoVideoId) {
-        continue;
-      }
+              const asset = next.value;
+              const user = users.find((user) => user.id === asset.ownerId);
+              const storageLabel = user?.storageLabel || null;
+              const filename = asset.originalFileName || asset.id;
+              yield* this.moveAssetFx(asset, { storageLabel, filename });
 
-      // move motion part of live photo
-      const livePhotoVideo = await this.assetJobRepository.getForStorageTemplateJob(asset.livePhotoVideoId, {
-        includeHidden: true,
-      });
-      if (!livePhotoVideo) {
-        continue;
-      }
+              if (!asset.livePhotoVideoId) {
+                continue;
+              }
 
-      const motionFilename = getLivePhotoMotionFilename(filename, livePhotoVideo.originalPath);
-      await this.moveAsset(livePhotoVideo, { storageLabel, filename: motionFilename }, asset);
-    }
+              // move motion part of live photo
+              const livePhotoVideo = yield* this.fx.assetJob.getForStorageTemplateJob(asset.livePhotoVideoId, {
+                includeHidden: true,
+              });
+              if (!livePhotoVideo) {
+                continue;
+              }
 
-    this.logger.debug('Cleaning up empty directories...');
-    const libraryFolder = StorageCore.getBaseFolder(StorageFolder.Library);
-    await this.storageRepository.removeEmptyDirs(libraryFolder);
+              const motionFilename = getLivePhotoMotionFilename(filename, livePhotoVideo.originalPath);
+              yield* this.moveAssetFx(livePhotoVideo, { storageLabel, filename: motionFilename }, asset);
+            }
+          }),
+          Effect.promise(async () => {
+            try {
+              await iterator.return?.();
+            } catch {
+              // closing a finished or failed stream must not mask the original outcome
+            }
+          }),
+        );
 
-    this.logger.log('Finished storage template migration');
+        this.logger.debug('Cleaning up empty directories...');
+        const libraryFolder = StorageCore.getBaseFolder(StorageFolder.Library);
+        yield* this.fx.storage.removeEmptyDirs(libraryFolder);
 
-    return JobStatus.Success;
+        this.logger.log('Finished storage template migration');
+
+        return JobStatus.Success;
+      }),
+    );
   }
 
   @OnEvent({ name: 'AssetDelete' })
   async handleMoveHistoryCleanup({ assetId }: ArgOf<'AssetDelete'>) {
-    this.logger.debug(`Cleaning up move history for asset ${assetId}`);
-    await this.moveRepository.cleanMoveHistorySingle(assetId);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        this.logger.debug(`Cleaning up move history for asset ${assetId}`);
+        yield* this.fx.move.cleanMoveHistorySingle(assetId);
+      }),
+    );
   }
 
   async moveAsset(asset: StorageAsset, metadata: MoveAssetMetadata, stillPhoto?: StorageAsset) {
-    if (asset.isExternal || StorageCore.isAndroidMotionPath(asset.originalPath)) {
-      // External assets are not affected by storage template
-      // TODO: shouldn't this only apply to external assets?
-      return;
-    }
+    return runPromise(this.moveAssetFx(asset, metadata, stillPhoto));
+  }
 
-    return this.databaseRepository.withLock(DatabaseLock.StorageTemplateMigration, async () => {
-      const { id, originalPath, checksum, fileSizeInByte } = asset;
-      const oldPath = originalPath;
-      const newPath = await this.getTemplatePath(asset, metadata, stillPhoto);
-
-      if (!fileSizeInByte) {
-        this.logger.error(`Asset ${id} missing exif info, skipping storage template migration`);
+  private moveAssetFx(asset: StorageAsset, metadata: MoveAssetMetadata, stillPhoto?: StorageAsset) {
+    return Effect.gen({ self: this }, function* () {
+      if (asset.isExternal || StorageCore.isAndroidMotionPath(asset.originalPath)) {
+        // External assets are not affected by storage template
+        // TODO: shouldn't this only apply to external assets?
         return;
       }
 
-      try {
-        await this.storageCore.moveFile({
-          entityId: id,
-          pathType: AssetPathType.Original,
-          oldPath,
-          newPath,
-          assetInfo: { sizeInBytes: fileSizeInByte, checksum },
-        });
+      return yield* this.fx.database.withLock(DatabaseLock.StorageTemplateMigration, () =>
+        runPromise(
+          Effect.gen({ self: this }, function* () {
+            const { id, originalPath, checksum, fileSizeInByte } = asset;
+            const oldPath = originalPath;
+            const newPath = yield* this.getTemplatePath(asset, metadata, stillPhoto);
 
-        const sidecarPath = getAssetFile(asset.files, AssetFileType.Sidecar, { isEdited: false })?.path;
-        if (sidecarPath) {
-          await this.storageCore.moveFile({
-            entityId: id,
-            pathType: AssetFileType.Sidecar,
-            oldPath: sidecarPath,
-            newPath: `${newPath}.xmp`,
-          });
-        }
-      } catch (error: any) {
-        this.logger.error(`Problem applying storage template`, error?.stack, { id, oldPath, newPath });
-      }
+            if (!fileSizeInByte) {
+              this.logger.error(`Asset ${id} missing exif info, skipping storage template migration`);
+              return;
+            }
+
+            yield* Effect.gen({ self: this }, function* () {
+              yield* attempt(() =>
+                this.storageCore.moveFile({
+                  entityId: id,
+                  pathType: AssetPathType.Original,
+                  oldPath,
+                  newPath,
+                  assetInfo: { sizeInBytes: fileSizeInByte, checksum },
+                }),
+              );
+
+              const sidecarPath = getAssetFile(asset.files, AssetFileType.Sidecar, { isEdited: false })?.path;
+              if (sidecarPath) {
+                yield* attempt(() =>
+                  this.storageCore.moveFile({
+                    entityId: id,
+                    pathType: AssetFileType.Sidecar,
+                    oldPath: sidecarPath,
+                    newPath: `${newPath}.xmp`,
+                  }),
+                );
+              }
+            }).pipe(
+              Effect.catch((error: any) => {
+                this.logger.error(`Problem applying storage template`, error?.stack, { id, oldPath, newPath });
+                return Effect.void;
+              }),
+            );
+          }),
+        ),
+      );
     });
   }
 
-  private async getTemplatePath(
-    asset: StorageAsset,
-    metadata: MoveAssetMetadata,
-    stillPhoto?: StorageAsset,
-  ): Promise<string> {
+  private getTemplatePath(asset: StorageAsset, metadata: MoveAssetMetadata, stillPhoto?: StorageAsset) {
     const { storageLabel, filename } = metadata;
 
-    try {
+    return Effect.gen({ self: this }, function* () {
       const filenameWithoutExtension = path.basename(filename, getFilenameExtension(filename));
 
       const source = asset.originalPath;
@@ -315,13 +370,13 @@ export class StorageTemplateService extends BaseService {
       if (this.template.needsAlbum) {
         // For motion videos, use the still photo's album information since motion videos
         // don't have album metadata attached directly
-        const albums = await this.albumRepository.getByAssetId(assetForMetadata.ownerId, assetForMetadata.id);
+        const albums = yield* this.fx.album.getByAssetId(assetForMetadata.ownerId, assetForMetadata.id);
         const album = albums?.[0];
         if (album) {
           albumName = album.albumName || null;
 
           if (this.template.needsAlbumMetadata) {
-            const [metadata] = await this.albumRepository.getMetadataForIds([album.id]);
+            const [metadata] = yield* this.fx.album.getMetadataForIds([album.id]);
             albumStartDate = metadata?.startDate || null;
             albumEndDate = metadata?.endDate || null;
           }
@@ -384,7 +439,7 @@ export class StorageTemplateService extends BaseService {
       let duplicateCount = 0;
 
       while (true) {
-        const isExists = await this.storageRepository.checkFileExists(destination);
+        const isExists = yield* this.fx.storage.checkFileExists(destination);
         if (!isExists) {
           break;
         }
@@ -394,10 +449,14 @@ export class StorageTemplateService extends BaseService {
       }
 
       return destination;
-    } catch (error: any) {
-      this.logger.error(`Unable to get template path for ${filename}: ${error}`);
-      return asset.originalPath;
-    }
+    }).pipe(
+      // sync throws (template, render) are defects, so recover from the whole cause like the original try/catch
+      Effect.catchCause((cause) => {
+        const error: any = unwrap(Cause.squash(cause));
+        this.logger.error(`Unable to get template path for ${filename}: ${error}`);
+        return Effect.succeed(asset.originalPath);
+      }),
+    );
   }
 
   private compile(template: string) {
