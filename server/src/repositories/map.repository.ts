@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Context, Effect, Layer } from 'effect';
 import { Expression, Insertable, Kysely, NotNull, SqlBool, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { createReadStream, existsSync } from 'node:fs';
@@ -6,6 +7,8 @@ import { readFile } from 'node:fs/promises';
 import readLine from 'node:readline';
 import { citiesFile, reverseGeocodeMaxDistance } from 'src/constants.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { Db, query } from 'src/effect/db.js';
+import { runPromise } from 'src/effect/run.js';
 import { AssetVisibility, SystemMetadataKey } from 'src/enum.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
@@ -42,9 +45,139 @@ interface CountryNames {
   byAlpha3: Map<string, string>;
 }
 
+const makeMapService = (db: Kysely<DB>) => {
+  const mapMarkersQuery = () =>
+    db
+      .selectFrom('asset')
+      .innerJoin('asset_exif', (builder) =>
+        builder
+          .onRef('asset.id', '=', 'asset_exif.assetId')
+          .on('asset_exif.latitude', 'is not', null)
+          .on('asset_exif.longitude', 'is not', null),
+      )
+      .where('asset.deletedAt', 'is', null)
+      .orderBy('fileCreatedAt', 'desc')
+      .select([
+        'id',
+        'asset_exif.latitude as lat',
+        'asset_exif.longitude as lon',
+        'asset_exif.city',
+        'asset_exif.state',
+        'asset_exif.country',
+      ])
+      .$narrowType<{ lat: NotNull; lon: NotNull }>();
+
+  return {
+    getAlbumMapMarkers: Effect.fn('Map.getAlbumMapMarkers')(function* (albumId: string) {
+      return yield* query(db, () =>
+        mapMarkersQuery()
+          .innerJoin('album_asset', 'asset.id', 'album_asset.assetId')
+          .where('album_asset.albumId', '=', albumId)
+          .execute(),
+      );
+    }),
+
+    getMapMarkers: Effect.fn('Map.getMapMarkers')(function* (
+      authUserId: string,
+      ownerIds: string[],
+      albumIds: string[],
+      { isArchived, isFavorite, fileCreatedAfter, fileCreatedBefore }: MapMarkerSearchOptions = {},
+    ) {
+      return yield* query(db, () =>
+        mapMarkersQuery()
+          .$if(isArchived === true, (qb) =>
+            qb.where((eb) =>
+              eb.or([
+                eb('asset.visibility', '=', AssetVisibility.Timeline),
+                eb.and([eb('asset.ownerId', '=', authUserId), eb('asset.visibility', '=', AssetVisibility.Archive)]),
+              ]),
+            ),
+          )
+          .$if(isArchived === false || isArchived === undefined, (qb) =>
+            qb.where('asset.visibility', '=', AssetVisibility.Timeline),
+          )
+          .$if(isFavorite !== undefined, (q) => q.where('isFavorite', '=', isFavorite!))
+          .$if(fileCreatedAfter !== undefined, (q) => q.where('fileCreatedAt', '>=', fileCreatedAfter!))
+          .$if(fileCreatedBefore !== undefined, (q) => q.where('fileCreatedAt', '<=', fileCreatedBefore!))
+          .where((eb) => {
+            const expression: Expression<SqlBool>[] = [];
+
+            if (ownerIds.length > 0) {
+              expression.push(eb('ownerId', 'in', ownerIds));
+            }
+
+            if (albumIds.length > 0) {
+              expression.push(
+                eb.exists((eb) =>
+                  eb
+                    .selectFrom('album_asset')
+                    .whereRef('asset.id', '=', 'album_asset.assetId')
+                    .where('album_asset.albumId', 'in', albumIds),
+                ),
+              );
+            }
+
+            return eb.or(expression);
+          })
+          .execute(),
+      );
+    }),
+
+    /** Nearest populated place within `reverseGeocodeMaxDistance` of the point, if any. */
+    findNearestPlace: Effect.fn('Map.findNearestPlace')(function* (point: GeoPoint) {
+      return yield* query(db, (db) =>
+        db
+          .selectFrom('geodata_places')
+          .selectAll()
+          .where(
+            sql`earth_box(ll_to_earth_public(${point.latitude}, ${point.longitude}), ${reverseGeocodeMaxDistance})`,
+            '@>',
+            sql`ll_to_earth_public(latitude, longitude)`,
+          )
+          .orderBy(
+            sql`(earth_distance(ll_to_earth_public(${point.latitude}, ${point.longitude}), ll_to_earth_public(latitude, longitude)))`,
+          )
+          .limit(1)
+          .executeTakeFirst(),
+      );
+    }),
+
+    /** Natural Earth country polygon containing the point, if any. */
+    findCountryAtPoint: Effect.fn('Map.findCountryAtPoint')(function* (point: GeoPoint) {
+      return yield* query(db, (db) =>
+        db
+          .selectFrom('naturalearth_countries')
+          .selectAll()
+          .where('coordinates', '@>', sql<string>`point(${point.longitude}, ${point.latitude})`)
+          .limit(1)
+          .executeTakeFirst(),
+      );
+    }),
+  };
+};
+
+export class MapRepo extends Context.Service<MapRepo, ReturnType<typeof makeMapService>>()(
+  'immich/repositories/MapRepo',
+) {
+  static readonly make = (db: Kysely<DB>) => MapRepo.of(makeMapService(db));
+
+  static readonly layer = Layer.effect(
+    MapRepo,
+    Effect.gen(function* () {
+      return MapRepo.make(yield* Db);
+    }),
+  );
+}
+
+/**
+ * Promise-facing adapter for the Nest services. Delegates the query methods to `MapRepo`.
+ * `init` and the geodata import helpers stay direct: they are one-shot bulk file/DDL imports that
+ * interleave the config, logger and SystemMetadataRepository dependencies and a `MapDB` schema with tmp tables.
+ */
 @Injectable()
 export class MapRepository {
   private countryNames?: Promise<CountryNames>;
+  private readonly effect: Context.Service.Shape<typeof MapRepo>;
 
   constructor(
     private configRepository: ConfigRepository,
@@ -53,6 +186,7 @@ export class MapRepository {
     @InjectKysely() private db: Kysely<MapDB>,
   ) {
     this.logger.setContext(MapRepository.name);
+    this.effect = MapRepo.make(this.db);
   }
 
   async init(): Promise<void> {
@@ -78,77 +212,12 @@ export class MapRepository {
 
   @GenerateSql({ params: [DummyValue.UUID] })
   getAlbumMapMarkers(albumId: string) {
-    return this.mapMarkersQuery()
-      .innerJoin('album_asset', 'asset.id', 'album_asset.assetId')
-      .where('album_asset.albumId', '=', albumId)
-      .execute();
+    return runPromise(this.effect.getAlbumMapMarkers(albumId));
   }
 
   @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID], [DummyValue.UUID]] })
-  getMapMarkers(
-    authUserId: string,
-    ownerIds: string[],
-    albumIds: string[],
-    { isArchived, isFavorite, fileCreatedAfter, fileCreatedBefore }: MapMarkerSearchOptions = {},
-  ) {
-    return this.mapMarkersQuery()
-      .$if(isArchived === true, (qb) =>
-        qb.where((eb) =>
-          eb.or([
-            eb('asset.visibility', '=', AssetVisibility.Timeline),
-            eb.and([eb('asset.ownerId', '=', authUserId), eb('asset.visibility', '=', AssetVisibility.Archive)]),
-          ]),
-        ),
-      )
-      .$if(isArchived === false || isArchived === undefined, (qb) =>
-        qb.where('asset.visibility', '=', AssetVisibility.Timeline),
-      )
-      .$if(isFavorite !== undefined, (q) => q.where('isFavorite', '=', isFavorite!))
-      .$if(fileCreatedAfter !== undefined, (q) => q.where('fileCreatedAt', '>=', fileCreatedAfter!))
-      .$if(fileCreatedBefore !== undefined, (q) => q.where('fileCreatedAt', '<=', fileCreatedBefore!))
-      .where((eb) => {
-        const expression: Expression<SqlBool>[] = [];
-
-        if (ownerIds.length > 0) {
-          expression.push(eb('ownerId', 'in', ownerIds));
-        }
-
-        if (albumIds.length > 0) {
-          expression.push(
-            eb.exists((eb) =>
-              eb
-                .selectFrom('album_asset')
-                .whereRef('asset.id', '=', 'album_asset.assetId')
-                .where('album_asset.albumId', 'in', albumIds),
-            ),
-          );
-        }
-
-        return eb.or(expression);
-      })
-      .execute();
-  }
-
-  private mapMarkersQuery() {
-    return this.db
-      .selectFrom('asset')
-      .innerJoin('asset_exif', (builder) =>
-        builder
-          .onRef('asset.id', '=', 'asset_exif.assetId')
-          .on('asset_exif.latitude', 'is not', null)
-          .on('asset_exif.longitude', 'is not', null),
-      )
-      .where('asset.deletedAt', 'is', null)
-      .orderBy('fileCreatedAt', 'desc')
-      .select([
-        'id',
-        'asset_exif.latitude as lat',
-        'asset_exif.longitude as lon',
-        'asset_exif.city',
-        'asset_exif.state',
-        'asset_exif.country',
-      ])
-      .$narrowType<{ lat: NotNull; lon: NotNull }>();
+  getMapMarkers(authUserId: string, ownerIds: string[], albumIds: string[], options: MapMarkerSearchOptions = {}) {
+    return runPromise(this.effect.getMapMarkers(authUserId, ownerIds, albumIds, options));
   }
 
   async reverseGeocode(point: GeoPoint): Promise<ReverseGeocodeResult> {
@@ -156,19 +225,7 @@ export class MapRepository {
 
     const countryNames = await this.loadCountryNames();
 
-    const response = await this.db
-      .selectFrom('geodata_places')
-      .selectAll()
-      .where(
-        sql`earth_box(ll_to_earth_public(${point.latitude}, ${point.longitude}), ${reverseGeocodeMaxDistance})`,
-        '@>',
-        sql`ll_to_earth_public(latitude, longitude)`,
-      )
-      .orderBy(
-        sql`(earth_distance(ll_to_earth_public(${point.latitude}, ${point.longitude}), ll_to_earth_public(latitude, longitude)))`,
-      )
-      .limit(1)
-      .executeTakeFirst();
+    const response = await runPromise(this.effect.findNearestPlace(point));
 
     if (response) {
       this.logger.verboseFn(() => `Raw: ${JSON.stringify(response, null, 2)}`);
@@ -184,12 +241,7 @@ export class MapRepository {
       `Empty response from database for city reverse geocoding lat: ${point.latitude}, lon: ${point.longitude}. Likely cause: no nearby large populated place (500+ within ${reverseGeocodeMaxDistance / 1000}km). Falling back to country boundaries.`,
     );
 
-    const ne_response = await this.db
-      .selectFrom('naturalearth_countries')
-      .selectAll()
-      .where('coordinates', '@>', sql<string>`point(${point.longitude}, ${point.latitude})`)
-      .limit(1)
-      .executeTakeFirst();
+    const ne_response = await runPromise(this.effect.findCountryAtPoint(point));
 
     if (!ne_response) {
       this.logger.log(

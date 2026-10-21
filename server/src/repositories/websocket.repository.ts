@@ -6,12 +6,15 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+import { Context, Effect } from 'effect';
 import { Server, Socket } from 'socket.io';
 import { AssetResponseDto } from 'src/dtos/asset-response.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { NotificationDto } from 'src/dtos/notification.dto.js';
 import { ReleaseEventV1, ServerVersionResponseDto } from 'src/dtos/server.dto.js';
 import { SyncAssetEditV1, SyncAssetExifV1, SyncAssetV2 } from 'src/dtos/sync.dto.js';
+import { LibraryError } from 'src/effect/errors.js';
+import { runSync } from 'src/effect/run.js';
 import { type AppRestartEvent, type ArgsOf, EventRepository } from 'src/repositories/event.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { handlePromiseError } from 'src/utils/misc.js';
@@ -52,6 +55,63 @@ export interface ClientEventMap {
 
 export type AuthFn = (client: Socket) => Promise<AuthDto>;
 
+export class WebsocketRepo extends Context.Service<
+  WebsocketRepo,
+  {
+    clientSend<T extends keyof ClientEventMap>(
+      event: T,
+      room: string,
+      ...data: ClientEventMap[T]
+    ): Effect.Effect<void, LibraryError>;
+    clientBroadcast<T extends keyof ClientEventMap>(
+      event: T,
+      ...data: ClientEventMap[T]
+    ): Effect.Effect<void, LibraryError>;
+    serverSend<T extends ServerEvents>(event: T, ...args: ArgsOf<T>): Effect.Effect<void, LibraryError>;
+  }
+>()('immich/repositories/WebsocketRepo') {
+  /** `getServer` is lazy because Nest injects the socket.io server into the gateway after construction. */
+  static readonly make = ({ getServer, logger }: { getServer: () => Server | undefined; logger: LoggingRepository }) =>
+    WebsocketRepo.of({
+      clientSend: Effect.fn('Websocket.clientSend')(function* <T extends keyof ClientEventMap>(
+        event: T,
+        room: string,
+        ...data: ClientEventMap[T]
+      ) {
+        yield* Effect.try({
+          try: () => {
+            getServer()
+              ?.to(room)
+              .emit(event, ...data);
+          },
+          catch: (cause) => new LibraryError({ cause }),
+        });
+      }),
+
+      clientBroadcast: Effect.fn('Websocket.clientBroadcast')(function* <T extends keyof ClientEventMap>(
+        event: T,
+        ...data: ClientEventMap[T]
+      ) {
+        yield* Effect.try({
+          try: () => {
+            getServer()?.emit(event, ...data);
+          },
+          catch: (cause) => new LibraryError({ cause }),
+        });
+      }),
+
+      serverSend: Effect.fn('Websocket.serverSend')(function* <T extends ServerEvents>(event: T, ...args: ArgsOf<T>) {
+        yield* Effect.try({
+          try: () => {
+            logger.debug(`Server event: ${event} (send)`);
+            getServer()?.serverSideEmit(event, ...args);
+          },
+          catch: (cause) => new LibraryError({ cause }),
+        });
+      }),
+    });
+}
+
 @WebSocketGateway({
   cors: true,
   path: '/api/socket.io',
@@ -60,6 +120,7 @@ export type AuthFn = (client: Socket) => Promise<AuthDto>;
 @Injectable()
 export class WebsocketRepository implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   private authFn?: AuthFn;
+  private readonly effect: Context.Service.Shape<typeof WebsocketRepo>;
 
   @WebSocketServer()
   private server?: Server;
@@ -69,6 +130,7 @@ export class WebsocketRepository implements OnGatewayConnection, OnGatewayDiscon
     private logger: LoggingRepository,
   ) {
     this.logger.setContext(WebsocketRepository.name);
+    this.effect = WebsocketRepo.make({ getServer: () => this.server, logger: this.logger });
   }
 
   afterInit(server: Server) {
@@ -104,16 +166,15 @@ export class WebsocketRepository implements OnGatewayConnection, OnGatewayDiscon
   }
 
   clientSend<T extends keyof ClientEventMap>(event: T, room: string, ...data: ClientEventMap[T]) {
-    this.server?.to(room).emit(event, ...data);
+    runSync(this.effect.clientSend(event, room, ...data));
   }
 
   clientBroadcast<T extends keyof ClientEventMap>(event: T, ...data: ClientEventMap[T]) {
-    this.server?.emit(event, ...data);
+    runSync(this.effect.clientBroadcast(event, ...data));
   }
 
   serverSend<T extends ServerEvents>(event: T, ...args: ArgsOf<T>): void {
-    this.logger.debug(`Server event: ${event} (send)`);
-    this.server?.serverSideEmit(event, ...args);
+    runSync(this.effect.serverSend(event, ...args));
   }
 
   setAuthFn(fn: (client: Socket) => Promise<AuthDto>) {

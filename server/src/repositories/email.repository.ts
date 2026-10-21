@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { Context, Effect, Layer } from 'effect';
 import { createTransport } from 'nodemailer';
 import React, { createElement } from 'react';
 import { render } from 'react-email';
 import type { EmailImageAttachment } from 'src/types.js';
+import { LibraryError } from 'src/effect/errors.js';
+import { runPromise } from 'src/effect/run.js';
 import { AlbumInviteEmail } from 'src/emails/album-invite.email.js';
 import { AlbumUpdateEmail } from 'src/emails/album-update.email.js';
 import { TestEmail } from 'src/emails/test.email.js';
@@ -98,79 +101,129 @@ export type SendEmailResponse = {
   response: any;
 };
 
+const renderComponent = ({
+  template,
+  data,
+  customTemplate,
+}: EmailRenderRequest): React.FunctionComponentElement<any> => {
+  switch (template) {
+    case EmailTemplate.TEST_EMAIL: {
+      return createElement(TestEmail, { ...data, customTemplate });
+    }
+
+    case EmailTemplate.WELCOME: {
+      return createElement(WelcomeEmail, { ...data, customTemplate });
+    }
+
+    case EmailTemplate.ALBUM_INVITE: {
+      return createElement(AlbumInviteEmail, { ...data, customTemplate });
+    }
+
+    case EmailTemplate.ALBUM_UPDATE: {
+      return createElement(AlbumUpdateEmail, { ...data, customTemplate });
+    }
+  }
+};
+
+const buildTransport = (options: SmtpOptions) =>
+  createTransport({
+    host: options.host,
+    port: options.port,
+    tls: { rejectUnauthorized: !options.ignoreCert },
+    secure: options.secure,
+    auth:
+      options.username || options.password
+        ? {
+            user: options.username,
+            pass: options.password,
+          }
+        : undefined,
+    connectionTimeout: 5000,
+  });
+
+export class EmailRepo extends Context.Service<
+  EmailRepo,
+  {
+    verifySmtp(options: SmtpOptions): Effect.Effect<true, LibraryError>;
+    renderEmail(request: EmailRenderRequest): Effect.Effect<{ html: string; text: string }, LibraryError>;
+    sendEmail(options: SendEmailOptions): Effect.Effect<SendEmailResponse, LibraryError>;
+  }
+>()('immich/repositories/EmailRepo') {
+  static readonly make = (logger: LoggingRepository) =>
+    EmailRepo.of({
+      verifySmtp: Effect.fn('Email.verifySmtp')((options: SmtpOptions) =>
+        Effect.tryPromise({
+          // the transport is closed right after verification starts, exactly as before the conversion
+          try: () => {
+            const transport = buildTransport(options);
+            try {
+              return transport.verify();
+            } finally {
+              transport.close();
+            }
+          },
+          catch: (cause) => new LibraryError({ cause }),
+        }),
+      ),
+
+      renderEmail: Effect.fn('Email.renderEmail')((request: EmailRenderRequest) =>
+        Effect.tryPromise({
+          try: async () => {
+            const component = renderComponent(request);
+            const html = await render(component, { pretty: false });
+            const text = await render(component, { plainText: true });
+            return { html, text };
+          },
+          catch: (cause) => new LibraryError({ cause }),
+        }),
+      ),
+
+      sendEmail: Effect.fn('Email.sendEmail')(
+        ({ to, from, subject, html, text, smtp, imageAttachments }: SendEmailOptions) =>
+          Effect.tryPromise({
+            try: () => {
+              logger.debug(`Sending email to ${to} with subject: ${subject}`);
+              const transport = buildTransport(smtp);
+
+              const attachments = imageAttachments?.map((attachment) => ({
+                filename: attachment.filename,
+                path: attachment.path,
+                cid: attachment.cid,
+              }));
+
+              try {
+                return transport.sendMail({ to, from, subject, html, text, attachments });
+              } finally {
+                transport.close();
+              }
+            },
+            catch: (cause) => new LibraryError({ cause }),
+          }),
+      ),
+    });
+
+  static readonly layer = (logger: LoggingRepository) => Layer.sync(EmailRepo, () => EmailRepo.make(logger));
+}
+
+/** Promise-facing adapter for the Nest services. Delegates to `EmailRepo`. */
 @Injectable()
 export class EmailRepository {
+  private readonly effect: Context.Service.Shape<typeof EmailRepo>;
+
   constructor(private logger: LoggingRepository) {
     this.logger.setContext(EmailRepository.name);
+    this.effect = EmailRepo.make(this.logger);
   }
 
   verifySmtp(options: SmtpOptions): Promise<true> {
-    const transport = this.createTransport(options);
-    try {
-      return transport.verify();
-    } finally {
-      transport.close();
-    }
+    return runPromise(this.effect.verifySmtp(options));
   }
 
-  async renderEmail(request: EmailRenderRequest): Promise<{ html: string; text: string }> {
-    const component = this.render(request);
-    const html = await render(component, { pretty: false });
-    const text = await render(component, { plainText: true });
-    return { html, text };
+  renderEmail(request: EmailRenderRequest): Promise<{ html: string; text: string }> {
+    return runPromise(this.effect.renderEmail(request));
   }
 
-  sendEmail({ to, from, subject, html, text, smtp, imageAttachments }: SendEmailOptions): Promise<SendEmailResponse> {
-    this.logger.debug(`Sending email to ${to} with subject: ${subject}`);
-    const transport = this.createTransport(smtp);
-
-    const attachments = imageAttachments?.map((attachment) => ({
-      filename: attachment.filename,
-      path: attachment.path,
-      cid: attachment.cid,
-    }));
-
-    try {
-      return transport.sendMail({ to, from, subject, html, text, attachments });
-    } finally {
-      transport.close();
-    }
-  }
-
-  private render({ template, data, customTemplate }: EmailRenderRequest): React.FunctionComponentElement<any> {
-    switch (template) {
-      case EmailTemplate.TEST_EMAIL: {
-        return createElement(TestEmail, { ...data, customTemplate });
-      }
-
-      case EmailTemplate.WELCOME: {
-        return createElement(WelcomeEmail, { ...data, customTemplate });
-      }
-
-      case EmailTemplate.ALBUM_INVITE: {
-        return createElement(AlbumInviteEmail, { ...data, customTemplate });
-      }
-
-      case EmailTemplate.ALBUM_UPDATE: {
-        return createElement(AlbumUpdateEmail, { ...data, customTemplate });
-      }
-    }
-  }
-
-  private createTransport(options: SmtpOptions) {
-    return createTransport({
-      host: options.host,
-      port: options.port,
-      tls: { rejectUnauthorized: !options.ignoreCert },
-      secure: options.secure,
-      auth:
-        options.username || options.password
-          ? {
-              user: options.username,
-              pass: options.password,
-            }
-          : undefined,
-      connectionTimeout: 5000,
-    });
+  sendEmail(options: SendEmailOptions): Promise<SendEmailResponse> {
+    return runPromise(this.effect.sendEmail(options));
   }
 }

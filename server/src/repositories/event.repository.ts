@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef, Reflector } from '@nestjs/core';
+import { Context, Effect } from 'effect';
 import { orderBy } from 'lodash-es';
 import { Socket } from 'socket.io';
 import type { JobItem, JobSource, UploadFile } from 'src/types.js';
@@ -7,6 +8,8 @@ import { Asset } from 'src/database.js';
 import { EventConfig } from 'src/decorators.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { SystemConfig } from 'src/dtos/config.dto.js';
+import { HandlerError, LibraryError } from 'src/effect/errors.js';
+import { runPromise, runSync } from 'src/effect/run.js';
 import { ImmichWorker, JobStatus, MetadataKey, QueueName, UserAvatarColor, UserStatus } from 'src/enum.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
@@ -147,92 +150,151 @@ export type EventItem<T extends EmitEvent> = {
 
 export type AuthFn = (client: Socket) => Promise<AuthDto>;
 
+export class EventRepo extends Context.Service<
+  EventRepo,
+  {
+    setup(options: { services: (new (...args: any[]) => unknown)[] }): Effect.Effect<void, LibraryError>;
+    emit<T extends EmitEvent>(event: T, ...args: ArgsOf<T>): Effect.Effect<void, HandlerError>;
+    onEvent<T extends EmitEvent>(event: {
+      name: T;
+      args: ArgsOf<T>;
+      server: boolean;
+    }): Effect.Effect<void, HandlerError>;
+  }
+>()('immich/repositories/EventRepo') {
+  static readonly make = ({
+    moduleRef,
+    configRepository,
+  }: {
+    moduleRef: ModuleRef;
+    configRepository: ConfigRepository;
+  }) => {
+    // handler registry; mutated by `setup`, read by `onEvent`
+    const emitHandlers: EmitHandlers = {};
+
+    const addHandler = <T extends EmitEvent>(item: Item<T>): void => {
+      const event = item.event;
+
+      if (!Object.hasOwn(emitHandlers, event)) {
+        emitHandlers[event] = [];
+      }
+
+      emitHandlers[event]!.push(item);
+    };
+
+    const discover = (services: (new (...args: any[]) => unknown)[]) => {
+      const reflector = moduleRef.get(Reflector, { strict: false });
+      const items: Item<EmitEvent>[] = [];
+      const worker = configRepository.getWorker();
+      if (!worker) {
+        throw new Error('Unable to determine worker type');
+      }
+
+      // discovery
+      for (const Service of services) {
+        const instance = moduleRef.get<any>(Service);
+        const ctx = Object.getPrototypeOf(instance);
+        for (const property of Object.getOwnPropertyNames(ctx)) {
+          const descriptor = Object.getOwnPropertyDescriptor(ctx, property);
+          if (!descriptor || descriptor.get || descriptor.set) {
+            continue;
+          }
+
+          const handler = instance[property];
+          if (typeof handler !== 'function') {
+            continue;
+          }
+
+          const event = reflector.get<EventConfig>(MetadataKey.EventConfig, handler);
+          if (!event) {
+            continue;
+          }
+
+          const workers = event.workers ?? Object.values(ImmichWorker);
+          if (!workers.includes(worker)) {
+            continue;
+          }
+
+          items.push({
+            event: event.name,
+            priority: event.priority || 0,
+            server: event.server ?? false,
+            handler: handler.bind(instance),
+            label: `${Service.name}.${handler.name}`,
+          });
+        }
+      }
+
+      return items;
+    };
+
+    const onEvent = Effect.fn('Event.onEvent')(function* <T extends EmitEvent>(event: {
+      name: T;
+      args: ArgsOf<T>;
+      server: boolean;
+    }) {
+      const handlers = emitHandlers[event.name] || [];
+      for (const { handler, server } of handlers) {
+        // exclude handlers that ignore server events
+        if (!server && event.server) {
+          continue;
+        }
+
+        // handlers run sequentially, each awaited before the next; sync or async
+        yield* Effect.tryPromise({
+          try: async () => handler(...event.args),
+          catch: (cause) => new HandlerError({ cause }),
+        });
+      }
+    });
+
+    return EventRepo.of({
+      setup: Effect.fn('Event.setup')(function* ({ services }) {
+        const items = yield* Effect.try({
+          try: () => discover(services),
+          catch: (cause) => new LibraryError({ cause }),
+        });
+
+        const handlers = orderBy(items, ['priority'], ['asc']);
+
+        // register by priority
+        for (const handler of handlers) {
+          addHandler(handler);
+        }
+      }),
+
+      emit: Effect.fn('Event.emit')(function* <T extends EmitEvent>(event: T, ...args: ArgsOf<T>) {
+        yield* onEvent({ name: event, args, server: false });
+      }),
+
+      onEvent,
+    });
+  };
+}
+
+/** Promise-facing adapter for the Nest services. Delegates to `EventRepo`. */
 @Injectable()
 export class EventRepository {
-  private emitHandlers: EmitHandlers = {};
+  private readonly effect: Context.Service.Shape<typeof EventRepo>;
 
   constructor(
-    private moduleRef: ModuleRef,
-    private configRepository: ConfigRepository,
+    moduleRef: ModuleRef,
+    configRepository: ConfigRepository,
     private logger: LoggingRepository,
   ) {
     this.logger.setContext(EventRepository.name);
+    this.effect = EventRepo.make({ moduleRef, configRepository });
   }
 
   setup({ services }: { services: (new (...args: any[]) => unknown)[] }) {
-    const reflector = this.moduleRef.get(Reflector, { strict: false });
-    const items: Item<EmitEvent>[] = [];
-    const worker = this.configRepository.getWorker();
-    if (!worker) {
-      throw new Error('Unable to determine worker type');
-    }
-
-    // discovery
-    for (const Service of services) {
-      const instance = this.moduleRef.get<any>(Service);
-      const ctx = Object.getPrototypeOf(instance);
-      for (const property of Object.getOwnPropertyNames(ctx)) {
-        const descriptor = Object.getOwnPropertyDescriptor(ctx, property);
-        if (!descriptor || descriptor.get || descriptor.set) {
-          continue;
-        }
-
-        const handler = instance[property];
-        if (typeof handler !== 'function') {
-          continue;
-        }
-
-        const event = reflector.get<EventConfig>(MetadataKey.EventConfig, handler);
-        if (!event) {
-          continue;
-        }
-
-        const workers = event.workers ?? Object.values(ImmichWorker);
-        if (!workers.includes(worker)) {
-          continue;
-        }
-
-        items.push({
-          event: event.name,
-          priority: event.priority || 0,
-          server: event.server ?? false,
-          handler: handler.bind(instance),
-          label: `${Service.name}.${handler.name}`,
-        });
-      }
-    }
-
-    const handlers = orderBy(items, ['priority'], ['asc']);
-
-    // register by priority
-    for (const handler of handlers) {
-      this.addHandler(handler);
-    }
-  }
-
-  private addHandler<T extends EmitEvent>(item: Item<T>): void {
-    const event = item.event;
-
-    if (!Object.hasOwn(this.emitHandlers, event)) {
-      this.emitHandlers[event] = [];
-    }
-
-    this.emitHandlers[event]!.push(item);
+    return runSync(this.effect.setup({ services }));
   }
 
   emit<T extends EmitEvent>(event: T, ...args: ArgsOf<T>): Promise<void> {
-    return this.onEvent({ name: event, args, server: false });
+    return runPromise(this.effect.emit(event, ...args));
   }
 
-  async onEvent<T extends EmitEvent>(event: { name: T; args: ArgsOf<T>; server: boolean }): Promise<void> {
-    const handlers = this.emitHandlers[event.name] || [];
-    for (const { handler, server } of handlers) {
-      // exclude handlers that ignore server events
-      if (!server && event.server) {
-        continue;
-      }
-
-      await handler(...event.args);
-    }
+  onEvent<T extends EmitEvent>(event: { name: T; args: ArgsOf<T>; server: boolean }): Promise<void> {
+    return runPromise(this.effect.onEvent(event));
   }
 }
