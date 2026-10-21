@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Context, Effect, Layer } from 'effect';
 import { BinaryField, DefaultReadTaskOptions, ExifTool, ReadTaskOptions, Tags } from 'exiftool-vendored';
 import geotz from 'geo-tz';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
@@ -201,6 +202,7 @@ export class MetadataRepository {
   constructor(private logger: LoggingRepository) {
     this.logger.setContext(MetadataRepository.name);
     this.effect = MetadataRepo.make(this.logger);
+    registerEffect(this, this.effect);
   }
 
   setMaxConcurrency(concurrency: number) {

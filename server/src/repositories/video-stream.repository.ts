@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from 'effect';
 import { InjectKysely } from 'nestjs-kysely';
 import type { Insertable, Kysely } from 'kysely';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { DatabaseError } from 'src/effect/errors.js';
 import { runPromise } from 'src/effect/run.js';
@@ -169,6 +170,7 @@ export class VideoStreamRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = VideoStreamRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   createSession(session: Insertable<VideoStreamSessionTable>) {

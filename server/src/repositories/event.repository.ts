@@ -8,6 +8,7 @@ import { Asset } from 'src/database.js';
 import { EventConfig } from 'src/decorators.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { SystemConfig } from 'src/dtos/config.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { HandlerError, LibraryError } from 'src/effect/errors.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 import { ImmichWorker, JobStatus, MetadataKey, QueueName, UserAvatarColor, UserStatus } from 'src/enum.js';
@@ -284,6 +285,7 @@ export class EventRepository {
   ) {
     this.logger.setContext(EventRepository.name);
     this.effect = EventRepo.make({ moduleRef, configRepository });
+    registerEffect(this, this.effect);
   }
 
   setup({ services }: { services: (new (...args: any[]) => unknown)[] }) {

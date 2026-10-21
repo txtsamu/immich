@@ -4,6 +4,7 @@ import { Context, Effect, Layer } from 'effect';
 import jwt from 'jsonwebtoken';
 import { createHash, createPublicKey, createVerify, randomBytes, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 
@@ -109,6 +110,10 @@ const service = CryptoRepo.make();
 /** Promise-facing adapter for the Nest services. Delegates to `CryptoRepo`. */
 @Injectable()
 export class CryptoRepository {
+  constructor() {
+    registerEffect(this, service);
+  }
+
   randomUUID(): string {
     return runSync(service.randomUUID());
   }

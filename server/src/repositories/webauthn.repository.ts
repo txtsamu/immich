@@ -10,6 +10,7 @@ import {
   verifyRegistrationResponse,
 } from '@simplewebauthn/server';
 import { Context, Effect, Layer } from 'effect';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runPromise } from 'src/effect/run.js';
 
@@ -65,6 +66,10 @@ const effect = WebAuthnRepo.make();
 /** Promise-facing adapter for the Nest services. Delegates to `WebAuthnRepo`. */
 @Injectable()
 export class WebAuthnRepository {
+  constructor() {
+    registerEffect(this, effect);
+  }
+
   generateRegistrationOptions(options: GenerateRegistrationOptionsOpts) {
     return runPromise(effect.generateRegistrationOptions(options));
   }

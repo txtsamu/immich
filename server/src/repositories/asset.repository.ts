@@ -18,6 +18,7 @@ import { InjectKysely } from 'nestjs-kysely';
 import { LockableProperty, Stack } from 'src/database.js';
 import { Chunked, ChunkedArray, DummyValue, GenerateSql } from 'src/decorators.js';
 import { type AuthDto, isMetadataHidden } from 'src/dtos/auth.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import {
@@ -63,13 +64,13 @@ export interface BoundingBox {
   north: number;
 }
 
-interface AssetStatsOptions {
+export interface AssetStatsOptions {
   isFavorite?: boolean;
   isTrashed?: boolean;
   visibility?: AssetVisibility;
 }
 
-interface LivePhotoSearchOptions {
+export interface LivePhotoSearchOptions {
   ownerId: string;
   libraryId?: string | null;
   livePhotoCID: string;
@@ -108,18 +109,18 @@ export interface YearMonthDay {
   year: number;
 }
 
-interface AssetExploreFieldOptions {
+export interface AssetExploreFieldOptions {
   maxFields: number;
   minAssetsPerField: number;
 }
 
-interface AssetGetByChecksumOptions {
+export interface AssetGetByChecksumOptions {
   ownerId: string;
   checksum: Buffer;
   libraryId?: string;
 }
 
-interface GetByIdsRelations {
+export interface GetByIdsRelations {
   exifInfo?: boolean;
   files?: boolean;
   library?: boolean;
@@ -1240,6 +1241,7 @@ export class AssetRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = AssetRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({

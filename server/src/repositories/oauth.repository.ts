@@ -16,6 +16,7 @@ import {
   randomState,
   skipSubjectCheck,
 } from 'openid-client';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runPromise } from 'src/effect/run.js';
 import { OAuthTokenEndpointAuthMethod } from 'src/enum.js';
@@ -311,6 +312,7 @@ export class OAuthRepository {
   constructor(private logger: LoggingRepository) {
     this.logger.setContext(OAuthRepository.name);
     this.effect = OAuthRepo.make(this.logger);
+    registerEffect(this, this.effect);
   }
 
   authorize(config: OAuthConfig, redirectUrl: string, state?: string, codeChallenge?: string) {

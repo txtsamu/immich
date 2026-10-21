@@ -5,6 +5,7 @@ import type { Kysely } from 'kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { AssetEditActionItem, AssetEditActionItemResponseDto } from 'src/dtos/editing.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { DB } from 'src/schema/index.js';
@@ -71,6 +72,7 @@ export class AssetEditRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = AssetEditRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })

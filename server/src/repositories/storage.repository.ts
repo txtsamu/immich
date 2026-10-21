@@ -20,6 +20,7 @@ import { PassThrough, Readable, Writable } from 'node:stream';
 import { createGunzip, createGzip } from 'node:zlib';
 import picomatch from 'picomatch';
 import { CrawlOptionsDto, WalkOptionsDto } from 'src/dtos/library.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { FileSystemError, LibraryError } from 'src/effect/errors.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
@@ -387,6 +388,7 @@ export class StorageRepository {
   constructor(private logger: LoggingRepository) {
     this.logger.setContext(StorageRepository.name);
     this.effect = StorageRepo.make(this.logger);
+    registerEffect(this, this.effect);
   }
 
   realpath(filepath: string) {

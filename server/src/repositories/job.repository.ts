@@ -6,6 +6,7 @@ import { Context, Effect } from 'effect';
 import type { JobCounts, JobItem, JobOf } from 'src/types.js';
 import { JobConfig } from 'src/decorators.js';
 import { QueueJobResponseDto, QueueJobSearchDto } from 'src/dtos/queue.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { HandlerError, LibraryError } from 'src/effect/errors.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 import { ImmichWorker, JobName, JobStatus, MetadataKey, QueueCleanType, QueueJobStatus, QueueName } from 'src/enum.js';
@@ -371,6 +372,7 @@ export class JobRepository {
   ) {
     this.logger.setContext(JobRepository.name);
     this.effect = JobRepo.make({ moduleRef, configRepository, eventRepository, logger: this.logger });
+    registerEffect(this, this.effect);
   }
 
   setup(services: (new (...args: any[]) => unknown)[]) {

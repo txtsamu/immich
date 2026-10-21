@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import type { Insertable, Kysely } from 'kysely';
 import type { SystemMetadata } from 'src/types.js';
 import { GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { DatabaseError, FileSystemError } from 'src/effect/errors.js';
 import { runPromise } from 'src/effect/run.js';
@@ -71,6 +72,7 @@ export class SystemMetadataRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = SystemMetadataRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: ['metadata_key'] })

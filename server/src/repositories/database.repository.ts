@@ -18,6 +18,7 @@ import {
   serverVersion,
 } from 'src/constants.js';
 import { GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { DatabaseError, LibraryError } from 'src/effect/errors.js';
 import { runPromise, runSync } from 'src/effect/run.js';
@@ -411,6 +412,7 @@ export class DatabaseRepository {
   ) {
     this.logger.setContext(DatabaseRepository.name);
     this.effect = DatabaseRepo.make({ db, logger: this.logger, configRepository });
+    registerEffect(this, this.effect);
   }
 
   shutdown(): Promise<void> {

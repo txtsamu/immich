@@ -14,6 +14,7 @@ import type { VectorExtension } from 'src/types.js';
 import { IWorker, citiesFile } from 'src/constants.js';
 import { Telemetry } from 'src/decorators.js';
 import { EnvSchema } from 'src/dtos/env.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { ConfigError } from 'src/effect/errors.js';
 import { runSync } from 'src/effect/run.js';
 import {
@@ -425,7 +426,9 @@ const configEffect = ConfigRepo.make();
 @Injectable()
 @Telemetry({ enabled: false })
 export class ConfigRepository {
-  constructor(@Inject(IWorker) @Optional() private worker?: ImmichWorker) {}
+  constructor(@Inject(IWorker) @Optional() private worker?: ImmichWorker) {
+    registerEffect(this, worker === undefined ? configEffect : ConfigRepo.make(worker));
+  }
 
   getEnv() {
     return runSync(configEffect.getEnv());

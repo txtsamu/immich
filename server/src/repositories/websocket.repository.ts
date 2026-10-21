@@ -13,6 +13,7 @@ import { AuthDto } from 'src/dtos/auth.dto.js';
 import { NotificationDto } from 'src/dtos/notification.dto.js';
 import { ReleaseEventV1, ServerVersionResponseDto } from 'src/dtos/server.dto.js';
 import { SyncAssetEditV1, SyncAssetExifV1, SyncAssetV2 } from 'src/dtos/sync.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runSync } from 'src/effect/run.js';
 import { type AppRestartEvent, type ArgsOf, EventRepository } from 'src/repositories/event.repository.js';
@@ -131,6 +132,7 @@ export class WebsocketRepository implements OnGatewayConnection, OnGatewayDiscon
   ) {
     this.logger.setContext(WebsocketRepository.name);
     this.effect = WebsocketRepo.make({ getServer: () => this.server, logger: this.logger });
+    registerEffect(this, this.effect);
   }
 
   afterInit(server: Server) {

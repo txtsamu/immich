@@ -562,7 +562,7 @@ function createSqlProgressStreams(cb: (progress: number) => void) {
       }
 
       cbDebounced();
-      // eslint-disable-next-line unicorn/no-this-outside-of-class
+
       this.push(chunk);
       callback();
     },
@@ -644,7 +644,6 @@ function createSqlOwnerTransformStream(databaseUsername: string) {
         }
       }
 
-      // eslint-disable-next-line unicorn/no-this-outside-of-class
       this.push(result);
       callback();
     },

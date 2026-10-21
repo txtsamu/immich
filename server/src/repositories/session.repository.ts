@@ -6,6 +6,7 @@ import { InjectKysely } from 'nestjs-kysely';
 import type { Insertable, Kysely, Updateable } from 'kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { DB } from 'src/schema/index.js';
@@ -183,6 +184,7 @@ export class SessionRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = SessionRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   cleanup() {

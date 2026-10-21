@@ -23,6 +23,7 @@ import type {
 import { ORIENTATION_TO_SHARP_ROTATION } from 'src/constants.js';
 import { Exif } from 'src/database.js';
 import { AssetEditActionItem } from 'src/dtos/editing.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runPromise } from 'src/effect/run.js';
 import {
@@ -644,6 +645,7 @@ export class MediaRepository {
   constructor(private logger: LoggingRepository) {
     this.logger.setContext(MediaRepository.name);
     this.effect = MediaRepo.make(this.logger);
+    registerEffect(this, this.effect);
   }
 
   /**

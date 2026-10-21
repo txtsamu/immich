@@ -8,6 +8,7 @@ import type { Insertable, Kysely } from 'kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { PluginMethodSearchDto, PluginSearchDto } from 'src/dtos/plugin.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { LogLevel, WorkflowType } from 'src/enum.js';
@@ -232,6 +233,7 @@ export class PluginRepository {
   ) {
     this.effect = PluginRepo.make(db);
     this.logger.setContext(PluginRepository.name);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql()

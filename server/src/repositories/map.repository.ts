@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import readLine from 'node:readline';
 import { citiesFile, reverseGeocodeMaxDistance } from 'src/constants.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AssetVisibility, SystemMetadataKey } from 'src/enum.js';
@@ -187,6 +188,7 @@ export class MapRepository {
   ) {
     this.logger.setContext(MapRepository.name);
     this.effect = MapRepo.make(this.db);
+    registerEffect(this, this.effect);
   }
 
   async init(): Promise<void> {

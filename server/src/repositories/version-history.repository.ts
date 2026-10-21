@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from 'effect';
 import { InjectKysely } from 'nestjs-kysely';
 import type { Insertable, Kysely } from 'kysely';
 import { GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { DB } from 'src/schema/index.js';
@@ -48,6 +49,7 @@ export class VersionHistoryRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = VersionHistoryRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql()

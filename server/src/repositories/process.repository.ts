@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Context, Effect, Layer } from 'effect';
 import { SpawnOptionsWithoutStdio, fork, spawn } from 'node:child_process';
 import { Duplex } from 'node:stream';
+import { effectOf, registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runSync } from 'src/effect/run.js';
 
@@ -150,11 +151,19 @@ export class ProcessRepo extends Context.Service<
 export class ProcessRepository {
   spawn = spawn;
 
+  constructor() {
+    // `getSpawn` is read per call so a replaced `spawn` (tests) is honoured.
+    registerEffect(
+      this,
+      ProcessRepo.make(() => this.spawn),
+    );
+  }
+
   spawnDuplexStream(command: string, args?: readonly string[], options?: SpawnOptionsWithoutStdio): Duplex {
-    return runSync(ProcessRepo.make(() => this.spawn).spawnDuplexStream(command, args, options));
+    return runSync(effectOf(ProcessRepo, this).spawnDuplexStream(command, args, options));
   }
 
   fork(...args: Parameters<typeof fork>): ReturnType<typeof fork> {
-    return runSync(ProcessRepo.make(() => this.spawn).fork(...args));
+    return runSync(effectOf(ProcessRepo, this).fork(...args));
   }
 }

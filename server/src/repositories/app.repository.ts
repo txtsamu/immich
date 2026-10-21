@@ -3,6 +3,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { Context, Effect, Layer } from 'effect';
 import { Redis } from 'ioredis';
 import { Server as SocketIO } from 'socket.io';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 import { ExitCode } from 'src/enum.js';
@@ -79,6 +80,11 @@ export class AppRepo extends Context.Service<
 @Injectable()
 export class AppRepository {
   private effect?: Context.Service.Shape<typeof AppRepo>;
+
+  constructor() {
+    this.effect = AppRepo.make();
+    registerEffect(this, this.effect);
+  }
 
   exitApp() {
     runSync((this.effect ??= AppRepo.make()).exitApp());

@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from 'effect';
 import { type Insertable, type Kysely, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { SyncEntityType } from 'src/enum.js';
@@ -72,6 +73,7 @@ export class SyncCheckpointRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = SyncCheckpointRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })

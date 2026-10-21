@@ -5,6 +5,7 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 import { AssetFileType, AssetStatus, AssetType, AssetVisibility } from 'src/enum.js';
@@ -376,6 +377,7 @@ export class AssetJobRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = AssetJobRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })

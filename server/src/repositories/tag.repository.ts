@@ -4,6 +4,7 @@ import { InjectKysely } from 'nestjs-kysely';
 import type { InsertQueryBuilder, Insertable, Kysely, QueryCreator, Selectable, Updateable } from 'kysely';
 import { columns } from 'src/database.js';
 import { Chunked, ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
@@ -291,6 +292,7 @@ export class TagRepository {
   ) {
     this.effect = TagRepo.make(db);
     this.logger.setContext(TagRepository.name);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })

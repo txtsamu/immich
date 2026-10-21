@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { Insertable } from 'kysely';
 import sanitize from 'sanitize-filename';
 import type { LoginDetails } from 'src/services/auth.service.js';
@@ -8,6 +9,8 @@ import { StorageCore } from 'src/cores/storage.core.js';
 import { UserAdmin } from 'src/database.js';
 import { mapLoginResponse } from 'src/dtos/auth.dto.js';
 import { SystemConfig } from 'src/dtos/config.dto.js';
+import { Fx, FxSource, createFx } from 'src/effect/fx.js';
+import { runPromise } from 'src/effect/run.js';
 import { AccessRepository } from 'src/repositories/access.repository.js';
 import { ActivityRepository } from 'src/repositories/activity.repository.js';
 import { AlbumUserRepository } from 'src/repositories/album-user.repository.js';
@@ -62,8 +65,10 @@ import { WebAuthnRepository } from 'src/repositories/webauthn.repository.js';
 import { WebsocketRepository } from 'src/repositories/websocket.repository.js';
 import { WorkflowRepository } from 'src/repositories/workflow.repository.js';
 import { UserTable } from 'src/schema/tables/user.table.js';
-import { AccessRequest, checkAccess, requireAccess } from 'src/utils/access.js';
-import { getConfig, updateConfig } from 'src/utils/config.js';
+import { AccessRequest, checkAccessFx, requireAccessFx } from 'src/utils/access.js';
+import { getConfigFx, updateConfigFx } from 'src/utils/config.js';
+
+const fxCache = new WeakMap<BaseService, Fx>();
 
 export const BASE_SERVICE_DEPENDENCIES = [
   LoggingRepository,
@@ -254,72 +259,144 @@ export class BaseService {
     return service as InstanceType<T>;
   }
 
+  /** The repositories as Effect services (the real ones in production, lifted Promise mocks in specs). */
+  protected get fx(): Fx {
+    let fx = fxCache.get(this);
+    if (!fx) {
+      fx = createFx(this as unknown as FxSource);
+      fxCache.set(this, fx);
+    }
+    return fx;
+  }
+
   get worker() {
     return this.configRepository.getWorker();
   }
 
-  private get configRepos() {
+  private get configFxRepos() {
     return {
-      configRepo: this.configRepository,
-      metadataRepo: this.systemMetadataRepository,
-      logger: this.logger,
+      configRepo: this.fx.config,
+      metadataRepo: this.fx.systemMetadata,
+      logger: this.fx.logger,
     };
   }
 
-  getConfig(options: { withCache: boolean }) {
-    return getConfig(this.configRepos, options);
+  protected getConfigFx(options: { withCache: boolean }) {
+    return getConfigFx(this.configFxRepos, options);
   }
 
-  updateConfig(newConfig: SystemConfig) {
-    return updateConfig(this.configRepos, newConfig);
+  protected updateConfigFx(newConfig: SystemConfig) {
+    return updateConfigFx(this.configFxRepos, newConfig);
   }
 
-  requireAccess(request: AccessRequest) {
-    return requireAccess(this.accessRepository, request);
+  getConfig(options: { withCache: boolean }): Promise<SystemConfig> {
+    return runPromise(this.getConfigFx(options));
   }
 
-  checkAccess(request: AccessRequest) {
-    return checkAccess(this.accessRepository, request);
+  updateConfig(newConfig: SystemConfig): Promise<SystemConfig> {
+    return runPromise(this.updateConfigFx(newConfig));
+  }
+
+  protected requireAccessFx(request: AccessRequest) {
+    return requireAccessFx(this.fx.access, request);
+  }
+
+  protected checkAccessFx(request: AccessRequest) {
+    return checkAccessFx(this.fx.access, request);
+  }
+
+  requireAccess(request: AccessRequest): Promise<void> {
+    return runPromise(this.requireAccessFx(request));
+  }
+
+  checkAccess(request: AccessRequest): Promise<Set<string>> {
+    return runPromise(this.checkAccessFx(request));
+  }
+
+  protected isSetupAvailableFx() {
+    const { fx } = this;
+    return Effect.gen(function* () {
+      const { setup } = yield* fx.config.getEnv();
+      return setup.allow && !(yield* fx.user.hasAdmin());
+    });
+  }
+
+  protected requireSetupAvailableFx() {
+    const isSetupAvailable = this.isSetupAvailableFx();
+    return Effect.gen(function* () {
+      if (!(yield* isSetupAvailable)) {
+        return yield* Effect.fail(new BadRequestException('Admin setup is not available'));
+      }
+    });
   }
 
   async isSetupAvailable(): Promise<boolean> {
-    const { setup } = this.configRepository.getEnv();
-    return setup.allow && !(await this.userRepository.hasAdmin());
+    return runPromise(this.isSetupAvailableFx());
   }
 
   async requireSetupAvailable(): Promise<void> {
-    if (!(await this.isSetupAvailable())) {
-      throw new BadRequestException('Admin setup is not available');
-    }
+    return runPromise(this.requireSetupAvailableFx());
+  }
+
+  protected createUserFx(dto: Insertable<UserTable> & { email: string }) {
+    const { fx, logger } = this;
+    return Effect.gen(function* () {
+      const exists = yield* fx.user.getByEmail(dto.email);
+      if (exists) {
+        logger.debug('User creation rejected: user already exists');
+        return yield* Effect.fail(new BadRequestException('Email is not available'));
+      }
+
+      if (!dto.isAdmin) {
+        const localAdmin = yield* fx.user.getAdmin();
+        if (!localAdmin) {
+          return yield* Effect.fail(new BadRequestException('The first registered account must the administrator.'));
+        }
+      }
+
+      const payload: Insertable<UserTable> = { ...dto };
+      if (payload.password) {
+        payload.password = yield* fx.crypto.hashBcrypt(payload.password, SALT_ROUNDS);
+      }
+      if (payload.storageLabel) {
+        payload.storageLabel = sanitize(payload.storageLabel);
+      }
+
+      const user: UserAdmin = yield* fx.user.create(payload);
+
+      yield* fx.event.emit('UserCreate', user);
+
+      return user;
+    });
   }
 
   async createUser(dto: Insertable<UserTable> & { email: string }): Promise<UserAdmin> {
-    const exists = await this.userRepository.getByEmail(dto.email);
-    if (exists) {
-      this.logger.debug('User creation rejected: user already exists');
-      throw new BadRequestException('Email is not available');
-    }
+    return runPromise(this.createUserFx(dto));
+  }
 
-    if (!dto.isAdmin) {
-      const localAdmin = await this.userRepository.getAdmin();
-      if (!localAdmin) {
-        throw new BadRequestException('The first registered account must the administrator.');
-      }
-    }
+  protected createLoginResponseFx(
+    user: UserAdmin,
+    loginDetails: LoginDetails,
+    oauthSid?: string,
+    oauthBearerToken?: string,
+  ) {
+    const { fx } = this;
+    return Effect.gen(function* () {
+      const token = yield* fx.crypto.randomBytesAsText(32);
+      const hashed = yield* fx.crypto.hashSha256(token);
 
-    const payload: Insertable<UserTable> = { ...dto };
-    if (payload.password) {
-      payload.password = await this.cryptoRepository.hashBcrypt(payload.password, SALT_ROUNDS);
-    }
-    if (payload.storageLabel) {
-      payload.storageLabel = sanitize(payload.storageLabel);
-    }
+      yield* fx.session.create({
+        token: hashed,
+        deviceOS: loginDetails.deviceOS,
+        deviceType: loginDetails.deviceType,
+        appVersion: loginDetails.appVersion,
+        userId: user.id,
+        oauthSid: oauthSid ?? null,
+        oauthBearerToken: oauthBearerToken ?? null,
+      });
 
-    const user = await this.userRepository.create(payload);
-
-    await this.eventRepository.emit('UserCreate', user);
-
-    return user;
+      return mapLoginResponse(user, token);
+    });
   }
 
   protected async createLoginResponse(
@@ -328,19 +405,6 @@ export class BaseService {
     oauthSid?: string,
     oauthBearerToken?: string,
   ) {
-    const token = this.cryptoRepository.randomBytesAsText(32);
-    const hashed = this.cryptoRepository.hashSha256(token);
-
-    await this.sessionRepository.create({
-      token: hashed,
-      deviceOS: loginDetails.deviceOS,
-      deviceType: loginDetails.deviceType,
-      appVersion: loginDetails.appVersion,
-      userId: user.id,
-      oauthSid: oauthSid ?? null,
-      oauthBearerToken: oauthBearerToken ?? null,
-    });
-
-    return mapLoginResponse(user, token);
+    return runPromise(this.createLoginResponseFx(user, loginDetails, oauthSid, oauthBearerToken));
   }
 }

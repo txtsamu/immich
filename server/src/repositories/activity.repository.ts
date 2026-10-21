@@ -5,6 +5,7 @@ import { jsonObjectFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AssetVisibility } from 'src/enum.js';
@@ -118,6 +119,7 @@ export class ActivityRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = ActivityRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [{ albumId: DummyValue.UUID }] })

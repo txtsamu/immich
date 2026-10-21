@@ -4,6 +4,7 @@ import { createTransport } from 'nodemailer';
 import React, { createElement } from 'react';
 import { render } from 'react-email';
 import type { EmailImageAttachment } from 'src/types.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runPromise } from 'src/effect/run.js';
 import { AlbumInviteEmail } from 'src/emails/album-invite.email.js';
@@ -213,6 +214,7 @@ export class EmailRepository {
   constructor(private logger: LoggingRepository) {
     this.logger.setContext(EmailRepository.name);
     this.effect = EmailRepo.make(this.logger);
+    registerEffect(this, this.effect);
   }
 
   verifySmtp(options: SmtpOptions): Promise<true> {

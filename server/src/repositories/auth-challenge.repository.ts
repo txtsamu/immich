@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from 'effect';
 import { InjectKysely } from 'nestjs-kysely';
 import type { Insertable, Kysely } from 'kysely';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AuthChallengeType } from 'src/enum.js';
@@ -60,6 +61,7 @@ export class AuthChallengeRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = AuthChallengeRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   create(dto: Insertable<AuthChallengeTable>) {

@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from 'effect';
 import { type Kysely, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AlbumUserRole, AssetVisibility } from 'src/enum.js';
@@ -774,5 +775,6 @@ export class AccessRepository {
     this.tag = new TagAccess(effect.tag);
     this.timeline = new TimelineAccess(effect.timeline);
     this.workflow = new WorkflowAccess(effect.workflow);
+    registerEffect(this, effect);
   }
 }

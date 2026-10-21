@@ -2,6 +2,7 @@ import { Context, Effect, Layer } from 'effect';
 import { InjectKysely } from 'nestjs-kysely';
 import type { Kysely } from 'kysely';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AssetVisibility } from 'src/enum.js';
@@ -70,6 +71,7 @@ export class ViewRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = ViewRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })

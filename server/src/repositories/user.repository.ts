@@ -7,6 +7,7 @@ import { InjectKysely } from 'nestjs-kysely';
 import type { UserMetadata, UserMetadataItem } from 'src/types.js';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AssetType, AssetVisibility, UserStatus } from 'src/enum.js';
@@ -366,6 +367,7 @@ export class UserRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = UserRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.BOOLEAN] })

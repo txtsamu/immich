@@ -6,6 +6,7 @@ import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { MapAsset } from 'src/dtos/asset-response.dto.js';
 import { SearchFilter, SearchOrder } from 'src/dtos/search.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AssetStatus, AssetType, AssetVisibility } from 'src/enum.js';
@@ -431,6 +432,7 @@ export class SearchRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = SearchRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   // TODO(v4): remove with the deprecated flat-field search API

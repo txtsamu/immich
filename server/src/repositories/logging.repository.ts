@@ -3,6 +3,7 @@ import { isLogLevelEnabled } from '@nestjs/common/services/utils/is-log-level-en
 import { Context, Effect, Layer } from 'effect';
 import { ClsService } from 'nestjs-cls';
 import { Telemetry } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { runSync } from 'src/effect/run.js';
 import { LogFormat, LogLevel } from 'src/enum.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
@@ -189,6 +190,7 @@ export class LoggingRepository {
       color: !isNoColor,
     });
     this.effect = LoggingRepo.make(this.logger);
+    registerEffect(this, this.effect);
   }
 
   static create(context?: string) {

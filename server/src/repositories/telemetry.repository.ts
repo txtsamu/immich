@@ -16,6 +16,7 @@ import { snakeCase, startCase } from 'lodash-es';
 import { MetricService } from 'nestjs-otel';
 import { copyMetadataFromFunctionToFunction } from 'nestjs-otel/lib/opentelemetry.utils.js';
 import { excludePaths, serverVersion } from 'src/constants.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { ConfigError } from 'src/effect/errors.js';
 import { runSync } from 'src/effect/run.js';
 import { ImmichTelemetry, MetadataKey } from 'src/enum.js';
@@ -249,6 +250,7 @@ export class TelemetryRepository {
     this.jobs = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.Job) });
     this.repo = new MetricGroupRepository(metricService).configure({ enabled: metrics.has(ImmichTelemetry.Repo) });
     this.effect = TelemetryRepo.make(metricService, reflect, configRepository, logger);
+    registerEffect(this, this.effect);
   }
 
   setup({ repositories }: { repositories: (new (...args: any[]) => unknown)[] }) {

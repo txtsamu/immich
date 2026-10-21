@@ -7,6 +7,7 @@ import { InjectKysely } from 'nestjs-kysely';
 import type { IBulkAsset } from 'src/types.js';
 import { Chunked, ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
 import { MemorySearchDto } from 'src/dtos/memory.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 import { AssetOrderWithRandom, AssetVisibility } from 'src/enum.js';
@@ -208,6 +209,7 @@ export class MemoryRepository implements IBulkAsset {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = MemoryRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   cleanup() {

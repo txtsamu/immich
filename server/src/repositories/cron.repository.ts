@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob, CronTime } from 'cron';
 import { Context, Effect } from 'effect';
+import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
 import { runSync } from 'src/effect/run.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
@@ -89,6 +90,7 @@ export class CronRepository {
   ) {
     this.logger.setContext(CronRepository.name);
     this.effect = CronRepo.make(schedulerRegistry);
+    registerEffect(this, this.effect);
   }
 
   create(options: CronCreate): void {

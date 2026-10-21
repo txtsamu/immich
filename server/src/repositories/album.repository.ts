@@ -6,6 +6,7 @@ import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { Chunked, ChunkedArray, ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
 import { AlbumUserCreateDto, MapAlbumDto } from 'src/dtos/album.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AlbumUserRole } from 'src/enum.js';
@@ -443,6 +444,7 @@ export class AlbumRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = AlbumRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })

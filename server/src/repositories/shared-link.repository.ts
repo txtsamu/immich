@@ -14,6 +14,7 @@ import { omit } from 'lodash-es';
 import { InjectKysely } from 'nestjs-kysely';
 import { Album, columns } from 'src/database.js';
 import { ChunkedArray, DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { AlbumUserRole, SharedLinkType } from 'src/enum.js';
@@ -263,6 +264,7 @@ export class SharedLinkRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = SharedLinkRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })

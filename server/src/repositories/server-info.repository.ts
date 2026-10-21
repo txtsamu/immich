@@ -5,6 +5,7 @@ import { exec as execCallback } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import sharp from 'sharp';
+import { registerEffect } from 'src/effect/bridge.js';
 import { FileSystemError, LibraryError } from 'src/effect/errors.js';
 import { runPromise } from 'src/effect/run.js';
 import { ReleaseChannel } from 'src/enum.js';
@@ -177,6 +178,7 @@ export class ServerInfoRepository {
   ) {
     this.logger.setContext(ServerInfoRepository.name);
     this.effect = ServerInfoRepo.make(this.configRepository, this.logger, this);
+    registerEffect(this, this.effect);
   }
 
   getLatestRelease(channel: ReleaseChannel): Promise<VersionResponse> {

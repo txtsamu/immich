@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Context, Effect, Layer } from 'effect';
 import { Kysely } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db } from 'src/effect/db.js';
 import { DatabaseError } from 'src/effect/errors.js';
 import { runSync } from 'src/effect/run.js';
@@ -76,6 +77,7 @@ export class DownloadRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = DownloadRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   downloadAssetIds(ids: string[]) {

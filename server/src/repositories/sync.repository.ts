@@ -5,6 +5,7 @@ import { InjectKysely } from 'nestjs-kysely';
 import type { SyncAck } from 'src/types.js';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise, runSync } from 'src/effect/run.js';
 import { MemoryType } from 'src/enum.js';
@@ -774,6 +775,7 @@ export class SyncRepository {
     this.stack = new StackSync(this.db, effect);
     this.user = new UserSync(this.db, effect);
     this.userMetadata = new UserMetadataSync(this.db, effect);
+    registerEffect(this, effect);
   }
 }
 

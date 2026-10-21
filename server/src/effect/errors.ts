@@ -14,3 +14,6 @@ export class ConfigError extends Data.TaggedError('ConfigError')<{ cause: unknow
 
 /** A failure thrown by a registered event/job handler or other caller-supplied callback; `cause` is the original thrown value. */
 export class HandlerError extends Data.TaggedError('HandlerError')<{ cause: unknown }> {}
+
+/** A Promise-based collaborator (a mock or a not-yet-converted adapter) rejected; `cause` is the original value. */
+export class LiftedError extends Data.TaggedError('LiftedError')<{ cause: unknown }> {}

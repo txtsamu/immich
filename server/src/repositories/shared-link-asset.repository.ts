@@ -2,6 +2,7 @@ import { Context, Effect, Layer } from 'effect';
 import { InjectKysely } from 'nestjs-kysely';
 import type { Kysely } from 'kysely';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
 import { Db, query } from 'src/effect/db.js';
 import { runPromise } from 'src/effect/run.js';
 import { DB } from 'src/schema/index.js';
@@ -61,6 +62,7 @@ export class SharedLinkAssetRepository {
 
   constructor(@InjectKysely() db: Kysely<DB>) {
     this.effect = SharedLinkAssetRepo.make(db);
+    registerEffect(this, this.effect);
   }
 
   remove(sharedLinkId: string, assetId: string[]) {
