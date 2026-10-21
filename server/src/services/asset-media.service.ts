@@ -20,7 +20,7 @@ import {
 } from 'src/dtos/asset-media.dto.js';
 import { AssetDownloadOriginalDto } from 'src/dtos/asset.dto.js';
 import { AuthDto, isEditedOnly, isMetadataHidden } from 'src/dtos/auth.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetVisibility,
@@ -40,9 +40,6 @@ import { mimeTypes } from 'src/utils/mime-types.js';
 import { fromChecksum } from 'src/utils/request.js';
 
 /** The value originally thrown, for errors that wrap it in `cause` (see `src/effect/errors.ts`). */
-const originalError = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 export interface AssetMediaRedirectResponse {
   targetSize: AssetMediaSize | 'original';
 }
@@ -219,7 +216,7 @@ export class AssetMediaService extends BaseService {
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.gen({ self: this }, function* () {
-              const error: any = originalError(Cause.squash(cause));
+              const error: any = unwrap(Cause.squash(cause));
 
               // clean up files
               yield* this.fx.job.queue({

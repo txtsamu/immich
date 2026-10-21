@@ -20,7 +20,7 @@ import {
   ValidateLibraryResponseDto,
   mapLibrary,
 } from 'src/dtos/library.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetStatus,
   AssetType,
@@ -39,9 +39,6 @@ import { mimeTypes } from 'src/utils/mime-types.js';
 import { batched, handlePromiseError } from 'src/utils/misc.js';
 
 /** The original thrown value behind an Effect error that wraps it in `cause` (see `src/effect/errors.ts`). */
-const unwrapCause = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 /**
  * Sequentially runs `body` for every item of an async iterable, like `for await` with an awaiting body.
  * The iterator is closed when the body fails, matching what `for await` does on an abrupt exit.
@@ -354,7 +351,7 @@ export class LibraryService extends BaseService {
                 assetImports.push(asset);
               }),
               Effect.catchCause((cause) => {
-                const error = unwrapCause(Cause.squash(cause));
+                const error = unwrap(Cause.squash(cause));
                 this.logger.error(`Error processing ${path} for library ${job.libraryId}: ${error}`);
                 return Effect.void;
               }),
@@ -414,7 +411,7 @@ export class LibraryService extends BaseService {
       return validation;
     }).pipe(
       Effect.catchCause((cause) => {
-        const error: any = unwrapCause(Cause.squash(cause));
+        const error: any = unwrap(Cause.squash(cause));
         if (error.code === 'ENOENT') {
           validation.message = 'Path does not exist (ENOENT)';
           return Effect.succeed(validation);

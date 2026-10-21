@@ -17,7 +17,7 @@ import {
 } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { DatabaseLock, ImmichWorker, JobName, QueueName, TranscodeTarget } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { isVideoStreamSessionPkConstraint } from 'src/utils/database.js';
@@ -39,9 +39,6 @@ type Session = {
 };
 
 /** The value originally thrown, for errors that wrap it in `cause` (see `src/effect/errors.ts`). */
-const originalError = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class TranscodingService extends BaseService {
   private sessions = new Map<string, Session>();
@@ -106,7 +103,7 @@ export class TranscodingService extends BaseService {
       }).pipe(
         Effect.catchCause((cause) =>
           Effect.gen({ self: this }, function* () {
-            const error = originalError(Cause.squash(cause));
+            const error = unwrap(Cause.squash(cause));
             // If insertion failed due to a PK constraint, another worker has already created a session for this ID.
             if (isVideoStreamSessionPkConstraint(error)) {
               return;
@@ -437,7 +434,7 @@ export class TranscodingService extends BaseService {
     const dir = StorageCore.getHlsSessionFolder({ ownerId: session.ownerId, sessionId: session.id });
     yield* this.fx.storage.unlinkDir(dir, { recursive: true, force: true }).pipe(
       Effect.catch((error_) => {
-        const error = originalError(error_);
+        const error = unwrap(error_);
         if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
           return Effect.fail(error);
         }
@@ -464,9 +461,7 @@ export class TranscodingService extends BaseService {
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.sync(() => {
-              this.logger.error(
-                `Failed to sweep inactive HLS session ${session.id}: ${originalError(Cause.squash(cause))}`,
-              );
+              this.logger.error(`Failed to sweep inactive HLS session ${session.id}: ${unwrap(Cause.squash(cause))}`);
             }),
           ),
         ),

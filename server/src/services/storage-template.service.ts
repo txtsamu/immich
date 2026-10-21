@@ -9,7 +9,7 @@ import type { JobOf, StorageAsset } from 'src/types.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
 import { ConfigTemplateStorageOptionDto } from 'src/dtos/config.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetPathType,
@@ -79,9 +79,6 @@ interface RenderMetadata {
 const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (cause) => cause });
 
 /** The original thrown value behind a wrapped repository error (`DatabaseError`, `LibraryError`, ...). */
-const unwrap = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class StorageTemplateService extends BaseService {
   private _template: {

@@ -14,7 +14,7 @@ import { OnboardingDto, OnboardingResponseDto } from 'src/dtos/onboarding.dto.js
 import { UserPreferencesResponseDto, UserPreferencesUpdateDto, mapPreferences } from 'src/dtos/user-preferences.dto.js';
 import { CreateProfileImageResponseDto } from 'src/dtos/user-profile.dto.js';
 import { UserAdminResponseDto, UserResponseDto, UserUpdateMeDto, mapUser, mapUserAdmin } from 'src/dtos/user.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { CacheControl, JobName, JobStatus, QueueName, StorageFolder, UserMetadataKey } from 'src/enum.js';
 import { UserFindOptions } from 'src/repositories/user.repository.js';
 import { UserTable } from 'src/schema/tables/user.table.js';
@@ -26,9 +26,6 @@ import { getPreferences, getPreferencesPartial, mergePreferences } from 'src/uti
 import { generateProfileImage } from 'src/utils/profile-image.js';
 
 /** The value originally thrown, for errors that wrap it in `cause` (see `src/effect/errors.ts`). */
-const originalError = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class UserService extends BaseService {
   async search(auth: AuthDto): Promise<UserResponseDto[]> {
@@ -152,7 +149,7 @@ export class UserService extends BaseService {
             Effect.gen({ self: this }, function* () {
               yield* this.fx.job.queue({ name: JobName.FileDelete, data: { files: [file.path] } });
               return yield* Effect.fail(
-                new BadRequestException('Unable to process profile image', { cause: originalError(error) }),
+                new BadRequestException('Unable to process profile image', { cause: unwrap(error) }),
               );
             }),
           ),

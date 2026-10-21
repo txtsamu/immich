@@ -4,16 +4,13 @@ import type { JobItem } from 'src/types.js';
 import { OnEvent } from 'src/decorators.js';
 import { mapAsset } from 'src/dtos/asset-response.dto.js';
 import { JobCreateDto } from 'src/dtos/job.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { AssetType, AssetVisibility, IntegrityReport, JobName, JobStatus, ManualJobName } from 'src/enum.js';
 import { ArgsOf } from 'src/repositories/event.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { hexOrBufferToBase64 } from 'src/utils/bytes.js';
 
 /** The original thrown value behind a wrapped repository error (see `runPromise`). */
-const unwrapError = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 const asJobItem = (dto: JobCreateDto): JobItem => {
   switch (dto.name) {
     case ManualJobName.TagCleanup: {
@@ -103,7 +100,7 @@ export class JobService extends BaseService {
               yield* this.onDone(job);
             }
           }).pipe(
-            Effect.catch((error) => this.fx.event.emit('JobError', { job, error: unwrapError(error) as Error | any })),
+            Effect.catch((error) => this.fx.event.emit('JobError', { job, error: unwrap(error) as Error | any })),
           ),
         );
         yield* this.fx.event.emit('JobComplete', queueName, job);

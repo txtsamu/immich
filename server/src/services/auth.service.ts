@@ -23,7 +23,7 @@ import {
 } from 'src/dtos/auth.dto.js';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
 import { UserAdminResponseDto, mapUserAdmin } from 'src/dtos/user.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { AuthType, ImmichCookie, ImmichHeader, ImmichQuery, JobName, Permission } from 'src/enum.js';
 import { OAuthProfile } from 'src/repositories/oauth.repository.js';
 import { BaseService } from 'src/services/base.service.js';
@@ -54,9 +54,6 @@ interface ParsedOAuthClaims {
 }
 
 /** The original thrown value behind an Effect error that wraps it in `cause` (see `src/effect/errors.ts`). */
-const unwrapCause = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 export type ValidateRequest = {
   headers: IncomingHttpHeaders;
   queryParams: Record<string, string>;
@@ -126,7 +123,7 @@ export class AuthService extends BaseService {
         const claims = yield* this.fx.oauth.validateLogoutToken(oauth, dto.logout_token).pipe(
           // eslint-disable-next-line unicorn/catch-error-name
           Effect.catch((wrapped) => {
-            const error: Error | any = unwrapCause(wrapped);
+            const error: Error | any = unwrap(wrapped);
             this.logger.error(`Error backchannel logout: ${error.message}`);
             this.logger.error(error);
 
@@ -467,7 +464,7 @@ export class AuthService extends BaseService {
       }
     }).pipe(
       Effect.catchCause((cause) => {
-        const error: Error | any = unwrapCause(Cause.squash(cause));
+        const error: Error | any = unwrap(Cause.squash(cause));
         this.logger.warn(`Unable to sync oauth profile picture: ${error}\n${error?.stack}`);
         return Effect.void;
       }),

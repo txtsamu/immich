@@ -12,7 +12,7 @@ import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
 import { DatabaseBackupListResponseDto } from 'src/dtos/database-backup.dto.js';
 import { effectOf } from 'src/effect/bridge.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { CacheControl, DatabaseLock, ImmichWorker, JobName, JobStatus, QueueName, StorageFolder } from 'src/enum.js';
 import { MaintenanceHealthRepository } from 'src/maintenance/maintenance-health.repository.js';
 import { ConfigRepo, ConfigRepository } from 'src/repositories/config.repository.js';
@@ -36,9 +36,6 @@ import { ImmichFileResponse } from 'src/utils/file.js';
 import { handlePromiseError } from 'src/utils/misc.js';
 
 /** Effect errors wrap the original thrown value in `cause`; services log and rethrow the original. */
-const unwrapCause = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class DatabaseBackupService {
   constructor(
@@ -135,7 +132,7 @@ export class DatabaseBackupService {
         const failed = yield* this.createDatabaseBackupFx().pipe(
           Effect.as(false),
           Effect.catch((error) =>
-            unwrapCause(error) instanceof UnsupportedPostgresError ? Effect.succeed(true) : Effect.fail(error),
+            unwrap(error) instanceof UnsupportedPostgresError ? Effect.succeed(true) : Effect.fail(error),
           ),
         );
         if (failed) {
@@ -319,7 +316,7 @@ export class DatabaseBackupService {
     }).pipe(
       Effect.catchCause((cause) =>
         Effect.gen({ self: this }, function* () {
-          const error = unwrapCause(Cause.squash(cause));
+          const error = unwrap(Cause.squash(cause));
           this.logger.error(`Database Backup Failure: ${error}`);
           pgdump?.destroy();
           gzip?.destroy();
@@ -327,7 +324,7 @@ export class DatabaseBackupService {
             .unlink(temporaryFilePath)
             .pipe(
               Effect.catch((error) =>
-                Effect.sync(() => this.logger.error(`Failed to delete failed backup file: ${unwrapCause(error)}`)),
+                Effect.sync(() => this.logger.error(`Failed to delete failed backup file: ${unwrap(error)}`)),
               ),
             );
           return yield* Effect.fail(error);
@@ -545,7 +542,7 @@ export class DatabaseBackupService {
       }).pipe(
         Effect.catchCause((cause) =>
           Effect.gen({ self: this }, function* () {
-            const error = unwrapCause(Cause.squash(cause));
+            const error = unwrap(Cause.squash(cause));
             progressCb?.('rollback', 0);
 
             const fileStream = yield* this.fx.storage.createPlainReadStream(restorePointFilePath);
@@ -582,7 +579,7 @@ export class DatabaseBackupService {
     }).pipe(
       Effect.catchCause((cause) =>
         Effect.gen({ self: this }, function* () {
-          const error = unwrapCause(Cause.squash(cause));
+          const error = unwrap(Cause.squash(cause));
           this.logger.error(`Database Restore Failure: ${error}`);
           return yield* Effect.fail(error);
         }),

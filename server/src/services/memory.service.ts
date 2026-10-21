@@ -12,7 +12,7 @@ import {
   MemoryUpdateDto,
   mapMemory,
 } from 'src/dtos/memory.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { DatabaseLock, JobName, MemoryType, Permission, QueueName, SystemMetadataKey } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { addAssets, removeAssets } from 'src/utils/asset.util.js';
@@ -20,9 +20,6 @@ import { addAssets, removeAssets } from 'src/utils/asset.util.js';
 const DAYS = 3;
 
 /** The original thrown value behind a wrapped repository error (see `runPromise`). */
-const unwrapError = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class MemoryService extends BaseService {
   @OnJob({ name: JobName.MemoryGenerate, queue: QueueName.BackgroundTask })
@@ -52,7 +49,7 @@ export class MemoryService extends BaseService {
                 ).pipe(
                   Effect.catch((error) =>
                     Effect.sync(() =>
-                      this.logger.error(`Failed to create memories for ${target.toISO()}: ${unwrapError(error)}`),
+                      this.logger.error(`Failed to create memories for ${target.toISO()}: ${unwrap(error)}`),
                     ),
                   ),
                 );

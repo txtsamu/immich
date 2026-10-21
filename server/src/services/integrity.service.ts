@@ -22,7 +22,7 @@ import {
   IntegrityReportResponseDto,
   IntegrityReportSummaryResponseDto,
 } from 'src/dtos/integrity.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetStatus,
   CacheControl,
@@ -68,9 +68,6 @@ const attempt = <A>(run: () => A | PromiseLike<A>) =>
   Effect.tryPromise({ try: async () => await run(), catch: (cause) => cause });
 
 /** Effect errors wrap the original thrown value in `cause`; error code checks inspect the original. */
-const unwrapCause = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 /**
  * Mirrors `for await (const item of items)`: the iterator is closed when the loop exits early (the handler
  * returns `true`, like `break`) or fails.
@@ -605,7 +602,7 @@ export class IntegrityService extends BaseService {
     }).pipe(
       Effect.catchCause((cause) =>
         Effect.gen({ self: this }, function* () {
-          const error = unwrapCause(Cause.squash(cause));
+          const error = unwrap(Cause.squash(cause));
           if ((error as { code?: string }).code === 'ENOENT') {
             if (reportId) {
               yield* this.fx.integrity.deleteById(reportId);
@@ -737,7 +734,7 @@ export class IntegrityService extends BaseService {
                 return false;
               }).pipe(
                 Effect.catchCause((cause) =>
-                  Effect.succeed((unwrapCause(Cause.squash(cause)) as { code?: string }).code === 'ENOENT'),
+                  Effect.succeed((unwrap(Cause.squash(cause)) as { code?: string }).code === 'ENOENT'),
                 ),
               );
               if (isMissing) {

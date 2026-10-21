@@ -5,7 +5,7 @@ import type { JobOf, SystemFlags } from 'src/types.js';
 import { ErrorMessages } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   BootstrapEventPriority,
   DatabaseLock,
@@ -21,9 +21,6 @@ import { ImmichStartupError } from 'src/utils/misc.js';
 const docsMessage = `Please see https://docs.immich.app/administration/system-integrity#folder-checks for more information.`;
 
 /** The original thrown value behind a wrapped repository error (see `runPromise`). */
-const unwrapError = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class StorageService extends BaseService {
   // eslint-disable-next-line unicorn/consistent-function-scoping
@@ -100,7 +97,7 @@ export class StorageService extends BaseService {
               }).pipe(
                 Effect.catch((error) =>
                   Effect.gen({ self: this }, function* () {
-                    const original = unwrapError(error);
+                    const original = unwrap(error);
                     const envData = yield* this.fx.config.getEnv();
                     if (envData.storage.ignoreMountCheckErrors) {
                       this.logger.error(original as Error);
@@ -174,7 +171,7 @@ export class StorageService extends BaseService {
           yield* this.fx.storage.unlink(file).pipe(
             Effect.catch((error) =>
               Effect.sync(() => {
-                this.logger.warn('Unable to remove file from disk', unwrapError(error) as any);
+                this.logger.warn('Unable to remove file from disk', unwrap(error) as any);
               }),
             ),
           );
@@ -192,7 +189,7 @@ export class StorageService extends BaseService {
     const { internalPath, externalPath } = this.getMountFilePaths(folder);
     yield* this.fx.storage.readFile(internalPath).pipe(
       Effect.catch((error) => {
-        this.logger.error(`Failed to read (${internalPath}): ${unwrapError(error)}`);
+        this.logger.error(`Failed to read (${internalPath}): ${unwrap(error)}`);
         return Effect.fail(
           new ImmichStartupError(`Failed to read: "${externalPath} (${internalPath}) - ${docsMessage}"`),
         );
@@ -210,7 +207,7 @@ export class StorageService extends BaseService {
       yield* this.fx.storage.createFile(internalPath, Buffer.from(Date.now().toString()));
     }).pipe(
       Effect.catch((error) => {
-        const original = unwrapError(error);
+        const original = unwrap(error);
         if ((original as NodeJS.ErrnoException).code === 'EEXIST') {
           this.logger.warn('Found existing mount file, skipping creation');
           return Effect.void;
@@ -228,7 +225,7 @@ export class StorageService extends BaseService {
     const { internalPath, externalPath } = this.getMountFilePaths(folder);
     yield* this.fx.storage.overwriteFile(internalPath, Buffer.from(Date.now().toString())).pipe(
       Effect.catch((error) => {
-        this.logger.error(`Failed to write ${internalPath}: ${unwrapError(error)}`);
+        this.logger.error(`Failed to write ${internalPath}: ${unwrap(error)}`);
         return Effect.fail(new ImmichStartupError(`Failed to write "${externalPath} - ${docsMessage}"`));
       }),
     );

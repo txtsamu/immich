@@ -4,7 +4,7 @@ import { coerce, eq, gt, lt, satisfies } from 'semver';
 import type { VectorExtension } from 'src/types.js';
 import { EXTENSION_NAMES, ErrorMessages, VECTOR_EXTENSIONS } from 'src/constants.js';
 import { OnEvent } from 'src/decorators.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { BootstrapEventPriority, DatabaseExtension, DatabaseLock } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 
@@ -16,9 +16,6 @@ type OutOfRangeArgs = { name: string; extension: string; version: string; range:
 type InvalidDowngradeArgs = { name: string; extension: string; installedVersion: string; availableVersion: string };
 
 /** The original thrown value behind an Effect error that wraps it in `cause` (see `src/effect/errors.ts`). */
-const unwrapCause = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 const messages = {
   notInstalled: (name: string) =>
     `The ${name} extension is not available in this Postgres instance.
@@ -190,7 +187,7 @@ export class DatabaseService extends BaseService {
       Effect.catch((error) =>
         Effect.sync(() => {
           const name = EXTENSION_NAMES[extension];
-          this.logger.warn(messages.dropFailed({ name, extension }), unwrapCause(error));
+          this.logger.warn(messages.dropFailed({ name, extension }), unwrap(error));
         }),
       ),
     );

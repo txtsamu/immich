@@ -6,7 +6,7 @@ type Wrapped = { _tag: string; cause: unknown };
 const isWrapped = (error: unknown): error is Wrapped =>
   typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error;
 
-const unwrap = (error: unknown) => (isWrapped(error) ? error.cause : error);
+export const unwrap = (error: unknown) => (isWrapped(error) ? error.cause : error);
 
 /**
  * Bridge from Effect to the Promise-based Nest services.

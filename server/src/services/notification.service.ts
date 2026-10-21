@@ -15,7 +15,7 @@ import {
   NotificationUpdateDto,
   mapNotification,
 } from 'src/dtos/notification.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetFileType,
   JobName,
@@ -33,9 +33,6 @@ import { isEqualObject } from 'src/utils/object.js';
 import { getPreferences } from 'src/utils/preferences.js';
 
 /** The original thrown value behind a wrapped repository error (`DatabaseError`, `LibraryError`, ...). */
-const unwrap = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class NotificationService extends BaseService {
   private static albumUpdateEmailDelayMs = 300_000;

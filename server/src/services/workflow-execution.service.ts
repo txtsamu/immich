@@ -17,7 +17,7 @@ import { BulkIdsDto } from 'src/dtos/asset-ids.response.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { PluginManifestDto } from 'src/dtos/plugin-manifest.dto.js';
 import { TagBulkAssetsDto } from 'src/dtos/tag.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   BootstrapEventPriority,
   DatabaseLock,
@@ -45,9 +45,6 @@ const dummy = () => {
 const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (cause) => cause });
 
 /** The original thrown value behind a wrapped repository error (`DatabaseError`, `LibraryError`, ...). */
-const unwrap = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 type ExecuteOptions<T extends WorkflowType> = {
   read: (type: T) => Effect.Effect<{ authUserId: string; data: WorkflowEventData<T>; entityId?: string }, unknown>;
   write: (auth: AuthDto, changes: WorkflowChanges<T>) => Effect.Effect<void, unknown>;

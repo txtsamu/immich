@@ -13,7 +13,7 @@ import { ImagePathOptions, StorageCore, ThumbnailPathEntity } from 'src/cores/st
 import { AssetFile } from 'src/database.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
 import { ConfigFFmpegDto, SystemConfig } from 'src/dtos/config.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetType,
@@ -57,9 +57,6 @@ const attempt = <A>(run: () => A | PromiseLike<A>) =>
   Effect.tryPromise({ try: async () => await run(), catch: (cause) => cause });
 
 /** Effect errors wrap the original thrown value in `cause`; the transcoding fallbacks inspect the original. */
-const unwrapCause = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 /** Mirrors `for await (const items of batches)`: the iterator is closed when the loop exits early or fails. */
 const forEachBatch = <T, E>(batches: AsyncGenerator<T[]>, handle: (items: T[]) => Effect.Effect<unknown, E>) =>
   Effect.ensuring(
@@ -549,7 +546,7 @@ export class MediaService extends BaseService {
           Effect.as(false),
           Effect.catch((error_) =>
             Effect.gen({ self: this }, function* () {
-              const error: any = unwrapCause(error_);
+              const error: any = unwrap(error_);
               this.logger.error(`Error occurred during transcoding: ${error.message}`);
               if (ffmpeg.accel === TranscodeHardwareAcceleration.Disabled) {
                 return true;
@@ -572,7 +569,7 @@ export class MediaService extends BaseService {
                 }).pipe(
                   Effect.catchCause((cause) =>
                     Effect.sync(() => {
-                      const error: any = unwrapCause(Cause.squash(cause));
+                      const error: any = unwrap(Cause.squash(cause));
                       this.logger.error(`Error occurred during transcoding: ${error.message}`);
                     }),
                   ),

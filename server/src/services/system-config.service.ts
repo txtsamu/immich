@@ -12,16 +12,13 @@ import {
   mapPublicConfig,
   mapUserConfig,
 } from 'src/dtos/config.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { BootstrapEventPriority } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { clearConfigCache } from 'src/utils/config.js';
 import { toPlainObject } from 'src/utils/object.js';
 
 /** The original thrown value behind an Effect error that wraps it in `cause` (see `src/effect/errors.ts`). */
-const unwrapCause = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class SystemConfigService extends BaseService {
   @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.SystemConfig })
@@ -110,7 +107,7 @@ export class SystemConfigService extends BaseService {
 
         yield* this.fx.event.emit('ConfigValidate', { newConfig: toPlainObject(dto), oldConfig }).pipe(
           Effect.catch((error_) => {
-            const error = unwrapCause(error_);
+            const error = unwrap(error_);
             this.logger.warn(`Unable to save system config due to a validation error: ${error}`);
             return Effect.fail(new BadRequestException(error instanceof Error ? error.message : (error as string)));
           }),

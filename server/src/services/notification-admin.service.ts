@@ -3,16 +3,13 @@ import { Effect } from 'effect';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { SystemConfigSmtpDto } from 'src/dtos/config.dto.js';
 import { NotificationCreateDto, mapNotification } from 'src/dtos/notification.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { NotificationLevel, NotificationType } from 'src/enum.js';
 import { EmailTemplate } from 'src/repositories/email.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { getExternalDomain } from 'src/utils/misc.js';
 
 /** The original thrown value behind an Effect error that wraps it in `cause` (see `src/effect/errors.ts`). */
-const unwrapCause = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class NotificationAdminService extends BaseService {
   async create(auth: AuthDto, dto: NotificationCreateDto) {
@@ -44,9 +41,7 @@ export class NotificationAdminService extends BaseService {
           .verifySmtp(dto.transport)
           .pipe(
             Effect.catch((error) =>
-              Effect.fail(
-                new BadRequestException('Failed to verify SMTP configuration', { cause: unwrapCause(error) }),
-              ),
+              Effect.fail(new BadRequestException('Failed to verify SMTP configuration', { cause: unwrap(error) })),
             ),
           );
 

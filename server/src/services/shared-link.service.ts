@@ -13,16 +13,13 @@ import {
   SharedLinkSearchDto,
   mapSharedLink,
 } from 'src/dtos/shared-link.dto.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { Permission, SharedLinkType } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { asDateTimeString } from 'src/utils/date.js';
 import { OpenGraphTags, getExternalDomain } from 'src/utils/misc.js';
 
 /** The original thrown value behind a wrapped repository error (see `runPromise`). */
-const unwrapError = (error: unknown) =>
-  typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-
 @Injectable()
 export class SharedLinkService extends BaseService {
   async getAll(auth: AuthDto, { id, albumId }: SharedLinkSearchDto): Promise<SharedLinkResponseDto[]> {
@@ -134,7 +131,7 @@ export class SharedLinkService extends BaseService {
   }
 
   private handleError(error: unknown) {
-    const original = unwrapError(error);
+    const original = unwrap(error);
     if ((original as PostgresError).constraint_name === 'shared_link_slug_uq') {
       this.logger.debug('Shared link with this slug already exists');
       return Effect.fail(new BadRequestException('Failed to save shared link'));
