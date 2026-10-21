@@ -168,47 +168,7 @@ const versionHistoryFactory = () => ({
   version: '1.123.45',
 });
 
-const assetOcrFactory = (
-  ocr: {
-    id?: string;
-    updateId?: string;
-    assetId?: string;
-    x1?: number;
-    y1?: number;
-    x2?: number;
-    y2?: number;
-    x3?: number;
-    y3?: number;
-    x4?: number;
-    y4?: number;
-    boxScore?: number;
-    textScore?: number;
-    text?: string;
-    isVisible?: boolean;
-    updatedAt?: Date;
-  } = {},
-) => ({
-  id: newUuid(),
-  updateId: newUuidV7(),
-  updatedAt: newDate(),
-  assetId: newUuid(),
-  x1: 0.1,
-  y1: 0.2,
-  x2: 0.3,
-  y2: 0.2,
-  x3: 0.3,
-  y3: 0.4,
-  x4: 0.1,
-  y4: 0.4,
-  boxScore: 0.95,
-  textScore: 0.92,
-  text: 'Sample Text',
-  isVisible: true,
-  ...ocr,
-});
-
 export const factory = {
-  assetOcr: assetOcrFactory,
   auth: authFactory,
   library: libraryFactory,
   queueStatistics: queueStatisticsFactory,

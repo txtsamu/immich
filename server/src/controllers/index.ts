@@ -7,14 +7,11 @@ import { AssetMediaController } from 'src/controllers/asset-media.controller.js'
 import { AssetController } from 'src/controllers/asset.controller.js';
 import { AuthAdminController } from 'src/controllers/auth-admin.controller.js';
 import { AuthController } from 'src/controllers/auth.controller.js';
-import { ClusterGroupController } from 'src/controllers/cluster-group.controller.js';
 import { ConfigAdminController } from 'src/controllers/config-admin.controller.js';
 import { ConfigPublicController } from 'src/controllers/config-public.controller.js';
 import { ConfigUserController } from 'src/controllers/config-user.controller.js';
 import { DatabaseBackupController } from 'src/controllers/database-backup.controller.js';
 import { DownloadController } from 'src/controllers/download.controller.js';
-import { DuplicateController } from 'src/controllers/duplicate.controller.js';
-import { FaceController } from 'src/controllers/face.controller.js';
 import { IntegrityAdminController } from 'src/controllers/integrity-admin.controller.js';
 import { JobController } from 'src/controllers/job.controller.js';
 import { LibraryController } from 'src/controllers/library.controller.js';
@@ -26,7 +23,6 @@ import { NotificationController } from 'src/controllers/notification.controller.
 import { OAuthController } from 'src/controllers/oauth.controller.js';
 import { PartnerController } from 'src/controllers/partner.controller.js';
 import { PasskeyController } from 'src/controllers/passkey.controller.js';
-import { PersonController } from 'src/controllers/person.controller.js';
 import { PluginController } from 'src/controllers/plugin.controller.js';
 import { QueueController } from 'src/controllers/queue.controller.js';
 import { SearchController } from 'src/controllers/search.controller.js';
@@ -56,14 +52,11 @@ export const controllers = [
   AssetMediaController,
   AuthController,
   AuthAdminController,
-  ClusterGroupController,
   ConfigUserController,
   ConfigAdminController,
   ConfigPublicController,
   DatabaseBackupController,
   DownloadController,
-  DuplicateController,
-  FaceController,
   IntegrityAdminController,
   JobController,
   LibraryController,
@@ -75,7 +68,6 @@ export const controllers = [
   OAuthController,
   PartnerController,
   PasskeyController,
-  PersonController,
   PluginController,
   QueueController,
   SearchController,

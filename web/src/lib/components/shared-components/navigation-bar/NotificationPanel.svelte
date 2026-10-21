@@ -2,8 +2,6 @@
   import { goto } from '$app/navigation';
   import { focusTrap } from '$lib/actions/focus-trap';
   import NotificationItem from '$lib/components/shared-components/navigation-bar/NotificationItem.svelte';
-  import { OpenQueryParam } from '$lib/constants';
-  import { Route } from '$lib/route';
   import { notificationManager } from '$lib/stores/notification-manager.svelte';
   import { handleError } from '$lib/utils/handle-error';
   import { NotificationType, type NotificationDto } from '@immich/sdk';
@@ -49,11 +47,6 @@
           await goto(`/albums/${data.albumId}`);
         }
 
-        break;
-      }
-
-      case NotificationType.ClusterGroupRequest: {
-        await goto(Route.userSettings({ isOpen: OpenQueryParam.SHARING }));
         break;
       }
 

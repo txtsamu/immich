@@ -77,7 +77,6 @@ export function generateAsset(
     livePhotoVideoId: null,
     city: hasGPS ? faker.location.city() : null,
     country: hasGPS ? faker.location.country() : null,
-    people: null,
     latitude: hasGPS ? faker.location.latitude() : null,
     longitude: hasGPS ? faker.location.longitude() : null,
     visibility: AssetVisibility.Timeline,

@@ -27,7 +27,6 @@ import {
   AssetEditsCreateDto,
   AssetEditsResponseDto,
 } from 'src/dtos/editing.dto.js';
-import { AssetOcrResponseDto } from 'src/dtos/ocr.dto.js';
 import {
   AssetFileType,
   AssetStatus,
@@ -51,7 +50,6 @@ import {
 import { updateLockedColumns } from 'src/utils/database.js';
 import { extractTimeZone } from 'src/utils/date.js';
 import { batched, findOrFail } from 'src/utils/misc.js';
-import { transformOcrBoundingBox } from 'src/utils/transform.js';
 
 @Injectable()
 export class AssetService extends BaseService {
@@ -70,7 +68,6 @@ export class AssetService extends BaseService {
     const asset = await this.assetRepository.getById(id, {
       exifInfo: true,
       owner: true,
-      faces: { person: true, viewingUserId: auth.user.id },
       stack: { assets: true },
       edits: true,
       tags: true,
@@ -132,13 +129,12 @@ export class AssetService extends BaseService {
       longitude,
       rating,
       description,
-      duplicateId,
       dateTimeRelative,
       timeZone,
     } = dto;
     await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids });
 
-    const assetDto = omitBy({ isFavorite, visibility, duplicateId }, isUndefined);
+    const assetDto = omitBy({ isFavorite, visibility }, isUndefined);
     const exifDto = omitBy(
       {
         latitude,
@@ -389,24 +385,6 @@ export class AssetService extends BaseService {
     return this.assetRepository.getMetadata(id);
   }
 
-  async getOcr(auth: AuthDto, id: string): Promise<AssetOcrResponseDto[]> {
-    await this.requireAccess({ auth, permission: Permission.AssetRead, ids: [id] });
-    const ocr = await this.ocrRepository.getByAssetId(id);
-    const asset = await this.assetRepository.getForOcr(id);
-
-    if (!asset) {
-      throw new BadRequestException('Asset not found');
-    }
-
-    const dimensions = getDimensions({
-      exifImageHeight: asset.exifImageHeight,
-      exifImageWidth: asset.exifImageWidth,
-      orientation: asset.orientation,
-    });
-
-    return ocr.map((item) => transformOcrBoundingBox(item, asset.edits, dimensions));
-  }
-
   async upsertBulkMetadata(auth: AuthDto, dto: AssetMetadataBulkUpsertDto): Promise<AssetMetadataBulkResponseDto[]> {
     await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: dto.items.map((item) => item.assetId) });
 
@@ -465,11 +443,6 @@ export class AssetService extends BaseService {
 
     for (const id of dto.assetIds) {
       switch (dto.name) {
-        case AssetJobName.REFRESH_FACES: {
-          jobs.push({ name: JobName.AssetDetectFaces, data: { id } });
-          break;
-        }
-
         case AssetJobName.REFRESH_METADATA: {
           jobs.push({ name: JobName.AssetExtractMetadata, data: { id } });
           break;

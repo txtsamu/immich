@@ -63,12 +63,9 @@ export type SearchLocationFilter = {
 
 export type SearchFilter = {
   query: string;
-  ocr?: string;
-  queryType: 'smart' | 'metadata' | 'description' | 'fullPath' | 'ocr';
-  personIds: SvelteSet<string>;
+  queryType: 'metadata' | 'description' | 'fullPath';
   tagIds: SvelteSet<string> | null;
   location: SearchLocationFilter;
-  queryAssetId?: string;
   camera: SearchCameraFilter;
   date: SearchDateFilter;
   display: SearchDisplayFilters;

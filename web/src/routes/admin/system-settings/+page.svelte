@@ -6,9 +6,7 @@
   import JobSettings from './JobSettings.svelte';
   import LibrarySettings from './LibrarySettings.svelte';
   import LoggingSettings from './LoggingSettings.svelte';
-  import MachineLearningSettings from './MachineLearningSettings.svelte';
   import MapSettings from './MapSettings.svelte';
-  import MetadataSettings from './MetadataSettings.svelte';
   import NewVersionCheckSettings from './NewVersionCheckSettings.svelte';
   import NightlyTasksSettings from './NightlyTasksSettings.svelte';
   import NotificationSettings from './NotificationSettings.svelte';
@@ -31,7 +29,6 @@
     mdiBellOutline,
     mdiBookshelf,
     mdiClockOutline,
-    mdiDatabaseOutline,
     mdiFileCheckOutline,
     mdiFileDocumentOutline,
     mdiFolderOutline,
@@ -39,7 +36,6 @@
     mdiLockOutline,
     mdiMapMarkerOutline,
     mdiPaletteOutline,
-    mdiRobotOutline,
     mdiServerOutline,
     mdiSync,
     mdiTrashCanOutline,
@@ -116,25 +112,11 @@
       icon: mdiFileDocumentOutline,
     },
     {
-      component: MachineLearningSettings,
-      title: $t('admin.machine_learning_settings'),
-      subtitle: $t('admin.machine_learning_settings_description'),
-      key: 'machine-learning',
-      icon: mdiRobotOutline,
-    },
-    {
       component: MapSettings,
       title: $t('admin.map_gps_settings'),
       subtitle: $t('admin.map_gps_settings_description'),
       key: 'location',
       icon: mdiMapMarkerOutline,
-    },
-    {
-      component: MetadataSettings,
-      title: $t('admin.metadata_settings'),
-      subtitle: $t('admin.metadata_settings_description'),
-      key: 'metadata',
-      icon: mdiDatabaseOutline,
     },
     {
       component: NightlyTasksSettings,

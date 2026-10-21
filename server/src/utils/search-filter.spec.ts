@@ -79,9 +79,9 @@ describe(collectFilterIds.name, () => {
 
   it('should only collect ids of the requested field', () => {
     const albumId = '00000000-0000-4000-8000-00000000000a';
-    const personId = '00000000-0000-4000-8000-00000000000b';
-    const filter = { albumIds: { any: [albumId] }, personIds: { any: [personId] } };
-    expect(collectFilterIds(filter, 'personIds')).toEqual([personId]);
+    const tagId = '00000000-0000-4000-8000-00000000000b';
+    const filter = { albumIds: { any: [albumId] }, tagIds: { any: [tagId] } };
+    expect(collectFilterIds(filter, 'tagIds')).toEqual([tagId]);
   });
 });
 

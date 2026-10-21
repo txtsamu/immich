@@ -5,7 +5,6 @@
   import { Icon, modalManager, Text } from '@immich/ui';
   import {
     mdiCellphoneArrowDownVariant,
-    mdiContentDuplicate,
     mdiCrosshairsGps,
     mdiImageSizeSelectLarge,
     mdiLinkEdit,
@@ -14,7 +13,6 @@
   import { t } from 'svelte-i18n';
 
   const links = [
-    { href: Route.duplicatesUtility(), icon: mdiContentDuplicate, label: $t('review_duplicates') },
     { href: Route.largeFileUtility(), icon: mdiImageSizeSelectLarge, label: $t('review_large_files') },
     { href: Route.geolocationUtility(), icon: mdiCrosshairsGps, label: $t('manage_geolocation') },
     { href: Route.workflows(), icon: mdiStateMachine, label: $t('workflows') },

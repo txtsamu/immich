@@ -19,8 +19,6 @@ services:
       - ../packages/plugin-core:/build/plugins/immich-plugin-core
   immich-web:
     env_file: !reset []
-  immich-machine-learning:
-    env_file: !reset []
   database:
     env_file: !reset []
     environment: !override

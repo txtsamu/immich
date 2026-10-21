@@ -44,7 +44,7 @@ services:
 
 ## Jobs
 
-When a new asset is uploaded it kicks off a series of jobs, which include metadata extraction, thumbnail generation, machine learning tasks, and storage template migration, if enabled. To view the status of a job navigate to the Administration -> Jobs page.
+When a new asset is uploaded it kicks off a series of jobs, which include metadata extraction, thumbnail generation, and storage template migration, if enabled. To view the status of a job navigate to the Administration -> Jobs page.
 
 <img src={require('./img/admin-jobs.webp').default} width="60%" title="Admin jobs" />
 
@@ -64,11 +64,6 @@ The below diagram shows the job run order for newly uploaded files
 graph TD
     A[Asset Upload] --> B[Metadata Extraction]
     B --> C[Storage Template Migration]
-    C --> D["Thumbnail Generation (Large, small, blurred and person)"]
-    D --> E[Smart Search]
-    D --> F[Face Detection]
-    D --> G[OCR]
+    C --> D["Thumbnail Generation (Large, small and blurred)"]
     D --> H[Video Transcoding]
-    E --> I[Duplicate Detection]
-    F --> J[Facial Recognition]
 ```

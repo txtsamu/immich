@@ -14,7 +14,7 @@
   import { handleErrorAsync } from '$lib/utils/handle-error';
   import { navigate } from '$lib/utils/navigation';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
-  import { type AlbumResponseDto, type AssetResponseDto, type PersonResponseDto, getAssetInfo } from '@immich/sdk';
+  import { type AlbumResponseDto, type AssetResponseDto, getAssetInfo } from '@immich/sdk';
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
 
@@ -24,7 +24,6 @@
     withStacked?: boolean;
     isShared?: boolean;
     album?: AlbumResponseDto;
-    person?: PersonResponseDto;
     removeAction?: AssetAction.UNARCHIVE | AssetAction.ARCHIVE | AssetAction.SET_VISIBILITY_TIMELINE | null;
   }
 
@@ -36,7 +35,6 @@
     withStacked = false,
     isShared = false,
     album,
-    person,
   }: Props = $props();
 
   const getAsset = (id: string) => {
@@ -191,7 +189,6 @@
     cursor={assetCursor}
     {isShared}
     {album}
-    {person}
     onAssetChange={(asset) => {
       timelineManager?.upsertAssets([toTimelineAsset(asset)]);
     }}

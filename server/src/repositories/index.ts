@@ -9,20 +9,17 @@ import { AssetFileRepository } from 'src/repositories/asset-file.repository.js';
 import { AssetJobRepository } from 'src/repositories/asset-job.repository.js';
 import { AssetRepository } from 'src/repositories/asset.repository.js';
 import { AuthChallengeRepository } from 'src/repositories/auth-challenge.repository.js';
-import { ClusterGroupRepository } from 'src/repositories/cluster-group.repository.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { CronRepository } from 'src/repositories/cron.repository.js';
 import { CryptoRepository } from 'src/repositories/crypto.repository.js';
 import { DatabaseRepository } from 'src/repositories/database.repository.js';
 import { DownloadRepository } from 'src/repositories/download.repository.js';
-import { DuplicateRepository } from 'src/repositories/duplicate.repository.js';
 import { EmailRepository } from 'src/repositories/email.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
 import { IntegrityRepository } from 'src/repositories/integrity.repository.js';
 import { JobRepository } from 'src/repositories/job.repository.js';
 import { LibraryRepository } from 'src/repositories/library.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
-import { MachineLearningRepository } from 'src/repositories/machine-learning.repository.js';
 import { MapRepository } from 'src/repositories/map.repository.js';
 import { MediaRepository } from 'src/repositories/media.repository.js';
 import { MemoryRepository } from 'src/repositories/memory.repository.js';
@@ -30,11 +27,8 @@ import { MetadataRepository } from 'src/repositories/metadata.repository.js';
 import { MoveRepository } from 'src/repositories/move.repository.js';
 import { NotificationRepository } from 'src/repositories/notification.repository.js';
 import { OAuthRepository } from 'src/repositories/oauth.repository.js';
-import { OcrRepository } from 'src/repositories/ocr.repository.js';
 import { PartnerRepository } from 'src/repositories/partner.repository.js';
 import { PasskeyRepository } from 'src/repositories/passkey.repository.js';
-import { PersonUserRepository } from 'src/repositories/person-user.repository.js';
-import { PersonRepository } from 'src/repositories/person.repository.js';
 import { PluginRepository } from 'src/repositories/plugin.repository.js';
 import { ProcessRepository } from 'src/repositories/process.repository.js';
 import { SearchRepository } from 'src/repositories/search.repository.js';
@@ -75,14 +69,12 @@ export const repositories = [
   CryptoRepository,
   DatabaseRepository,
   DownloadRepository,
-  DuplicateRepository,
   EmailRepository,
   EventRepository,
   IntegrityRepository,
   JobRepository,
   LibraryRepository,
   LoggingRepository,
-  MachineLearningRepository,
   MapRepository,
   MediaRepository,
   MemoryRepository,
@@ -90,12 +82,8 @@ export const repositories = [
   MoveRepository,
   NotificationRepository,
   OAuthRepository,
-  OcrRepository,
-  ClusterGroupRepository,
   PartnerRepository,
   PasskeyRepository,
-  PersonRepository,
-  PersonUserRepository,
   PluginRepository,
   ProcessRepository,
   SearchRepository,

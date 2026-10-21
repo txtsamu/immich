@@ -12,7 +12,7 @@ export class TimelineService extends BaseService {
   async getTimeBuckets(auth: AuthDto, dto: TimeBucketDto): Promise<TimeBucketsResponseDto[]> {
     await this.timeBucketChecks(auth, dto);
     const timeBucketOptions = await this.buildTimeBucketOptions(auth, dto);
-    return await this.assetRepository.getTimeBuckets(timeBucketOptions, auth);
+    return await this.assetRepository.getTimeBuckets(timeBucketOptions);
   }
 
   // pre-jsonified response
@@ -35,7 +35,7 @@ export class TimelineService extends BaseService {
         const partnerIds = await getMyPartnerIds({
           userId: auth.user.id,
           repository: this.partnerRepository,
-          timelineEnabled: !options.personId || undefined,
+          timelineEnabled: true,
         });
         userIds.push(...partnerIds);
       }

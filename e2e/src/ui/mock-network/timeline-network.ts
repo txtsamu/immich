@@ -12,7 +12,7 @@ import {
   TimelineData,
 } from 'src/ui/generators/timeline';
 import { sleep } from 'src/ui/specs/timeline/utils.js';
-import { MINIMAL_MP4_BUFFER } from './face-editor-network';
+import { MINIMAL_MP4_BUFFER } from './minimal-mp4';
 
 export class TimelineTestContext {
   slowBucket = false;
@@ -93,10 +93,6 @@ export const setupTimelineMockApiRoutes = async (
       });
     }
     await route.fallback();
-  });
-
-  await context.route('**/api/assets/*/ocr', async (route) => {
-    return route.fulfill({ status: 200, contentType: 'application/json', json: [] });
   });
 
   await context.route('**/api/assets/*/thumbnail?size=*', async (route, request) => {

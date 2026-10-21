@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { serverConfigManager } from '$lib/managers/server-config-manager.svelte';
   import SettingAccordion from '$lib/components/shared-components/settings/SettingAccordion.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { handleError } from '$lib/utils/handle-error';
-  import { AssetOrder, PersonUpdateStrategy, updateMyPreferences } from '@immich/sdk';
+  import { AssetOrder, updateMyPreferences } from '@immich/sdk';
   import { Button, Field, NumberInput, Select, Switch, toastManager } from '@immich/ui';
   import { t } from 'svelte-i18n';
   import { fade } from 'svelte/transition';
@@ -19,12 +18,6 @@
   let memoriesEnabled = $state(authManager.preferences.memories?.enabled ?? true);
   let memoriesDuration = $state(authManager.preferences.memories?.duration ?? 5);
   let memoriesSidebar = $state(authManager.preferences.memories?.sidebarWeb ?? false);
-
-  // People
-  let peopleEnabled = $state(authManager.preferences.people?.enabled ?? false);
-  let peopleSidebar = $state(authManager.preferences.people?.sidebarWeb ?? false);
-  let peopleMinFaces = $state(authManager.preferences.people?.minimumFaces ?? serverConfigManager.value.minFaces);
-  let peopleUpdateStrategy = $state(authManager.preferences.people?.updateStrategy ?? PersonUpdateStrategy.Everyone);
 
   // Ratings
   let ratingsEnabled = $state(authManager.preferences.ratings?.enabled ?? false);
@@ -50,12 +43,6 @@
           albums: { defaultAssetOrder },
           folders: { enabled: foldersEnabled, sidebarWeb: foldersSidebar },
           memories: { enabled: memoriesEnabled, duration: memoriesDuration, sidebarWeb: memoriesSidebar },
-          people: {
-            enabled: peopleEnabled,
-            sidebarWeb: peopleSidebar,
-            minimumFaces: peopleMinFaces,
-            updateStrategy: peopleUpdateStrategy,
-          },
           ratings: { enabled: ratingsEnabled },
           sharedLinks: { enabled: sharedLinksEnabled, sidebarWeb: sharedLinkSidebar },
           tags: { enabled: tagsEnabled, sidebarWeb: tagsSidebar },
@@ -123,32 +110,6 @@
             <Field label={$t('duration')} description={$t('time_based_memories_duration')}>
               <NumberInput bind:value={memoriesDuration} />
             </Field>
-          </div>
-        </SettingAccordion>
-
-        <SettingAccordion key="people" title={$t('people')} subtitle={$t('people_feature_description')}>
-          <div class="mt-4 flex flex-col gap-4 sm:ms-4">
-            <Field label={$t('enable')}>
-              <Switch bind:checked={peopleEnabled} />
-            </Field>
-
-            {#if peopleEnabled}
-              <Field label={$t('sidebar')} description={$t('sidebar_display_description')}>
-                <Switch bind:checked={peopleSidebar} />
-              </Field>
-              <Field label={$t('minFaces')} description={$t('minFaces_description')}>
-                <NumberInput bind:value={peopleMinFaces} />
-              </Field>
-              <Field label={$t('person_update_strategy')} description={$t('person_update_strategy_description')}>
-                <Select
-                  options={[
-                    { label: $t('person_update_strategy_everyone'), value: PersonUpdateStrategy.Everyone },
-                    { label: $t('person_update_strategy_self'), value: PersonUpdateStrategy.Self },
-                  ]}
-                  bind:value={peopleUpdateStrategy}
-                />
-              </Field>
-            {/if}
           </div>
         </SettingAccordion>
 

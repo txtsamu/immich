@@ -182,31 +182,6 @@ select
     from
       (
         select
-          "asset_face".*,
-          "person" as "person"
-        from
-          "asset_face"
-          left join lateral (
-            select
-              "person".*
-            from
-              "person"
-            where
-              "person"."personGroupId" = "asset_face"."personGroupId"
-              and "person"."ownerId" = "asset"."ownerId"
-          ) as "person" on true
-        where
-          "asset_face"."assetId" = "asset"."id"
-          and "asset_face"."deletedAt" is null
-          and "asset_face"."isVisible" is true
-      ) as agg
-  ) as "faces",
-  (
-    select
-      coalesce(json_agg(agg), '[]')
-    from
-      (
-        select
           "tag"."id",
           "tag"."value",
           "tag"."createdAt",
@@ -613,31 +588,6 @@ where
   "asset"."id" = $1
   and "asset"."type" = $2
 
--- AssetRepository.getForOcr
-select
-  (
-    select
-      coalesce(json_agg(agg), '[]')
-    from
-      (
-        select
-          "asset_edit"."action",
-          "asset_edit"."parameters"
-        from
-          "asset_edit"
-        where
-          "asset_edit"."assetId" = "asset"."id"
-      ) as agg
-  ) as "edits",
-  "asset_exif"."exifImageWidth",
-  "asset_exif"."exifImageHeight",
-  "asset_exif"."orientation"
-from
-  "asset"
-  inner join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
-where
-  "asset"."id" = $1
-
 -- AssetRepository.getForEdit
 select
   "asset"."type",
@@ -661,31 +611,6 @@ from
   "asset_exif"
 where
   "asset_exif"."assetId" = $1
-
--- AssetRepository.getForFaces
-select
-  "asset_exif"."exifImageHeight",
-  "asset_exif"."exifImageWidth",
-  "asset_exif"."orientation",
-  (
-    select
-      coalesce(json_agg(agg), '[]')
-    from
-      (
-        select
-          "asset_edit"."action",
-          "asset_edit"."parameters"
-        from
-          "asset_edit"
-        where
-          "asset_edit"."assetId" = "asset"."id"
-      ) as agg
-  ) as "edits"
-from
-  "asset"
-  inner join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
-where
-  "asset"."id" = $1
 
 -- AssetRepository.getForUpdateTags
 select

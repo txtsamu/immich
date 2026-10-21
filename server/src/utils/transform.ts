@@ -1,7 +1,6 @@
 import { Matrix, applyToPoint, compose, flipX, flipY, identity, rotate, scale, translate } from 'transformation-matrix';
 import type { ImageDimensions } from 'src/types.js';
 import { AssetEditAction, AssetEditActionItem } from 'src/dtos/editing.dto.js';
-import { AssetOcrResponseDto } from 'src/dtos/ocr.dto.js';
 
 export const getOutputDimensions = (
   edits: AssetEditActionItem[],
@@ -147,99 +146,5 @@ export const transformPoints = (
     points: transformedPoints,
     currentWidth,
     currentHeight,
-  };
-};
-
-type FaceBoundingBox = {
-  boundingBoxX1: number;
-  boundingBoxX2: number;
-  boundingBoxY1: number;
-  boundingBoxY2: number;
-  imageWidth: number;
-  imageHeight: number;
-};
-
-export const transformFaceBoundingBox = (
-  box: FaceBoundingBox,
-  edits: AssetEditActionItem[],
-  imageDimensions: ImageDimensions,
-): FaceBoundingBox => {
-  if (edits.length === 0) {
-    return box;
-  }
-
-  const scaleX = imageDimensions.width / box.imageWidth;
-  const scaleY = imageDimensions.height / box.imageHeight;
-
-  const points: Point[] = [
-    { x: box.boundingBoxX1 * scaleX, y: box.boundingBoxY1 * scaleY },
-    { x: box.boundingBoxX2 * scaleX, y: box.boundingBoxY2 * scaleY },
-  ];
-
-  const { points: transformedPoints, currentWidth, currentHeight } = transformPoints(points, edits, imageDimensions);
-
-  // Ensure x1,y1 is top-left and x2,y2 is bottom-right
-  const [p1, p2] = transformedPoints;
-  return {
-    boundingBoxX1: Math.trunc(Math.min(p1.x, p2.x)),
-    boundingBoxY1: Math.trunc(Math.min(p1.y, p2.y)),
-    boundingBoxX2: Math.trunc(Math.max(p1.x, p2.x)),
-    boundingBoxY2: Math.trunc(Math.max(p1.y, p2.y)),
-    imageWidth: currentWidth,
-    imageHeight: currentHeight,
-  };
-};
-
-const reorderQuadPointsForRotation = (points: Point[], rotationDegrees: number): Point[] => {
-  const [p1, p2, p3, p4] = points;
-  switch (rotationDegrees) {
-    case 90: {
-      return [p4, p1, p2, p3];
-    }
-    case 180: {
-      return [p3, p4, p1, p2];
-    }
-    case 270: {
-      return [p2, p3, p4, p1];
-    }
-    default: {
-      return points;
-    }
-  }
-};
-
-export const transformOcrBoundingBox = (
-  box: AssetOcrResponseDto,
-  edits: AssetEditActionItem[],
-  imageDimensions: ImageDimensions,
-): AssetOcrResponseDto => {
-  if (edits.length === 0) {
-    return box;
-  }
-
-  const points: Point[] = [
-    { x: box.x1 * imageDimensions.width, y: box.y1 * imageDimensions.height },
-    { x: box.x2 * imageDimensions.width, y: box.y2 * imageDimensions.height },
-    { x: box.x3 * imageDimensions.width, y: box.y3 * imageDimensions.height },
-    { x: box.x4 * imageDimensions.width, y: box.y4 * imageDimensions.height },
-  ];
-
-  const { points: transformedPoints, currentWidth, currentHeight } = transformPoints(points, edits, imageDimensions);
-
-  // Reorder points to maintain semantic ordering (topLeft, topRight, bottomRight, bottomLeft)
-  const netRotation = edits.find((e) => e.action === AssetEditAction.Rotate)?.parameters.angle ?? 0 % 360;
-  const reorderedPoints = reorderQuadPointsForRotation(transformedPoints, netRotation);
-
-  const [p1, p2, p3, p4] = reorderedPoints;
-  return {
-    ...box,
-    x1: p1.x / currentWidth,
-    y1: p1.y / currentHeight,
-    x2: p2.x / currentWidth,
-    y2: p2.y / currentHeight,
-    x3: p3.x / currentWidth,
-    y3: p3.y / currentHeight,
-    x4: p4.x / currentWidth,
-    y4: p4.y / currentHeight,
   };
 };

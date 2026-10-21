@@ -19,7 +19,6 @@ import {
   UpdateAssetDto,
 } from 'src/dtos/asset.dto.js';
 import { AssetEditsCreateDto, AssetEditsResponseDto } from 'src/dtos/editing.dto.js';
-import { AssetOcrResponseDto } from 'src/dtos/ocr.dto.js';
 import { ApiTag, Permission, RouteKey } from 'src/enum.js';
 import { Auth, Authenticated } from 'src/middleware/auth.guard.js';
 import { AssetService } from 'src/services/asset.service.js';
@@ -169,17 +168,6 @@ export class AssetController {
   })
   getAssetMetadata(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<AssetMetadataResponseDto[]> {
     return this.service.getMetadata(auth, id);
-  }
-
-  @Get(':id/ocr')
-  @Authenticated({ permission: Permission.AssetRead })
-  @Endpoint({
-    summary: 'Retrieve asset OCR data',
-    description: 'Retrieve all OCR (Optical Character Recognition) data associated with the specified asset.',
-    history: new HistoryBuilder().added('v1').beta('v1').stable('v2'),
-  })
-  getAssetOcr(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<AssetOcrResponseDto[]> {
-    return this.service.getOcr(auth, id);
   }
 
   @Put(':id/metadata')

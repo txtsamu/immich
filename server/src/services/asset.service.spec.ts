@@ -17,7 +17,7 @@ import { AssetFactory } from 'test/factories/asset.factory.js';
 import { AuthFactory } from 'test/factories/auth.factory.js';
 import { authStub } from 'test/fixtures/auth.stub.js';
 import { getForAsset, getForAssetDeletion } from 'test/mappers.js';
-import { factory, newUuid } from 'test/small.factory.js';
+import { newUuid } from 'test/small.factory.js';
 import { ServiceMocks, makeStream, newTestService } from 'test/utils.js';
 
 const stats: AssetStats = {
@@ -93,16 +93,13 @@ describe(AssetService.name, () => {
     });
 
     it('should allow shared link access', async () => {
-      const asset = AssetFactory.from()
-        .owner()
-        .face({}, (face) => face.person())
-        .build();
+      const asset = AssetFactory.from().owner().build();
       mocks.access.asset.checkSharedLinkAccess.mockResolvedValue(new Set([asset.id]));
       mocks.asset.getById.mockResolvedValue(getForAsset(asset));
 
       const result = await sut.get(authStub.adminSharedLink, asset.id);
 
-      expect(result).toMatchObject({ id: asset.id, hasMetadata: true, people: [], owner: undefined });
+      expect(result).toMatchObject({ id: asset.id, hasMetadata: true, owner: undefined });
       expect(mocks.access.asset.checkSharedLinkAccess).toHaveBeenCalledWith(
         authStub.adminSharedLink.sharedLink?.id,
         new Set([asset.id]),
@@ -420,7 +417,6 @@ describe(AssetService.name, () => {
         latitude: 0,
         longitude: 0,
         isFavorite: undefined,
-        duplicateId: undefined,
         rating: undefined,
       });
       expect(mocks.asset.updateAll).not.toHaveBeenCalled();
@@ -435,7 +431,6 @@ describe(AssetService.name, () => {
         longitude: 0,
         visibility: AssetVisibility.Archive,
         isFavorite: false,
-        duplicateId: undefined,
         rating: undefined,
       });
       expect(mocks.asset.updateAll).toHaveBeenCalled();
@@ -452,7 +447,6 @@ describe(AssetService.name, () => {
         longitude: 50,
         dateTimeOriginal,
         isFavorite: false,
-        duplicateId: undefined,
         rating: undefined,
       });
       expect(mocks.asset.updateAll).toHaveBeenCalled();
@@ -462,20 +456,6 @@ describe(AssetService.name, () => {
         longitude: 50,
       });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: 'asset-1' } }]);
-    });
-
-    it('should update Assets table if duplicateId is provided as null', async () => {
-      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
-
-      await sut.updateAll(authStub.admin, {
-        ids: ['asset-1'],
-        latitude: 0,
-        longitude: 0,
-        isFavorite: undefined,
-        duplicateId: null,
-        rating: undefined,
-      });
-      expect(mocks.asset.updateAll).toHaveBeenCalled();
     });
 
     it('should update exif table if dateTimeRelative and timeZone field is provided', async () => {
@@ -678,54 +658,7 @@ describe(AssetService.name, () => {
     });
   });
 
-  describe('getOcr', () => {
-    it('should require asset read permission', async () => {
-      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set());
-
-      await expect(sut.getOcr(authStub.admin, 'asset-1')).rejects.toBeInstanceOf(BadRequestException);
-
-      expect(mocks.ocr.getByAssetId).not.toHaveBeenCalled();
-    });
-
-    it('should return OCR data for an asset', async () => {
-      const ocr1 = factory.assetOcr({ text: 'Hello World' });
-      const ocr2 = factory.assetOcr({ text: 'Test Image' });
-      const asset = AssetFactory.from().exif().build();
-
-      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
-      mocks.ocr.getByAssetId.mockResolvedValue([ocr1, ocr2]);
-      mocks.asset.getForOcr.mockResolvedValue({ edits: [], ...asset.exifInfo });
-
-      await expect(sut.getOcr(authStub.admin, asset.id)).resolves.toEqual([ocr1, ocr2]);
-
-      expect(mocks.access.asset.checkOwnerAccess).toHaveBeenCalledWith(
-        authStub.admin.user.id,
-        new Set([asset.id]),
-        undefined,
-      );
-      expect(mocks.ocr.getByAssetId).toHaveBeenCalledWith(asset.id);
-    });
-
-    it('should return empty array when no OCR data exists', async () => {
-      const asset = AssetFactory.from().exif().build();
-      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
-      mocks.ocr.getByAssetId.mockResolvedValue([]);
-      mocks.asset.getForOcr.mockResolvedValue({ edits: [], ...asset.exifInfo });
-      await expect(sut.getOcr(authStub.admin, asset.id)).resolves.toEqual([]);
-
-      expect(mocks.ocr.getByAssetId).toHaveBeenCalledWith(asset.id);
-    });
-  });
-
   describe('run', () => {
-    it('should run the refresh faces job', async () => {
-      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
-
-      await sut.run(authStub.admin, { assetIds: ['asset-1'], name: AssetJobName.REFRESH_FACES });
-
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.AssetDetectFaces, data: { id: 'asset-1' } }]);
-    });
-
     it('should run the refresh metadata job', async () => {
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
 

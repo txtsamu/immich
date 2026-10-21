@@ -1,4 +1,3 @@
-import { execSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,12 +49,6 @@ export const handleRelease = ({ type }: ReleaseOptions) => {
   for (const file of [Files.PackageJson.Root, ...Files.PackageJson.Rest]) {
     pump(file, /^  "version": ".*"/m, `  "version": "${newVersionRaw}"`);
   }
-
-  // machine-learning
-  execSync(`mise exec -- uv version ${newVersionRaw}`, {
-    cwd: join(root, 'machine-learning'),
-    stdio: 'inherit',
-  });
 
   // mobile
   pump(

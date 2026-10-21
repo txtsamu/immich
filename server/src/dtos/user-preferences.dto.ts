@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import z from 'zod';
 import type { UserPreferences } from 'src/types.js';
-import { AssetOrderSchema, PersonUpdateStrategySchema, UserAvatarColorSchema } from 'src/enum.js';
+import { AssetOrderSchema, UserAvatarColorSchema } from 'src/enum.js';
 
 const AlbumsUpdateSchema = z
   .object({
@@ -41,16 +41,6 @@ const FoldersUpdateSchema = z
   })
   .optional()
   .meta({ id: 'FoldersUpdate' });
-
-const PeopleUpdateSchema = z
-  .object({
-    enabled: z.boolean().optional().describe('Whether people are enabled'),
-    sidebarWeb: z.boolean().optional().describe('Whether people appear in web sidebar'),
-    minimumFaces: z.int().min(1).optional().describe('People face threshold'),
-    updateStrategy: PersonUpdateStrategySchema.optional(),
-  })
-  .optional()
-  .meta({ id: 'PeopleUpdate' });
 
 const SharedLinksUpdateSchema = z
   .object({
@@ -116,7 +106,6 @@ const UserPreferencesUpdateSchema = z
     emailNotifications: EmailNotificationsUpdateSchema,
     folders: FoldersUpdateSchema,
     memories: MemoriesUpdateSchema,
-    people: PeopleUpdateSchema,
     purchase: PurchaseUpdateSchema,
     ratings: RatingsUpdateSchema,
     sharedLinks: SharedLinksUpdateSchema,
@@ -145,15 +134,6 @@ const MemoriesResponseSchema = z
     sidebarWeb: z.boolean().describe('Whether memories appear in web sidebar'),
   })
   .meta({ id: 'MemoriesResponse' });
-
-const PeopleResponseSchema = z
-  .object({
-    enabled: z.boolean().describe('Whether people are enabled'),
-    sidebarWeb: z.boolean().describe('Whether people appear in web sidebar'),
-    minimumFaces: z.int().min(1).optional().describe('People face threshold'),
-    updateStrategy: PersonUpdateStrategySchema,
-  })
-  .meta({ id: 'PeopleResponse' });
 
 const RatingsResponseSchema = z
   .object({
@@ -214,7 +194,6 @@ const UserPreferencesResponseSchema = z
     albums: AlbumsResponseSchema,
     folders: FoldersResponseSchema,
     memories: MemoriesResponseSchema,
-    people: PeopleResponseSchema,
     ratings: RatingsResponseSchema,
     sharedLinks: SharedLinksResponseSchema,
     tags: TagsResponseSchema,

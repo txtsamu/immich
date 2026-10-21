@@ -156,16 +156,11 @@ If your docker container is running on a different subnet then update accordingl
 
 ## Step 3. Add network to each service
 
-Add the network to each service (immich-server, immich-machine-learning, redis, database):
+Add the network to each service (immich-server, redis, database):
 
 ```yaml
 services:
   immich-server:
-    # other config options
-    networks:
-      - immich-network
-
-  immich-machine-learning:
     # other config options
     networks:
       - immich-network

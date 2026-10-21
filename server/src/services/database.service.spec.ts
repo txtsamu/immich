@@ -1,6 +1,6 @@
 import type { VectorExtension } from 'src/types.js';
 import { EXTENSION_NAMES } from 'src/constants.js';
-import { DatabaseExtension, VectorIndex } from 'src/enum.js';
+import { DatabaseExtension } from 'src/enum.js';
 import { DatabaseService } from 'src/services/database.service.js';
 import { envData, mockEnvData } from 'test/repositories/config.repository.mock.js';
 import { ServiceMocks, newTestService } from 'test/utils.js';
@@ -261,34 +261,6 @@ describe(DatabaseService.name, () => {
         expect(mocks.logger.fatal).not.toHaveBeenCalled();
         expect(mocks.database.updateVectorExtension).toHaveBeenCalledWith(extension, updateInRange);
         expect(mocks.database.runMigrations).not.toHaveBeenCalled();
-      });
-
-      it(`should reindex ${extension} indices if needed`, async () => {
-        await expect(sut.onBootstrap()).resolves.toBeUndefined();
-
-        expect(mocks.database.reindexVectorsIfNeeded).toHaveBeenCalledExactlyOnceWith([
-          VectorIndex.Clip,
-          VectorIndex.Face,
-        ]);
-        expect(mocks.database.reindexVectorsIfNeeded).toHaveBeenCalledTimes(1);
-        expect(mocks.database.runMigrations).toHaveBeenCalledTimes(1);
-        expect(mocks.logger.fatal).not.toHaveBeenCalled();
-      });
-
-      it(`should throw an error if reindexing fails`, async () => {
-        mocks.database.reindexVectorsIfNeeded.mockRejectedValue(new Error('Error reindexing'));
-
-        await expect(sut.onBootstrap()).rejects.toBeDefined();
-
-        expect(mocks.database.reindexVectorsIfNeeded).toHaveBeenCalledExactlyOnceWith([
-          VectorIndex.Clip,
-          VectorIndex.Face,
-        ]);
-        expect(mocks.database.runMigrations).not.toHaveBeenCalled();
-        expect(mocks.logger.fatal).not.toHaveBeenCalled();
-        expect(mocks.logger.warn).toHaveBeenCalledWith(
-          expect.stringContaining('Could not run vector reindexing checks.'),
-        );
       });
     });
 

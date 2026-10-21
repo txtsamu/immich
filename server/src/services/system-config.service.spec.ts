@@ -31,9 +31,7 @@ const partialConfig = {
 const updatedConfig = Object.freeze<SystemConfig>({
   job: {
     [QueueName.BackgroundTask]: { concurrency: 5 },
-    [QueueName.SmartSearch]: { concurrency: 2 },
     [QueueName.MetadataExtraction]: { concurrency: 5 },
-    [QueueName.FaceDetection]: { concurrency: 2 },
     [QueueName.Search]: { concurrency: 5 },
     [QueueName.Sidecar]: { concurrency: 5 },
     [QueueName.Library]: { concurrency: 5 },
@@ -41,7 +39,6 @@ const updatedConfig = Object.freeze<SystemConfig>({
     [QueueName.ThumbnailGeneration]: { concurrency: 3 },
     [QueueName.VideoConversion]: { concurrency: 1 },
     [QueueName.Notification]: { concurrency: 5 },
-    [QueueName.Ocr]: { concurrency: 1 },
     [QueueName.Workflow]: { concurrency: 5 },
     [QueueName.IntegrityCheck]: { concurrency: 1 },
     [QueueName.Editor]: { concurrency: 2 },
@@ -101,42 +98,6 @@ const updatedConfig = Object.freeze<SystemConfig>({
     enabled: true,
     level: LogLevel.Log,
   },
-  metadata: {
-    faces: {
-      import: false,
-    },
-  },
-  machineLearning: {
-    enabled: true,
-    urls: ['http://immich-machine-learning:3003'],
-    availabilityChecks: {
-      enabled: true,
-      interval: 30_000,
-      timeout: 2000,
-    },
-    clip: {
-      enabled: true,
-      modelName: 'ViT-B-32__openai',
-    },
-    duplicateDetection: {
-      enabled: true,
-      maxDistance: 0.01,
-    },
-    facialRecognition: {
-      enabled: true,
-      modelName: 'buffalo_l',
-      minScore: 0.7,
-      maxDistance: 0.5,
-      minFaces: 3,
-    },
-    ocr: {
-      enabled: true,
-      modelName: 'PP-OCRv5_mobile',
-      minDetectionScore: 0.5,
-      minRecognitionScore: 0.8,
-      maxResolution: 736,
-    },
-  },
   map: {
     enabled: true,
     lightStyle: 'https://tiles.immich.cloud/v1/style/light.json',
@@ -145,7 +106,6 @@ const updatedConfig = Object.freeze<SystemConfig>({
   nightlyTasks: {
     startTime: '00:00',
     databaseCleanup: true,
-    clusterNewFaces: true,
     missingThumbnails: true,
     generateMemories: true,
     syncQuotaUsage: true,
@@ -398,15 +358,6 @@ describe(SystemConfigService.name, () => {
       await expect(sut.getAdminConfig()).resolves.toEqual(defaults);
 
       expect(mocks.systemMetadata.readFile).toHaveBeenCalledWith('immich-config.json');
-    });
-
-    it('should allow underscores in the machine learning url', async () => {
-      mocks.config.getEnv.mockReturnValue(mockEnvData({ configFile: 'immich-config.json' }));
-      const partialConfig = { machineLearning: { urls: ['immich_machine_learning'] } };
-      mocks.systemMetadata.readFile.mockResolvedValue(JSON.stringify(partialConfig));
-
-      const config = await sut.getAdminConfig();
-      expect(config.machineLearning.urls).toEqual(['immich_machine_learning']);
     });
 
     const externalDomainTests = [

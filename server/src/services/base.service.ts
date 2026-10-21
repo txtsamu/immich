@@ -19,20 +19,17 @@ import { AssetFileRepository } from 'src/repositories/asset-file.repository.js';
 import { AssetJobRepository } from 'src/repositories/asset-job.repository.js';
 import { AssetRepository } from 'src/repositories/asset.repository.js';
 import { AuthChallengeRepository } from 'src/repositories/auth-challenge.repository.js';
-import { ClusterGroupRepository } from 'src/repositories/cluster-group.repository.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { CronRepository } from 'src/repositories/cron.repository.js';
 import { CryptoRepository } from 'src/repositories/crypto.repository.js';
 import { DatabaseRepository } from 'src/repositories/database.repository.js';
 import { DownloadRepository } from 'src/repositories/download.repository.js';
-import { DuplicateRepository } from 'src/repositories/duplicate.repository.js';
 import { EmailRepository } from 'src/repositories/email.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
 import { IntegrityRepository } from 'src/repositories/integrity.repository.js';
 import { JobRepository } from 'src/repositories/job.repository.js';
 import { LibraryRepository } from 'src/repositories/library.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
-import { MachineLearningRepository } from 'src/repositories/machine-learning.repository.js';
 import { MapRepository } from 'src/repositories/map.repository.js';
 import { MediaRepository } from 'src/repositories/media.repository.js';
 import { MemoryRepository } from 'src/repositories/memory.repository.js';
@@ -40,11 +37,8 @@ import { MetadataRepository } from 'src/repositories/metadata.repository.js';
 import { MoveRepository } from 'src/repositories/move.repository.js';
 import { NotificationRepository } from 'src/repositories/notification.repository.js';
 import { OAuthRepository } from 'src/repositories/oauth.repository.js';
-import { OcrRepository } from 'src/repositories/ocr.repository.js';
 import { PartnerRepository } from 'src/repositories/partner.repository.js';
 import { PasskeyRepository } from 'src/repositories/passkey.repository.js';
-import { PersonUserRepository } from 'src/repositories/person-user.repository.js';
-import { PersonRepository } from 'src/repositories/person.repository.js';
 import { PluginRepository } from 'src/repositories/plugin.repository.js';
 import { ProcessRepository } from 'src/repositories/process.repository.js';
 import { SearchRepository } from 'src/repositories/search.repository.js';
@@ -68,14 +62,7 @@ import { WebAuthnRepository } from 'src/repositories/webauthn.repository.js';
 import { WebsocketRepository } from 'src/repositories/websocket.repository.js';
 import { WorkflowRepository } from 'src/repositories/workflow.repository.js';
 import { UserTable } from 'src/schema/tables/user.table.js';
-import {
-  AccessPersonRequest,
-  AccessRequest,
-  checkAccess,
-  checkPersonAccess,
-  requireAccess,
-  requirePersonAccess,
-} from 'src/utils/access.js';
+import { AccessRequest, checkAccess, requireAccess } from 'src/utils/access.js';
 import { getConfig, updateConfig } from 'src/utils/config.js';
 
 export const BASE_SERVICE_DEPENDENCIES = [
@@ -91,19 +78,16 @@ export const BASE_SERVICE_DEPENDENCIES = [
   AssetFileRepository,
   AssetJobRepository,
   AuthChallengeRepository,
-  ClusterGroupRepository,
   ConfigRepository,
   CronRepository,
   CryptoRepository,
   DatabaseRepository,
   DownloadRepository,
-  DuplicateRepository,
   EmailRepository,
   EventRepository,
   IntegrityRepository,
   JobRepository,
   LibraryRepository,
-  MachineLearningRepository,
   MapRepository,
   MediaRepository,
   MemoryRepository,
@@ -111,11 +95,8 @@ export const BASE_SERVICE_DEPENDENCIES = [
   MoveRepository,
   NotificationRepository,
   OAuthRepository,
-  OcrRepository,
   PartnerRepository,
   PasskeyRepository,
-  PersonRepository,
-  PersonUserRepository,
   PluginRepository,
   ProcessRepository,
   SearchRepository,
@@ -157,19 +138,16 @@ export class BaseService {
     protected assetFileRepository: AssetFileRepository,
     protected assetJobRepository: AssetJobRepository,
     protected authChallengeRepository: AuthChallengeRepository,
-    protected clusterGroupRepository: ClusterGroupRepository,
     protected configRepository: ConfigRepository,
     protected cronRepository: CronRepository,
     protected cryptoRepository: CryptoRepository,
     protected databaseRepository: DatabaseRepository,
     protected downloadRepository: DownloadRepository,
-    protected duplicateRepository: DuplicateRepository,
     protected emailRepository: EmailRepository,
     protected eventRepository: EventRepository,
     protected integrityRepository: IntegrityRepository,
     protected jobRepository: JobRepository,
     protected libraryRepository: LibraryRepository,
-    protected machineLearningRepository: MachineLearningRepository,
     protected mapRepository: MapRepository,
     protected mediaRepository: MediaRepository,
     protected memoryRepository: MemoryRepository,
@@ -177,11 +155,8 @@ export class BaseService {
     protected moveRepository: MoveRepository,
     protected notificationRepository: NotificationRepository,
     protected oauthRepository: OAuthRepository,
-    protected ocrRepository: OcrRepository,
     protected partnerRepository: PartnerRepository,
     protected passkeyRepository: PasskeyRepository,
-    protected personRepository: PersonRepository,
-    protected personUserRepository: PersonUserRepository,
     protected pluginRepository: PluginRepository,
     protected processRepository: ProcessRepository,
     protected searchRepository: SearchRepository,
@@ -211,7 +186,6 @@ export class BaseService {
       configRepository,
       cryptoRepository,
       moveRepository,
-      personRepository,
       storageRepository,
       systemMetadataRepository,
       this.logger,
@@ -232,19 +206,16 @@ export class BaseService {
       ctx.assetFileRepository,
       ctx.assetJobRepository,
       ctx.authChallengeRepository,
-      ctx.clusterGroupRepository,
       ctx.configRepository,
       ctx.cronRepository,
       ctx.cryptoRepository,
       ctx.databaseRepository,
       ctx.downloadRepository,
-      ctx.duplicateRepository,
       ctx.emailRepository,
       ctx.eventRepository,
       ctx.integrityRepository,
       ctx.jobRepository,
       ctx.libraryRepository,
-      ctx.machineLearningRepository,
       ctx.mapRepository,
       ctx.mediaRepository,
       ctx.memoryRepository,
@@ -252,11 +223,8 @@ export class BaseService {
       ctx.moveRepository,
       ctx.notificationRepository,
       ctx.oauthRepository,
-      ctx.ocrRepository,
       ctx.partnerRepository,
       ctx.passkeyRepository,
-      ctx.personRepository,
-      ctx.personUserRepository,
       ctx.pluginRepository,
       ctx.processRepository,
       ctx.searchRepository,
@@ -314,14 +282,6 @@ export class BaseService {
     return checkAccess(this.accessRepository, request);
   }
 
-  requirePersonAccess(request: AccessPersonRequest) {
-    return requirePersonAccess(this.accessRepository, request);
-  }
-
-  checkPersonAccess(request: AccessPersonRequest) {
-    return checkPersonAccess(this.accessRepository, request);
-  }
-
   async isSetupAvailable(): Promise<boolean> {
     const { setup } = this.configRepository.getEnv();
     return setup.allow && !(await this.userRepository.hasAdmin());
@@ -333,7 +293,7 @@ export class BaseService {
     }
   }
 
-  async createUser(dto: Omit<Insertable<UserTable>, 'clusterGroupId'> & { email: string }): Promise<UserAdmin> {
+  async createUser(dto: Insertable<UserTable> & { email: string }): Promise<UserAdmin> {
     const exists = await this.userRepository.getByEmail(dto.email);
     if (exists) {
       this.logger.debug('User creation rejected: user already exists');
@@ -347,7 +307,7 @@ export class BaseService {
       }
     }
 
-    const payload: Omit<Insertable<UserTable>, 'clusterGroupId'> = { ...dto };
+    const payload: Insertable<UserTable> = { ...dto };
     if (payload.password) {
       payload.password = await this.cryptoRepository.hashBcrypt(payload.password, SALT_ROUNDS);
     }
@@ -355,8 +315,7 @@ export class BaseService {
       payload.storageLabel = sanitize(payload.storageLabel);
     }
 
-    const clusterGroup = await this.clusterGroupRepository.create();
-    const user = await this.userRepository.create({ ...payload, clusterGroupId: clusterGroup.id });
+    const user = await this.userRepository.create(payload);
 
     await this.eventRepository.emit('UserCreate', user);
 

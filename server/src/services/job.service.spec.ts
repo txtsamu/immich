@@ -79,10 +79,6 @@ describe(JobService.name, () => {
         jobs: [],
       },
       {
-        item: { name: JobName.PersonGenerateThumbnail, data: { ownerId: 'owner-1', personGroupId: 'person-group-1' } },
-        jobs: [],
-      },
-      {
         item: { name: JobName.AssetGenerateThumbnails, data: { id: 'asset-1' } },
         jobs: [],
         stub: [AssetFactory.create({ id: 'asset-1' })],
@@ -94,25 +90,13 @@ describe(JobService.name, () => {
       },
       {
         item: { name: JobName.AssetGenerateThumbnails, data: { id: 'asset-1', source: 'upload' } },
-        jobs: [JobName.SmartSearch, JobName.AssetDetectFaces, JobName.Ocr],
+        jobs: [],
         stub: [AssetFactory.create({ id: 'asset-1', livePhotoVideoId: newUuid() })],
       },
       {
         item: { name: JobName.AssetGenerateThumbnails, data: { id: 'asset-1', source: 'upload' } },
-        jobs: [JobName.SmartSearch, JobName.AssetDetectFaces, JobName.Ocr, JobName.AssetEncodeVideo],
+        jobs: [JobName.AssetEncodeVideo],
         stub: [AssetFactory.create({ id: 'asset-1', type: AssetType.Video })],
-      },
-      {
-        item: { name: JobName.SmartSearch, data: { id: 'asset-1' } },
-        jobs: [],
-      },
-      {
-        item: { name: JobName.AssetDetectFaces, data: { id: 'asset-1' } },
-        jobs: [],
-      },
-      {
-        item: { name: JobName.FacialRecognition, data: { id: 'asset-1' } },
-        jobs: [],
       },
     ];
 

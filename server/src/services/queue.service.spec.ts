@@ -23,11 +23,9 @@ describe(QueueService.name, () => {
     it('should update concurrency', () => {
       sut.onConfigUpdate({ newConfig: defaults, oldConfig: {} as SystemConfig });
 
-      expect(mocks.job.setConcurrency).toHaveBeenCalledTimes(19);
-      expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(5, QueueName.FacialRecognition, 1);
-      expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(7, QueueName.DuplicateDetection, 1);
-      expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(8, QueueName.BackgroundTask, 5);
-      expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(9, QueueName.StorageTemplateMigration, 1);
+      expect(mocks.job.setConcurrency).toHaveBeenCalledTimes(14);
+      expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(4, QueueName.BackgroundTask, 5);
+      expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(5, QueueName.StorageTemplateMigration, 1);
     });
   });
 
@@ -38,7 +36,6 @@ describe(QueueService.name, () => {
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
         { name: JobName.AssetDeleteCheck },
         { name: JobName.UserDeleteCheck },
-        { name: JobName.PersonCleanup },
         { name: JobName.MemoryCleanup },
         { name: JobName.SessionCleanup },
         { name: JobName.AuthChallengeCleanup },
@@ -47,7 +44,6 @@ describe(QueueService.name, () => {
         { name: JobName.MemoryGenerate },
         { name: JobName.UserSyncUsage },
         { name: JobName.AssetGenerateThumbnailsQueueAll, data: { force: false } },
-        { name: JobName.FacialRecognitionQueueAll, data: { force: false, nightly: true } },
       ]);
     });
   });
@@ -62,21 +58,16 @@ describe(QueueService.name, () => {
 
       await expect(sut.getAllLegacy(factory.auth())).resolves.toEqual({
         [QueueName.BackgroundTask]: expected,
-        [QueueName.DuplicateDetection]: expected,
-        [QueueName.SmartSearch]: expected,
         [QueueName.MetadataExtraction]: expected,
         [QueueName.Search]: expected,
         [QueueName.StorageTemplateMigration]: expected,
         [QueueName.Migration]: expected,
         [QueueName.ThumbnailGeneration]: expected,
         [QueueName.VideoConversion]: expected,
-        [QueueName.FaceDetection]: expected,
-        [QueueName.FacialRecognition]: expected,
         [QueueName.Sidecar]: expected,
         [QueueName.Library]: expected,
         [QueueName.Notification]: expected,
         [QueueName.BackupDatabase]: expected,
-        [QueueName.Ocr]: expected,
         [QueueName.Workflow]: expected,
         [QueueName.IntegrityCheck]: expected,
         [QueueName.Editor]: expected,
@@ -138,15 +129,6 @@ describe(QueueService.name, () => {
       expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.StorageTemplateMigration });
     });
 
-    it('should handle a start smart search command', async () => {
-      mocks.job.isActive.mockResolvedValue(false);
-      mocks.job.getJobCounts.mockResolvedValue(factory.queueStatistics());
-
-      await sut.runCommandLegacy(QueueName.SmartSearch, { command: QueueCommand.Start, force: false });
-
-      expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.SmartSearchQueueAll, data: { force: false } });
-    });
-
     it('should handle a start metadata extraction command', async () => {
       mocks.job.isActive.mockResolvedValue(false);
       mocks.job.getJobCounts.mockResolvedValue(factory.queueStatistics());
@@ -178,24 +160,6 @@ describe(QueueService.name, () => {
         name: JobName.AssetGenerateThumbnailsQueueAll,
         data: { force: false },
       });
-    });
-
-    it('should handle a start face detection command', async () => {
-      mocks.job.isActive.mockResolvedValue(false);
-      mocks.job.getJobCounts.mockResolvedValue(factory.queueStatistics());
-
-      await sut.runCommandLegacy(QueueName.FaceDetection, { command: QueueCommand.Start, force: false });
-
-      expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.AssetDetectFacesQueueAll, data: { force: false } });
-    });
-
-    it('should handle a start facial recognition command', async () => {
-      mocks.job.isActive.mockResolvedValue(false);
-      mocks.job.getJobCounts.mockResolvedValue(factory.queueStatistics());
-
-      await sut.runCommandLegacy(QueueName.FacialRecognition, { command: QueueCommand.Start, force: false });
-
-      expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.FacialRecognitionQueueAll, data: { force: false } });
     });
 
     it('should handle a start backup database command', async () => {

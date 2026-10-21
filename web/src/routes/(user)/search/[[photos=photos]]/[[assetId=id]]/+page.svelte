@@ -18,27 +18,23 @@
   import AssetSelectControlBar from '$lib/components/timeline/AssetSelectControlBar.svelte';
   import { QueryParameter } from '$lib/constants';
   import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
-  import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import { searchManager } from '$lib/managers/search-manager.svelte';
   import type { Viewport } from '$lib/managers/timeline-manager/types';
   import { Route } from '$lib/route';
   import { getAssetBulkActions } from '$lib/services/asset.service';
-  import { lang, locale } from '$lib/stores/preferences.store';
+  import { locale } from '$lib/stores/preferences.store';
   import { handlePromiseError } from '$lib/utils';
   import { parseUtcDate } from '$lib/utils/date-time';
   import { handleError } from '$lib/utils/handle-error';
-  import { isAlbumsRoute, isPeopleRoute } from '$lib/utils/navigation';
+  import { isAlbumsRoute } from '$lib/utils/navigation';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import {
     type AlbumResponseDto,
     type AssetResponseDto,
     AssetVisibility,
-    getPerson,
     getTagById,
     type MetadataSearchDto,
     searchAssets,
-    searchSmart,
-    type SmartSearchDto,
   } from '@immich/sdk';
   import { ActionButton, CommandPaletteDefaultProvider, Icon, IconButton, LoadingSpinner } from '@immich/ui';
   import { mdiArrowLeft, mdiClose, mdiDotsVertical, mdiImageOffOutline, mdiSelectAll } from '@mdi/js';
@@ -60,9 +56,8 @@
   let scrollY = $state(0);
   let scrollYHistory = 0;
 
-  type SearchTerms = MetadataSearchDto & Pick<SmartSearchDto, 'query' | 'queryAssetId'>;
+  type SearchTerms = MetadataSearchDto;
   let searchQuery = $derived(page.url.searchParams.get(QueryParameter.QUERY));
-  let smartSearchEnabled = $derived(featureFlagsManager.value.smartSearch);
   let terms = $derived<SearchTerms>(searchQuery ? JSON.parse(searchQuery) : {});
   let searchTermKeys = $derived(getObjectKeys(terms));
 
@@ -85,10 +80,6 @@
       previousRoute = from.url.href;
     }
     const route = from?.route?.id;
-
-    if (isPeopleRoute(route)) {
-      previousRoute = Route.photos();
-    }
 
     if (isAlbumsRoute(route)) {
       previousRoute = Route.explore();
@@ -138,12 +129,9 @@
     };
 
     try {
-      const { albums, assets } =
-        ('query' in searchDto || 'queryAssetId' in searchDto) && smartSearchEnabled
-          ? await searchSmart({
-              smartSearchDto: { visibility: AssetVisibility.Timeline, ...searchDto, language: $lang },
-            })
-          : await searchAssets({ metadataSearchDto: { visibility: AssetVisibility.Timeline, ...searchDto } });
+      const { albums, assets } = await searchAssets({
+        metadataSearchDto: { visibility: AssetVisibility.Timeline, ...searchDto },
+      });
 
       searchResultAlbums.push(...albums.items);
       searchResultAssets.push(...assets.items);
@@ -176,38 +164,18 @@
       isFavorite: $t('favorite'),
       isNotInAlbum: $t('not_in_any_album'),
       type: $t('media_type'),
-      query: $t('context'),
       city: $t('city'),
       country: $t('country'),
       state: $t('state'),
       make: $t('camera_brand'),
       model: $t('camera_model'),
       lensModel: $t('lens_model'),
-      personIds: $t('people'),
       tagIds: $t('tags'),
       originalFileName: $t('file_name_text'),
       originalPath: $t('full_path_or_folder'),
       description: $t('description'),
-      queryAssetId: $t('query_asset_id'),
-      ocr: $t('ocr'),
     };
     return keyMap[key] || key;
-  }
-
-  async function getPersonName(personIds: string[]) {
-    const personNames = await Promise.all(
-      personIds.map(async (personId) => {
-        const person = await getPerson({ id: personId });
-
-        if (person.name === '') {
-          return $t('no_name');
-        }
-
-        return person.name;
-      }),
-    );
-
-    return personNames.join(', ');
   }
 
   async function getTagNames(tagIds: string[] | null) {
@@ -270,10 +238,6 @@
             <span class="max-w-[min(36rem,55vw)] min-w-0 truncate px-3 py-1.5 text-immich-fg dark:text-immich-dark-fg">
               {#if (searchKey === 'takenAfter' || searchKey === 'takenBefore') && typeof value === 'string'}
                 {getHumanReadableDate(value)}
-              {:else if searchKey === 'personIds' && Array.isArray(value)}
-                {#await getPersonName(value) then personName}
-                  {personName}
-                {/await}
               {:else if searchKey === 'tagIds' && (Array.isArray(value) || value === null)}
                 {#await getTagNames(value) then tagNames}
                   {tagNames}

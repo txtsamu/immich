@@ -98,20 +98,6 @@ export const systemConfigStub = {
       },
     },
   },
-  machineLearningDisabled: {
-    machineLearning: {
-      enabled: false,
-    },
-  },
-  machineLearningEnabled: {
-    machineLearning: {
-      enabled: true,
-      clip: {
-        modelName: 'ViT-B-16__openai',
-        enabled: true,
-      },
-    },
-  },
   publicUsersDisabled: {
     server: {
       publicUsers: false,

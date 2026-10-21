@@ -95,19 +95,6 @@ describe(SyncService.name, () => {
       await assertTableCount(ctx.database, 'asset_audit', 0);
     });
 
-    it('should cleanup the asset_face_audit table', async () => {
-      const { sut, ctx } = setup();
-      const tableName = 'asset_face_audit';
-      await ctx.database
-        .insertInto(tableName)
-        .values({ assetFaceId: v4(), assetId: v4(), deletedAt: deletedLongAgo })
-        .execute();
-
-      await assertTableCount(ctx.database, tableName, 1);
-      await expect(sut.onAuditTableCleanup()).resolves.toBeUndefined();
-      await assertTableCount(ctx.database, tableName, 0);
-    });
-
     it('should cleanup the asset_metadata_audit table', async () => {
       const { sut, ctx } = setup();
       const tableName = 'asset_metadata_audit';

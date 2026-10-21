@@ -127,17 +127,11 @@ className="border rounded-xl mb-4"
 
 The **Timezone** is set to the system default, which usually matches your local timezone. You can change it to another timezone if you prefer.
 
-**Enable Machine Learning** is enabled by default. It allows Immich to use machine learning features such as face recognition, image search, and smart duplicate detection. Untick this option if you do not want to use these features.
-
-Select the **Machine Learning Image Type** based on the hardware you have. More details here: [Hardware-Accelerated Machine Learning](/features/ml-hardware-acceleration.md)
-
 **Database Password** should be set to a custom value using only the characters `A-Za-z0-9`. This password is used to secure the Postgres database.
 
 **Redis Password** should be set to a custom value using only the characters `A-Za-z0-9`. Preferably, use a different password from the database password.
 
 Keep the **Log Level** to the default `Log` value.
-
-Leave **Hugging Face Endpoint** blank. (This is used to download ML models from a different source.)
 
 Set **Database Storage Type** to the type of storage (**HDD** or **SSD**) that the pool where the **pgData** dataset is located uses.
 
@@ -216,8 +210,6 @@ className="border rounded-xl"
 />
 
 For the Data Storage, select **Host Path (Path that already exists on the system)** and then select the dataset you created for Immich data storage, for example, `data`.
-
-The Machine Learning cache can be left with default _Temporary_
 
 For the Postgres Data Storage, select **Host Path (Path that already exists on the system)** and then select the dataset you created for Postgres data storage, for example, `pgData`.
 
@@ -305,11 +297,11 @@ className="border rounded-xl"
 
 - **CPU**: Depending on your system resources, you can keep the default value of `2` threads or specify a different number. Immich recommends at least `8` threads.
 
-- **Memory**: Limit in MB of RAM. Immich recommends at least 6000 MB (6GB). If you selected **Enable Machine Learning** in **Immich Configuration**, you should probably set this above 8000 MB.
+- **Memory**: Limit in MB of RAM. Immich recommends at least 6000 MB (6GB).
 
 Both **CPU** and **Memory** are limits, not reservations. This means that Immich can use up to the specified amount of CPU threads and RAM, but it will not reserve that amount of resources at all times. The system will allocate resources as needed, and Immich will use less than the specified amount most of the time.
 
-- Enable **GPU Configuration** options if you have a GPU or CPU with integrated graphics that you will use for [Hardware Transcoding](/features/hardware-transcoding) and/or [Hardware-Accelerated Machine Learning](/features/ml-hardware-acceleration.md).
+- Enable **GPU Configuration** options if you have a GPU or CPU with integrated graphics that you will use for [Hardware Transcoding](/features/hardware-transcoding).
 
 The process for NVIDIA GPU passthrough requires additional steps.
 More details here: [GPU Passthrough Docs for TrueNAS Apps](https://apps.truenas.com/managing-apps/installing-apps/#gpu-passthrough)

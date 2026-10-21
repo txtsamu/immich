@@ -56,7 +56,6 @@ The Dev Container environment consists of the following services:
 | Server & Web     | `immich-server`           | Runs both API server and web frontend in development mode | 2283 (API)<br/>3000 (Web)<br/>9230 (Workers Debug)<br/>9231 (API Debug) |
 | Database         | `database`                | PostgreSQL database                                       | 5432                                                                    |
 | Cache            | `redis`                   | Valkey cache server                                       | 6379                                                                    |
-| Machine Learning | `immich-machine-learning` | Immich ML model inference server                          | 3003                                                                    |
 
 ## Getting Started
 
@@ -97,7 +96,7 @@ Immich development makes extensive use of specialized [base images](https://gith
 1. Open the cloned repository in VS Code
 2. Press `F1` or `Ctrl/Cmd+Shift+P` to open the command palette
 3. Type and select "Dev Containers: Rebuild and Reopen in Container"
-4. Select "Immich - Backend, Frontend and ML" from the list
+4. Select "Immich - Backend and Frontend" from the list
 5. Wait for the container to build and start (this may take several minutes on first run)
 
 #### Using VS Code Quick Actions:

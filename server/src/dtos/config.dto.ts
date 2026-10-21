@@ -85,14 +85,6 @@ const AdminConfigJobSettingsSchema = z
   .object({ concurrency: z.int().min(1).describe('Concurrency') })
   .meta({ id: 'AdminConfigJobSettingsDto' });
 
-const AdminConfigMachineLearningTaskSchema = z.object({
-  enabled: z.boolean().describe('Whether the task is enabled').meta({ visibility: User }),
-});
-
-const AdminConfigMachineLearningModelSchema = AdminConfigMachineLearningTaskSchema.extend({
-  modelName: z.string().describe('Name of the model to use'),
-});
-
 const AdminConfigGeneratedImageSchema = z
   .object({
     format: ImageFormatSchema,
@@ -196,15 +188,12 @@ const AdminConfigSchemaWithVisibility = z
         thumbnailGeneration: AdminConfigJobSettingsSchema,
         metadataExtraction: AdminConfigJobSettingsSchema,
         videoConversion: AdminConfigJobSettingsSchema,
-        faceDetection: AdminConfigJobSettingsSchema,
-        smartSearch: AdminConfigJobSettingsSchema,
         backgroundTask: AdminConfigJobSettingsSchema,
         migration: AdminConfigJobSettingsSchema,
         search: AdminConfigJobSettingsSchema,
         sidecar: AdminConfigJobSettingsSchema,
         library: AdminConfigJobSettingsSchema,
         notifications: AdminConfigJobSettingsSchema,
-        ocr: AdminConfigJobSettingsSchema,
         workflow: AdminConfigJobSettingsSchema,
         editor: AdminConfigJobSettingsSchema,
         integrityCheck: AdminConfigJobSettingsSchema,
@@ -216,62 +205,6 @@ const AdminConfigSchemaWithVisibility = z
         level: LogLevelSchema,
       })
       .meta({ id: 'AdminConfigLoggingDto' }),
-    machineLearning: z
-      .object({
-        enabled: configBool.describe('Enabled').meta({ visibility: User }),
-        urls: z.array(z.string()).min(1).describe('ML service URLs'),
-        availabilityChecks: z
-          .object({
-            enabled: configBool.describe('Enabled'),
-            timeout: z.int(),
-            interval: z.int(),
-          })
-          .meta({ id: 'AdminConfigMachineLearningAvailabilityChecksDto' }),
-        clip: AdminConfigMachineLearningModelSchema.meta({ id: 'AdminConfigClipDto' }),
-        duplicateDetection: AdminConfigMachineLearningTaskSchema.extend({
-          maxDistance: z
-            .number()
-            .min(0.001)
-            .max(0.1)
-            .describe('Maximum distance threshold for duplicate detection')
-            .meta({ format: 'double' }),
-        }).meta({ id: 'AdminConfigDuplicateDetectionDto' }),
-        facialRecognition: AdminConfigMachineLearningModelSchema.extend({
-          minScore: z
-            .number()
-            .min(0.1)
-            .max(1)
-            .describe('Minimum confidence score for face detection')
-            .meta({ format: 'double' }),
-          maxDistance: z
-            .number()
-            .min(0.1)
-            .max(2)
-            .describe('Maximum distance threshold for face recognition')
-            .meta({ format: 'double' }),
-          minFaces: z
-            .int()
-            .min(1)
-            .describe('Minimum number of faces required for recognition')
-            .meta({ visibility: User }),
-        }).meta({ id: 'AdminConfigFacialRecognitionDto' }),
-        ocr: AdminConfigMachineLearningModelSchema.extend({
-          maxResolution: z.int().min(1).describe('Maximum resolution for OCR processing'),
-          minDetectionScore: z
-            .number()
-            .min(0.1)
-            .max(1)
-            .describe('Minimum confidence score for text detection')
-            .meta({ format: 'double' }),
-          minRecognitionScore: z
-            .number()
-            .min(0.1)
-            .max(1)
-            .describe('Minimum confidence score for text recognition')
-            .meta({ format: 'double' }),
-        }).meta({ id: 'AdminConfigOcrDto' }),
-      })
-      .meta({ id: 'AdminConfigMachineLearningDto' }),
     map: z
       .object({
         enabled: configBool.describe('Enabled').meta({ visibility: Public }),
@@ -282,11 +215,6 @@ const AdminConfigSchemaWithVisibility = z
     reverseGeocoding: z
       .object({ enabled: configBool.describe('Enabled').meta({ visibility: User }) })
       .meta({ id: 'AdminConfigReverseGeocodingDto' }),
-    metadata: z
-      .object({
-        faces: z.object({ import: configBool.describe('Import') }).meta({ id: 'AdminConfigFacesDto' }),
-      })
-      .meta({ id: 'AdminConfigMetadataDto' }),
     oauth: z
       .object({
         autoLaunch: configBool.describe('Auto launch').meta({ visibility: Public }),
@@ -396,7 +324,6 @@ const AdminConfigSchemaWithVisibility = z
           .describe('Start time (HH:MM)'),
         databaseCleanup: configBool.describe('Database cleanup'),
         missingThumbnails: configBool.describe('Missing thumbnails'),
-        clusterNewFaces: configBool.describe('Cluster new faces'),
         generateMemories: configBool.describe('Generate memories'),
         syncQuotaUsage: configBool.describe('Sync quota usage'),
       })
@@ -448,7 +375,6 @@ const AdminConfigSchemaWithVisibility = z
   .meta({ id: 'AdminConfigDto' });
 
 export type SystemConfig = z.infer<typeof AdminConfigSchemaWithVisibility>;
-export type MachineLearningConfig = SystemConfig['machineLearning'];
 
 const visibilities = [Public, User, Admin];
 
@@ -637,15 +563,12 @@ export const defaults = Object.freeze<SystemConfig>({
     thumbnailGeneration: { concurrency: 3 },
     metadataExtraction: { concurrency: 5 },
     videoConversion: { concurrency: 1 },
-    faceDetection: { concurrency: 2 },
-    smartSearch: { concurrency: 2 },
     backgroundTask: { concurrency: 5 },
     migration: { concurrency: 5 },
     search: { concurrency: 5 },
     sidecar: { concurrency: 5 },
     library: { concurrency: 5 },
     notifications: { concurrency: 5 },
-    ocr: { concurrency: 1 },
     workflow: { concurrency: 5 },
     editor: { concurrency: 2 },
     integrityCheck: { concurrency: 1 },
@@ -654,37 +577,6 @@ export const defaults = Object.freeze<SystemConfig>({
     enabled: true,
     level: LogLevel.Log,
   },
-  machineLearning: {
-    enabled: process.env.IMMICH_MACHINE_LEARNING_ENABLED !== 'false',
-    urls: [process.env.IMMICH_MACHINE_LEARNING_URL || 'http://immich-machine-learning:3003'],
-    availabilityChecks: {
-      enabled: true,
-      timeout: 2000,
-      interval: 30_000,
-    },
-    clip: {
-      enabled: true,
-      modelName: 'ViT-B-32__openai',
-    },
-    duplicateDetection: {
-      enabled: true,
-      maxDistance: 0.01,
-    },
-    facialRecognition: {
-      enabled: true,
-      modelName: 'buffalo_l',
-      minScore: 0.7,
-      maxDistance: 0.5,
-      minFaces: 3,
-    },
-    ocr: {
-      enabled: true,
-      modelName: 'PP-OCRv5_mobile',
-      minDetectionScore: 0.5,
-      minRecognitionScore: 0.8,
-      maxResolution: 736,
-    },
-  },
   map: {
     enabled: true,
     lightStyle: 'https://tiles.immich.cloud/v1/style/light.json',
@@ -692,11 +584,6 @@ export const defaults = Object.freeze<SystemConfig>({
   },
   reverseGeocoding: {
     enabled: true,
-  },
-  metadata: {
-    faces: {
-      import: false,
-    },
   },
   oauth: {
     autoLaunch: false,
@@ -767,7 +654,6 @@ export const defaults = Object.freeze<SystemConfig>({
     generateMemories: true,
     syncQuotaUsage: true,
     missingThumbnails: true,
-    clusterNewFaces: true,
   },
   trash: {
     enabled: true,

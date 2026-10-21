@@ -42,17 +42,6 @@ select
           "memory_asset"."memoriesId" = "memory"."id"
           and "asset"."visibility" = 'timeline'
           and "asset"."deletedAt" is null
-          and not exists (
-            select
-              $1 as "one"
-            from
-              "asset_face"
-              inner join "person" on "person"."personGroupId" = "asset_face"."personGroupId"
-              and "person"."ownerId" = "asset"."ownerId"
-            where
-              "asset_face"."assetId" = "asset"."id"
-              and "person"."isHidden" = $2
-          )
         order by
           "asset"."fileCreatedAt" asc
       ) as agg
@@ -62,7 +51,7 @@ from
   "memory"
 where
   "deletedAt" is null
-  and "ownerId" = $3
+  and "ownerId" = $1
 order by
   "showAt" desc nulls last,
   "memoryAt" desc
@@ -83,17 +72,6 @@ select
           "memory_asset"."memoriesId" = "memory"."id"
           and "asset"."visibility" = 'timeline'
           and "asset"."deletedAt" is null
-          and not exists (
-            select
-              $1 as "one"
-            from
-              "asset_face"
-              inner join "person" on "person"."personGroupId" = "asset_face"."personGroupId"
-              and "person"."ownerId" = "asset"."ownerId"
-            where
-              "asset_face"."assetId" = "asset"."id"
-              and "person"."isHidden" = $2
-          )
         order by
           "asset"."fileCreatedAt" asc
       ) as agg
@@ -104,14 +82,14 @@ from
 where
   (
     "showAt" is null
-    or "showAt" <= $3
+    or "showAt" <= $1
   )
   and (
     "hideAt" is null
-    or "hideAt" >= $4
+    or "hideAt" >= $2
   )
   and "deletedAt" is null
-  and "ownerId" = $5
+  and "ownerId" = $3
 order by
   "showAt" desc nulls last,
   "memoryAt" desc
@@ -132,17 +110,6 @@ select
           "memory_asset"."memoriesId" = "memory"."id"
           and "asset"."visibility" = 'timeline'
           and "asset"."deletedAt" is null
-          and not exists (
-            select
-              $1 as "one"
-            from
-              "asset_face"
-              inner join "person" on "person"."personGroupId" = "asset_face"."personGroupId"
-              and "person"."ownerId" = "asset"."ownerId"
-            where
-              "asset_face"."assetId" = "asset"."id"
-              and "person"."isHidden" = $2
-          )
         order by
           "asset"."fileCreatedAt" asc
       ) as agg
@@ -151,9 +118,9 @@ select
 from
   "memory"
 where
-  "showAt" > $3
+  "showAt" > $1
   and "deletedAt" is null
-  and "ownerId" = $4
+  and "ownerId" = $2
 order by
   "showAt" desc nulls last,
   "memoryAt" desc
@@ -174,17 +141,6 @@ select
           "memory_asset"."memoriesId" = "memory"."id"
           and "asset"."visibility" = 'timeline'
           and "asset"."deletedAt" is null
-          and not exists (
-            select
-              $1 as "one"
-            from
-              "asset_face"
-              inner join "person" on "person"."personGroupId" = "asset_face"."personGroupId"
-              and "person"."ownerId" = "asset"."ownerId"
-            where
-              "asset_face"."assetId" = "asset"."id"
-              and "person"."isHidden" = $2
-          )
         order by
           "asset"."fileCreatedAt" asc
       ) as agg
@@ -195,89 +151,13 @@ from
 where
   (
     "showAt" is null
-    or "showAt" <= $3
+    or "showAt" <= $1
   )
   and "deletedAt" is null
-  and "ownerId" = $4
+  and "ownerId" = $2
 order by
   "showAt" desc nulls last,
   "memoryAt" desc
-
--- MemoryRepository.getPersonBirthdayYears
-select distinct
-  date_part(
-    'year',
-    (asset."localDateTime" at time zone 'UTC')::date
-  )::int as "year"
-from
-  "asset"
-where
-  "asset"."ownerId" = $1
-  and "asset"."visibility" = $2
-  and "asset"."deletedAt" is null
-  and exists (
-    select
-    from
-      "asset_face"
-    where
-      "asset_face"."assetId" = "asset"."id"
-      and "asset_face"."personGroupId" = $3
-      and "asset_face"."deletedAt" is null
-      and "asset_face"."isVisible" is true
-  )
-  and exists (
-    select
-    from
-      "asset_file"
-    where
-      "asset_file"."assetId" = "asset"."id"
-      and "asset_file"."type" = $4
-  )
-  and date_part(
-    'month',
-    (asset."localDateTime" at time zone 'UTC')::date
-  )::int = $5
-  and date_part(
-    'day',
-    (asset."localDateTime" at time zone 'UTC')::date
-  )::int = $6
-  and (asset."localDateTime" at time zone 'UTC')::date >= make_date($7::int, $8::int, $9::int)
-  and (asset."localDateTime" at time zone 'UTC')::date < make_date($10::int, $11::int, $12::int)
-order by
-  year desc
-
--- MemoryRepository.getPersonAssetsByDate
-select
-  "asset"."id"
-from
-  "asset"
-where
-  "asset"."ownerId" = $1
-  and "asset"."visibility" = $2
-  and "asset"."deletedAt" is null
-  and exists (
-    select
-    from
-      "asset_face"
-    where
-      "asset_face"."assetId" = "asset"."id"
-      and "asset_face"."personGroupId" = $3
-      and "asset_face"."deletedAt" is null
-      and "asset_face"."isVisible" is true
-  )
-  and exists (
-    select
-    from
-      "asset_file"
-    where
-      "asset_file"."assetId" = "asset"."id"
-      and "asset_file"."type" = $4
-  )
-  and (asset."localDateTime" at time zone 'UTC')::date = make_date($5::int, $6::int, $7::int)
-order by
-  "asset"."localDateTime" desc
-limit
-  $8
 
 -- MemoryRepository.get
 select

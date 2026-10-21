@@ -1,7 +1,6 @@
 import { Kysely } from 'kysely';
 import { DateTime } from 'luxon';
-import { ImmichEnvironment, JobName, JobStatus, PersonUpdateStrategy, UserAvatarColor } from 'src/enum.js';
-import { ClusterGroupRepository } from 'src/repositories/cluster-group.repository.js';
+import { ImmichEnvironment, JobName, JobStatus, UserAvatarColor } from 'src/enum.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { CryptoRepository } from 'src/repositories/crypto.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
@@ -13,7 +12,7 @@ import { DB } from 'src/schema/index.js';
 import { UserService } from 'src/services/user.service.js';
 import { HumanReadableSize } from 'src/utils/bytes.js';
 import { mediumFactory, newMediumService } from 'test/medium.factory.js';
-import { factory, newUuid } from 'test/small.factory.js';
+import { factory } from 'test/small.factory.js';
 import { getKyselyDB } from 'test/utils.js';
 
 const userLicense = {
@@ -29,7 +28,7 @@ const setup = (db?: Kysely<DB>) => {
 
   return newMediumService(UserService, {
     database: db || defaultDatabase,
-    real: [ClusterGroupRepository, CryptoRepository, ConfigRepository, SystemMetadataRepository, UserRepository],
+    real: [CryptoRepository, ConfigRepository, SystemMetadataRepository, UserRepository],
     mock: [LoggingRepository, JobRepository, EventRepository],
   });
 };
@@ -45,7 +44,7 @@ describe(UserService.name, () => {
     it('should create a user', async () => {
       const { sut, ctx } = setup();
       ctx.getMock(EventRepository).emit.mockResolvedValue();
-      const user = mediumFactory.userInsert({ clusterGroupId: newUuid() });
+      const user = mediumFactory.userInsert();
       const created = await sut.createUser({ name: user.name, email: user.email });
       expect(created).toEqual(expect.objectContaining({ name: user.name, email: user.email }));
 
@@ -55,7 +54,7 @@ describe(UserService.name, () => {
     it('should reject user with duplicate email', async () => {
       const { sut, ctx } = setup();
       ctx.getMock(EventRepository).emit.mockResolvedValue();
-      const user = mediumFactory.userInsert({ clusterGroupId: newUuid() });
+      const user = mediumFactory.userInsert();
       await expect(sut.createUser({ name: 'Test', email: user.email })).resolves.toMatchObject({ email: user.email });
       await expect(sut.createUser({ name: 'Test', email: user.email })).rejects.toThrow('Email is not available');
     });
@@ -63,7 +62,7 @@ describe(UserService.name, () => {
     it('should not return password', async () => {
       const { sut, ctx } = setup();
       ctx.getMock(EventRepository).emit.mockResolvedValue();
-      const dto = mediumFactory.userInsert({ clusterGroupId: newUuid(), password: 'password' });
+      const dto = mediumFactory.userInsert({ password: 'password' });
       const user = await sut.createUser({ name: 'Test', email: dto.email, password: 'password' });
       expect((user as any).password).toBeUndefined();
     });
@@ -247,32 +246,6 @@ describe(UserService.name, () => {
 
       await expect(sut.getMyPreferences(auth)).resolves.toMatchObject({
         download: { includeEmbeddedVideos: false },
-      });
-      await expect(sut.updateMyPreferences(auth, dto)).resolves.toMatchObject(dto);
-      await expect(sut.getMyPreferences(auth)).resolves.toMatchObject(dto);
-    });
-
-    it('should update the minimum face count', async () => {
-      const { sut, ctx } = setup();
-      const { user } = await ctx.newUser();
-      const auth = factory.auth({ user: { id: user.id } });
-
-      const dto = { people: { minimumFaces: 2 } };
-
-      await expect(sut.getMyPreferences(auth)).resolves.toMatchObject({ people: { minimumFaces: 3 } });
-      await expect(sut.updateMyPreferences(auth, dto)).resolves.toMatchObject(dto);
-      await expect(sut.getMyPreferences(auth)).resolves.toMatchObject(dto);
-    });
-
-    it('should update the person update strategy', async () => {
-      const { sut, ctx } = setup();
-      const { user } = await ctx.newUser();
-      const auth = factory.auth({ user: { id: user.id } });
-
-      const dto = { people: { updateStrategy: PersonUpdateStrategy.Self } };
-
-      await expect(sut.getMyPreferences(auth)).resolves.toMatchObject({
-        people: { updateStrategy: PersonUpdateStrategy.Everyone },
       });
       await expect(sut.updateMyPreferences(auth, dto)).resolves.toMatchObject(dto);
       await expect(sut.getMyPreferences(auth)).resolves.toMatchObject(dto);

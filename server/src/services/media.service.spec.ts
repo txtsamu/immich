@@ -12,7 +12,6 @@ import {
   AssetVisibility,
   AudioCodec,
   Colorspace,
-  ExifOrientation,
   ImageFormat,
   JobName,
   JobStatus,
@@ -22,14 +21,10 @@ import {
   VideoCodec,
 } from 'src/enum.js';
 import { MediaService } from 'src/services/media.service.js';
-import { AssetFaceFactory } from 'test/factories/asset-face.factory.js';
 import { AssetFactory } from 'test/factories/asset.factory.js';
-import { PersonFactory } from 'test/factories/person.factory.js';
 import { probeStub } from 'test/fixtures/media.stub.js';
-import { personThumbnailStub } from 'test/fixtures/person.stub.js';
-import { systemConfigStub } from 'test/fixtures/system-config.stub.js';
 import { getForGenerateThumbnail } from 'test/mappers.js';
-import { factory, newUuid } from 'test/small.factory.js';
+import { factory } from 'test/small.factory.js';
 import { ServiceMocks, makeStream, newTestService } from 'test/utils.js';
 
 const fullsizeBuffer = Buffer.from('embedded image data');
@@ -53,10 +48,7 @@ describe(MediaService.name, () => {
   describe('handleQueueGenerateThumbnails', () => {
     it('should queue all assets', async () => {
       const asset = AssetFactory.create();
-      const person = PersonFactory.create({ faceAssetId: newUuid() });
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-
-      mocks.person.getAll.mockReturnValue(makeStream([person]));
 
       await sut.handleQueueGenerateThumbnails({ force: true });
 
@@ -67,20 +59,11 @@ describe(MediaService.name, () => {
           data: { id: asset.id },
         },
       ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith(undefined);
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.PersonGenerateThumbnail,
-          data: { ownerId: person.ownerId, personGroupId: person.personGroupId },
-        },
-      ]);
     });
 
     it('should queue trashed assets when force is true', async () => {
       const asset = AssetFactory.create({ status: AssetStatus.Trashed, deletedAt: new Date() });
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
 
       await sut.handleQueueGenerateThumbnails({ force: true });
 
@@ -96,7 +79,6 @@ describe(MediaService.name, () => {
     it('should queue archived assets when force is true', async () => {
       const asset = AssetFactory.create({ visibility: AssetVisibility.Archive });
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
 
       await sut.handleQueueGenerateThumbnails({ force: true });
 
@@ -109,37 +91,9 @@ describe(MediaService.name, () => {
       ]);
     });
 
-    it('should queue all people with missing thumbnail path', async () => {
-      const [person1, person2] = [
-        PersonFactory.create({ thumbnailPath: undefined }),
-        PersonFactory.create({ thumbnailPath: undefined }),
-      ];
-
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([AssetFactory.create()]));
-      mocks.person.getAll.mockReturnValue(makeStream([person1, person2]));
-      mocks.person.getRandomFace.mockResolvedValueOnce(AssetFaceFactory.create());
-
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-      expect(mocks.person.getRandomFace).toHaveBeenCalled();
-      expect(mocks.person.update).toHaveBeenCalledTimes(1);
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.PersonGenerateThumbnail,
-          data: {
-            ownerId: person1.ownerId,
-            personGroupId: person1.personGroupId,
-          },
-        },
-      ]);
-    });
-
     it('should queue all assets with missing resize path', async () => {
       const asset = AssetFactory.create();
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: false });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
@@ -149,21 +103,17 @@ describe(MediaService.name, () => {
           data: { id: asset.id },
         },
       ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
     });
 
     it('should queue all assets with missing preview', async () => {
       const asset = AssetFactory.create();
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: false });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
         { name: JobName.AssetGenerateThumbnails, data: { id: asset.id } },
       ]);
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
     });
 
     it('should queue all assets with missing thumbhash', async () => {
@@ -171,22 +121,18 @@ describe(MediaService.name, () => {
         .files([AssetFileType.Thumbnail, AssetFileType.Preview])
         .build();
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: false });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
         { name: JobName.AssetGenerateThumbnails, data: { id: asset.id } },
       ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
     });
 
     it('should queue all assets with missing fullsize when feature is enabled', async () => {
       mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: true } } });
       const asset = { id: factory.uuid(), isEdited: false };
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: false });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: true });
@@ -196,26 +142,21 @@ describe(MediaService.name, () => {
           data: { id: asset.id },
         },
       ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
     });
 
     it('should not queue assets with missing fullsize when feature is disabled', async () => {
       mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: false } } });
       const asset = { id: factory.uuid(), isEdited: false };
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: false });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
       expect(mocks.job.queueAll).toHaveBeenCalledTimes(1);
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
     });
 
     it('should queue assets with edits but missing edited thumbnails', async () => {
       const asset = AssetFactory.from().edit().build();
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: false });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
@@ -225,15 +166,12 @@ describe(MediaService.name, () => {
           data: { id: asset.id },
         },
       ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
     });
 
     it('should not queue assets with missing edited fullsize when feature is disabled', async () => {
       const asset = AssetFactory.from().edit().build();
       mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: false } } });
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: false });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
@@ -241,15 +179,12 @@ describe(MediaService.name, () => {
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
         { name: JobName.AssetEditThumbnailGeneration, data: { id: asset.id } },
       ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
     });
 
     it('should queue assets with missing fullsize when force is true, regardless of setting', async () => {
       mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: false } } });
       const asset = { id: factory.uuid(), isEdited: false };
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: true });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: true, fullsizeEnabled: false });
@@ -259,14 +194,11 @@ describe(MediaService.name, () => {
           data: { id: asset.id },
         },
       ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalled();
     });
 
     it('should queue both regular and edited thumbnails for assets with edits when force is true', async () => {
       const asset = AssetFactory.from().edit().build();
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
       await sut.handleQueueGenerateThumbnails({ force: true });
 
       expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: true, fullsizeEnabled: false });
@@ -280,30 +212,20 @@ describe(MediaService.name, () => {
           data: { id: asset.id },
         },
       ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith(undefined);
     });
   });
 
   describe('handleQueueMigration', () => {
     it('should remove empty directories and queue jobs', async () => {
       const asset = AssetFactory.create();
-      const person = PersonFactory.create();
 
       mocks.assetJob.streamForMigrationJob.mockReturnValue(makeStream([asset]));
       mocks.job.getJobCounts.mockResolvedValue({ active: 1, waiting: 0 } as JobCounts);
-      mocks.person.getAll.mockReturnValue(makeStream([person]));
 
       await expect(sut.handleQueueMigration()).resolves.toBe(JobStatus.Success);
 
       expect(mocks.storage.removeEmptyDirs).toHaveBeenCalledTimes(2);
       expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.AssetFileMigration, data: { id: asset.id } }]);
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.PersonFileMigration,
-          data: { ownerId: person.ownerId, personGroupId: person.personGroupId },
-        },
-      ]);
     });
   });
 
@@ -356,8 +278,6 @@ describe(MediaService.name, () => {
 
     beforeEach(() => {
       rawInfo = { width: 100, height: 100, channels: 3 };
-      mocks.person.getFaces.mockResolvedValue([]);
-      mocks.ocr.getByAssetId.mockResolvedValue([]);
       mocks.media.decodeImage.mockImplementation((input) =>
         Promise.resolve(
           typeof input === 'string'
@@ -1355,8 +1275,6 @@ describe(MediaService.name, () => {
 
     beforeEach(() => {
       rawInfo = { width: 100, height: 100, channels: 3 };
-      mocks.person.getFaces.mockResolvedValue([]);
-      mocks.ocr.getByAssetId.mockResolvedValue([]);
       mocks.media.decodeImage.mockImplementation((input) =>
         Promise.resolve(
           typeof input === 'string'
@@ -1389,8 +1307,6 @@ describe(MediaService.name, () => {
       mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
       const thumbhashBuffer = Buffer.from('a thumbhash', 'utf8');
       mocks.media.generateThumbhash.mockResolvedValue(thumbhashBuffer);
-      mocks.person.getFaces.mockResolvedValue([]);
-      mocks.ocr.getByAssetId.mockResolvedValue([]);
 
       await sut.handleAssetEditThumbnailGeneration({ id: asset.id });
 
@@ -1409,8 +1325,6 @@ describe(MediaService.name, () => {
         .edit({ action: AssetEditAction.Crop, parameters: { height: 1152, width: 1512, x: 216, y: 1512 } })
         .build();
       mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
-      mocks.person.getFaces.mockResolvedValue([]);
-      mocks.ocr.getByAssetId.mockResolvedValue([]);
 
       await sut.handleAssetEditThumbnailGeneration({ id: asset.id });
       expect(mocks.media.generateThumbnail).toHaveBeenCalledWith(
@@ -1455,8 +1369,6 @@ describe(MediaService.name, () => {
     it('should generate all 3 edited files if an asset has edits', async () => {
       const asset = AssetFactory.from().exif().edit().build();
       mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
-      mocks.person.getFaces.mockResolvedValue([]);
-      mocks.ocr.getByAssetId.mockResolvedValue([]);
 
       await sut.handleAssetEditThumbnailGeneration({ id: asset.id });
 
@@ -1493,8 +1405,6 @@ describe(MediaService.name, () => {
       mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
       const thumbhashBuffer = factory.buffer();
       mocks.media.generateThumbhash.mockResolvedValue(thumbhashBuffer);
-      mocks.person.getFaces.mockResolvedValue([]);
-      mocks.ocr.getByAssetId.mockResolvedValue([]);
 
       await sut.handleAssetEditThumbnailGeneration({ id: asset.id });
 
@@ -1502,440 +1412,10 @@ describe(MediaService.name, () => {
     });
   });
 
-  describe('handleGeneratePersonThumbnail', () => {
-    it('should generate a thumbnail even if machine learning is disabled', async () => {
-      mocks.systemMetadata.get.mockResolvedValue(systemConfigStub.machineLearningDisabled);
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.newThumbnailMiddle);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      mocks.media.decodeImage.mockResolvedValue({
-        data: Buffer.from(''),
-        info: { width: 1000, height: 1000 } as OutputInfo,
-      });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: 'owner-1', personGroupId: 'person-group-1' }),
-      ).resolves.toBe(JobStatus.Success);
-      expect(mocks.media.generateThumbnail).toHaveBeenCalled();
-    });
-
-    it('should skip a person not found', async () => {
-      await sut.handleGeneratePersonThumbnail({ ownerId: 'owner-1', personGroupId: 'person-group-1' });
-      expect(mocks.media.generateThumbnail).not.toHaveBeenCalled();
-    });
-
-    it('should skip a person without a face asset id', async () => {
-      const person = PersonFactory.create({ faceAssetId: null });
-      await sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId });
-      expect(mocks.media.generateThumbnail).not.toHaveBeenCalled();
-    });
-
-    it('should skip a person with face not found', async () => {
-      await sut.handleGeneratePersonThumbnail({ ownerId: 'owner-1', personGroupId: 'person-group-1' });
-      expect(mocks.media.generateThumbnail).not.toHaveBeenCalled();
-    });
-
-    it('should generate a thumbnail', async () => {
-      const person = PersonFactory.create();
-
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.newThumbnailMiddle);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const data = Buffer.from('');
-      const info = { width: 1000, height: 1000 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.person.getDataForThumbnailGenerationJob).toHaveBeenCalledWith({
-        ownerId: person.ownerId,
-        personGroupId: person.personGroupId,
-      });
-      expect(mocks.storage.mkdirSync).toHaveBeenCalledWith(expect.any(String));
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(personThumbnailStub.newThumbnailMiddle.originalPath, {
-        colorspace: Colorspace.P3,
-        orientation: undefined,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalledWith(
-        { data, info },
-        {
-          colorspace: Colorspace.P3,
-          format: ImageFormat.Jpeg,
-          quality: 80,
-          progressive: false,
-          edits: [
-            {
-              action: 'crop',
-              parameters: {
-                height: 274,
-                width: 274,
-                x: 238,
-                y: 163,
-              },
-            },
-          ],
-          processInvalidImages: false,
-          size: 250,
-        },
-        expect.any(String),
-      );
-      expect(mocks.person.update).toHaveBeenCalledWith({
-        ownerId: person.ownerId,
-        personGroupId: person.personGroupId,
-        thumbnailPath: expect.any(String),
-      });
-    });
-
-    it('should use preview path if video', async () => {
-      const person = PersonFactory.create();
-
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.videoThumbnail);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const data = Buffer.from('');
-      const info = { width: 1000, height: 1000 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.person.getDataForThumbnailGenerationJob).toHaveBeenCalledWith({
-        ownerId: person.ownerId,
-        personGroupId: person.personGroupId,
-      });
-      expect(mocks.storage.mkdirSync).toHaveBeenCalledWith(expect.any(String));
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(expect.any(String), {
-        colorspace: Colorspace.P3,
-        orientation: undefined,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalledWith(
-        { data, info },
-        {
-          colorspace: Colorspace.P3,
-          format: ImageFormat.Jpeg,
-          quality: 80,
-          progressive: false,
-          edits: [
-            {
-              action: 'crop',
-              parameters: {
-                height: 274,
-                width: 274,
-                x: 238,
-                y: 163,
-              },
-            },
-          ],
-          processInvalidImages: false,
-          size: 250,
-        },
-        expect.any(String),
-      );
-      expect(mocks.person.update).toHaveBeenCalledWith({
-        ownerId: person.ownerId,
-        personGroupId: person.personGroupId,
-        thumbnailPath: expect.any(String),
-      });
-    });
-
-    it('should generate a thumbnail without going negative', async () => {
-      const person = PersonFactory.create();
-
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.newThumbnailStart);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const data = Buffer.from('');
-      const info = { width: 2160, height: 3840 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(personThumbnailStub.newThumbnailStart.originalPath, {
-        colorspace: Colorspace.P3,
-        orientation: undefined,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalledWith(
-        { data, info },
-        {
-          colorspace: Colorspace.P3,
-          format: ImageFormat.Jpeg,
-          quality: 80,
-          progressive: false,
-          edits: [
-            {
-              action: 'crop',
-              parameters: {
-                height: 510,
-                width: 510,
-                x: 0,
-                y: 85,
-              },
-            },
-          ],
-          processInvalidImages: false,
-          size: 250,
-        },
-        expect.any(String),
-      );
-    });
-
-    it('should generate a thumbnail without overflowing', async () => {
-      const person = PersonFactory.create();
-
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.newThumbnailEnd);
-      mocks.person.update.mockResolvedValue(person);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const data = Buffer.from('');
-      const info = { width: 1000, height: 1000 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(personThumbnailStub.newThumbnailEnd.originalPath, {
-        colorspace: Colorspace.P3,
-        orientation: undefined,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalledWith(
-        { data, info },
-        {
-          colorspace: Colorspace.P3,
-          format: ImageFormat.Jpeg,
-          quality: 80,
-          progressive: false,
-          edits: [
-            {
-              action: 'crop',
-              parameters: {
-                height: 408,
-                width: 408,
-                x: 591,
-                y: 591,
-              },
-            },
-          ],
-          processInvalidImages: false,
-          size: 250,
-        },
-        expect.any(String),
-      );
-    });
-
-    it('should handle negative coordinates', async () => {
-      const person = PersonFactory.create();
-
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.negativeCoordinate);
-      mocks.person.update.mockResolvedValue(person);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const data = Buffer.from('');
-      const info = { width: 4624, height: 3080 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(personThumbnailStub.negativeCoordinate.originalPath, {
-        colorspace: Colorspace.P3,
-        orientation: undefined,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalledWith(
-        { data, info },
-        {
-          colorspace: Colorspace.P3,
-          format: ImageFormat.Jpeg,
-          quality: 80,
-          progressive: false,
-          edits: [
-            {
-              action: 'crop',
-              parameters: {
-                height: 412,
-                width: 412,
-                x: 0,
-                y: 62,
-              },
-            },
-          ],
-          processInvalidImages: false,
-          size: 250,
-        },
-        expect.any(String),
-      );
-    });
-
-    it('should handle overflowing coordinate', async () => {
-      const person = PersonFactory.create();
-
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.overflowingCoordinate);
-      mocks.person.update.mockResolvedValue(person);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const data = Buffer.from('');
-      const info = { width: 4624, height: 3080 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(personThumbnailStub.overflowingCoordinate.originalPath, {
-        colorspace: Colorspace.P3,
-        orientation: undefined,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalledWith(
-        { data, info },
-        {
-          colorspace: Colorspace.P3,
-          format: ImageFormat.Jpeg,
-          quality: 80,
-          progressive: false,
-          edits: [
-            {
-              action: 'crop',
-              parameters: {
-                height: 138,
-                width: 138,
-                x: 4485,
-                y: 94,
-              },
-            },
-          ],
-          processInvalidImages: false,
-          size: 250,
-        },
-        expect.any(String),
-      );
-    });
-
-    it('should use embedded preview if enabled and raw image', async () => {
-      const person = PersonFactory.create();
-
-      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: true } });
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.rawEmbeddedThumbnail);
-      mocks.person.update.mockResolvedValue(person);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const extracted = Buffer.from('');
-      const data = Buffer.from('');
-      const info = { width: 2160, height: 3840 } as OutputInfo;
-      mocks.media.extract.mockResolvedValue({ buffer: extracted, format: RawExtractedFormat.Jpeg });
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-      mocks.media.getImageMetadata.mockResolvedValue({ width: 2160, height: 3840, isTransparent: false });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.media.extract).toHaveBeenCalledWith(personThumbnailStub.rawEmbeddedThumbnail.originalPath);
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(extracted, {
-        colorspace: Colorspace.P3,
-        orientation: ExifOrientation.Horizontal,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalledWith(
-        { data, info },
-        {
-          colorspace: Colorspace.P3,
-          format: ImageFormat.Jpeg,
-          quality: 80,
-          progressive: false,
-          edits: [
-            {
-              action: 'crop',
-              parameters: {
-                height: 844,
-                width: 844,
-                x: 388,
-                y: 730,
-              },
-            },
-          ],
-          processInvalidImages: false,
-          size: 250,
-        },
-        expect.any(String),
-      );
-    });
-
-    it('should not use embedded preview if enabled and not raw image', async () => {
-      const person = PersonFactory.create();
-
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.newThumbnailMiddle);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const data = Buffer.from('');
-      const info = { width: 2160, height: 3840 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.media.extract).not.toHaveBeenCalled();
-      expect(mocks.media.generateThumbnail).toHaveBeenCalled();
-    });
-
-    it('should not use embedded preview if enabled and raw image if not exists', async () => {
-      const person = PersonFactory.create();
-
-      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: true } });
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.rawEmbeddedThumbnail);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const data = Buffer.from('');
-      const info = { width: 2160, height: 3840 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.media.extract).toHaveBeenCalledWith(personThumbnailStub.rawEmbeddedThumbnail.originalPath);
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(personThumbnailStub.rawEmbeddedThumbnail.originalPath, {
-        colorspace: Colorspace.P3,
-        orientation: undefined,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalled();
-    });
-
-    it('should not use embedded preview if enabled and raw image if low resolution', async () => {
-      const person = PersonFactory.create();
-
-      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: true } });
-      mocks.person.getDataForThumbnailGenerationJob.mockResolvedValue(personThumbnailStub.rawEmbeddedThumbnail);
-      mocks.media.generateThumbnail.mockResolvedValue();
-      const extracted = Buffer.from('');
-      const data = Buffer.from('');
-      const info = { width: 1000, height: 1000 } as OutputInfo;
-      mocks.media.decodeImage.mockResolvedValue({ data, info });
-      mocks.media.extract.mockResolvedValue({ buffer: extracted, format: RawExtractedFormat.Jpeg });
-      mocks.media.getImageMetadata.mockResolvedValue({ width: 1000, height: 1000, isTransparent: false });
-
-      await expect(
-        sut.handleGeneratePersonThumbnail({ ownerId: person.ownerId, personGroupId: person.personGroupId }),
-      ).resolves.toBe(JobStatus.Success);
-
-      expect(mocks.media.extract).toHaveBeenCalledWith(personThumbnailStub.rawEmbeddedThumbnail.originalPath);
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(personThumbnailStub.rawEmbeddedThumbnail.originalPath, {
-        colorspace: Colorspace.P3,
-        orientation: undefined,
-        processInvalidImages: false,
-      });
-      expect(mocks.media.generateThumbnail).toHaveBeenCalled();
-    });
-  });
-
   describe('handleQueueVideoConversion', () => {
     it('should queue all video assets', async () => {
       const asset = AssetFactory.create({ type: AssetType.Video });
       mocks.assetJob.streamForVideoConversion.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
 
       await sut.handleQueueVideoConversion({ force: true });
 

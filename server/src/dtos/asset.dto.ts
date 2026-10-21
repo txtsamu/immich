@@ -40,7 +40,6 @@ const UpdateAssetBaseSchema = z
 
 const AssetBulkUpdateBaseSchema = UpdateAssetBaseSchema.extend({
   ids: z.array(z.uuidv4()).describe('Asset IDs to update'),
-  duplicateId: z.string().nullish().describe('Duplicate ID'),
   dateTimeRelative: z.int().optional().describe('Relative time offset in minutes'),
   timeZone: z.string().optional().describe('Time zone (IANA timezone)'),
 });
@@ -64,7 +63,6 @@ export const AssetIdsSchema = z
   .meta({ id: 'AssetIdsDto' });
 
 export enum AssetJobName {
-  REFRESH_FACES = 'refresh-faces',
   REFRESH_METADATA = 'refresh-metadata',
   REGENERATE_THUMBNAIL = 'regenerate-thumbnail',
   TRANSCODE_VIDEO = 'transcode-video',

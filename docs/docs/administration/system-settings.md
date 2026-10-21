@@ -44,7 +44,7 @@ Used when viewing groups of photos (main timeline, album view, etc.). Higher res
 Allows you to choose the type of format you want for the Preview images, Webp produces smaller files than jpeg, but is slower to encode.
 
 **Preview resolution**  
-Used when viewing a single photo and for machine learning. Higher resolutions can preserve more detail but take longer to encode, have larger file sizes, and can reduce app responsiveness.
+Used when viewing a single photo. Higher resolutions can preserve more detail but take longer to encode, have larger file sizes, and can reduce app responsiveness.
 
 **Quality**  
 Image quality from 1-100. Higher is better for quality but produces larger files, this option affects the Preview and Thumbnail images.
@@ -64,18 +64,13 @@ The default resolution for Large thumbnails can be lowered from 1440p (default) 
 Using these settings, you can determine the amount of work that will run concurrently for each task in microservices. Some tasks can be set to higher values on computers with powerful hardware and storage with good I/O capabilities.
 
 With higher concurrency, the host will work on more assets in parallel,
-this advice improves throughput, not latency, for example, it will make Smart Search jobs process more quickly, but it won't make searching faster.
+this advice improves throughput, not latency.
 
-It is important to remember that jobs like Smart Search, Face Detection, Facial Recognition, and Transcode Videos require a **lot** of processing power and therefore do not exaggerate the amount of jobs because you're probably thoroughly overloading the server.
+It is important to remember that jobs like Transcode Videos require a **lot** of processing power and therefore do not exaggerate the amount of jobs because you're probably thoroughly overloading the server.
 
 :::danger IMPORTANT
 If you increase the concurrency from the defaults we set, especially for thumbnail generation, make sure you do not increase them past the amount of CPU cores you have available.
 Doing so can impact API responsiveness with no gain in thumbnail generation speed.
-:::
-
-:::info Facial Recognition Concurrency
-The Facial Recognition Concurrency value cannot be changed because
-[DBSCAN](https://www.youtube.com/watch?v=RDZUdRSDOok) is traditionally sequential, but there are parallel implementations of it out there. Our implementation isn't parallel.
 :::
 
 ## External Library
@@ -92,58 +87,6 @@ You can set the scanning interval using the preset or cron format. For more info
 ## Logging
 
 The default Immich log level is `Log` (commonly known as `Info`). The Immich administrator can choose a higher or lower log level according to personal preference or as requested by the Immich support team.
-
-## Machine Learning Settings
-
-Through this setting, you can manage all the settings related to machine learning in Immich, from the setting of remote machine learning to the model and its parameters
-You can choose to disable a certain type of machine learning, for example smart search or facial recognition.
-
-### URL
-
-The built in (`http://immich-machine-learning:3003`) machine learning server will be configured by default, but you can change this or add additional servers.
-
-Hosting the `immich-machine-learning` container on a machine with a more powerful GPU can be helpful to for processing a large number of photos (such as during batch import) or for faster search.
-
-If more than one URL is provided, each server will be attempted one-at-a-time until one responds successfully, in order from first to last. Servers that don't respond will be temporarily ignored until they come back online.
-
-### Smart Search
-
-The [smart search](/features/searching) settings allow you to change the [CLIP model](https://openai.com/research/clip). Larger models will typically provide [more accurate search results](https://github.com/immich-app/immich/discussions/11862) but consume more processing power and RAM. When [changing the CLIP model](/FAQ#can-i-use-a-custom-clip-model) it is mandatory to re-run the Smart Search job on all images to fully apply the change.
-
-:::info Internet connection
-Changing models requires a connection to the Internet to download the model.
-After downloading, there is no need for Immich to connect to the network
-Unless version checking has been enabled in the settings.
-:::
-
-### Duplicate Detection
-
-Use CLIP embeddings to find likely duplicates. The maximum detection distance can be configured in order to improve / reduce the level of accuracy.
-
-- **Maximum detection distance -** Maximum distance between two images to consider them duplicates, ranging from 0.001-0.1. Higher values will detect more duplicates, but may result in false positives.
-
-### Facial Recognition
-
-Under these settings, you can change the facial recognition settings
-Editable settings:
-
-- **Facial Recognition Model**
-- **Min Detection Score**
-- **Max Recognition Distance**
-- **Min Recognized Faces**
-
-You can learn more about these options on the [Facial Recognition page](/features/facial-recognition#how-face-detection-works)
-
-:::info
-When changing the values in Min Detection Score, Max Recognition Distance, and Min Recognized Faces.
-You will have to restart **only** the job FACIAL RECOGNITION - ALL.
-
-If you replace the Facial Recognition Model, you will have to run the job FACE DETECTION - ALL.
-:::
-
-:::tip identical twins
-If you have twins, you might want to lower the Max Recognition Distance value, decreasing this a **bit** can make it distinguish between them.
-:::
 
 ## Map & GPS Settings
 

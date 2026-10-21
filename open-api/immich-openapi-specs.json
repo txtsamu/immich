@@ -4862,70 +4862,6 @@
         "x-immich-state": "Stable"
       }
     },
-    "/assets/{id}/ocr": {
-      "get": {
-        "description": "Retrieve all OCR (Optical Character Recognition) data associated with the specified asset.",
-        "operationId": "getAssetOcr",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/AssetOcrResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Retrieve asset OCR data",
-        "tags": [
-          "Assets"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "asset.read",
-        "x-immich-state": "Stable"
-      }
-    },
     "/assets/{id}/original": {
       "get": {
         "description": "Downloads the original file of the specified asset.",
@@ -6109,400 +6045,6 @@
         "x-immich-state": "Stable"
       }
     },
-    "/cluster-groups/requests": {
-      "get": {
-        "description": "Retrieve the pending requests for the current user to join a cluster group.",
-        "operationId": "getClusterGroupRequests",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ClusterGroupRequestResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Retrieve cluster group requests",
-        "tags": [
-          "Cluster groups"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.0",
-            "state": "Added"
-          }
-        ],
-        "x-immich-permission": "clusterGroupRequest.read"
-      }
-    },
-    "/cluster-groups/requests/{id}": {
-      "delete": {
-        "description": "Delete a pending request to join a cluster group.",
-        "operationId": "deleteClusterGroupRequest",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Decline a cluster group request",
-        "tags": [
-          "Cluster groups"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.0",
-            "state": "Added"
-          }
-        ],
-        "x-immich-permission": "clusterGroupRequest.delete"
-      }
-    },
-    "/cluster-groups/requests/{id}/accept": {
-      "post": {
-        "description": "Join the cluster group the request was created for.",
-        "operationId": "acceptClusterGroupRequest",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Accept a cluster group request",
-        "tags": [
-          "Cluster groups"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.0",
-            "state": "Added"
-          }
-        ],
-        "x-immich-permission": "clusterGroupRequest.create"
-      }
-    },
-    "/cluster-groups/{id}/leave": {
-      "post": {
-        "description": "Move the current user into a new cluster group of their own.",
-        "operationId": "leaveClusterGroup",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Leave a cluster group",
-        "tags": [
-          "Cluster groups"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.0",
-            "state": "Added"
-          }
-        ],
-        "x-immich-permission": "clusterGroup.leave"
-      }
-    },
-    "/cluster-groups/{id}/regenerate-people": {
-      "post": {
-        "description": "Forcefully re-run facial recognition for all faces of users in this group.",
-        "operationId": "clusterGroupRegeneratePeople",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Regenerate people of users in cluster group",
-        "tags": [
-          "Cluster groups"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.0",
-            "state": "Added"
-          }
-        ],
-        "x-immich-permission": "clusterGroup.read"
-      }
-    },
-    "/cluster-groups/{id}/requests": {
-      "get": {
-        "description": "Retrieve the pending requests for other users to join the cluster group.",
-        "operationId": "getClusterGroupRequestsForGroup",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ClusterGroupRequestResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Retrieve the requests sent by a cluster group",
-        "tags": [
-          "Cluster groups"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.0",
-            "state": "Added"
-          }
-        ],
-        "x-immich-permission": "clusterGroupRequest.read"
-      },
-      "put": {
-        "description": "Ask another user to join the cluster group of the current user.",
-        "operationId": "createClusterGroupRequest",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClusterGroupRequestCreateDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ClusterGroupRequestResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Create a cluster group request",
-        "tags": [
-          "Cluster groups"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.0",
-            "state": "Added"
-          }
-        ],
-        "x-immich-permission": "clusterGroupRequest.create"
-      }
-    },
-    "/cluster-groups/{id}/users": {
-      "get": {
-        "description": "Retrieve the users that are a member of the cluster group.",
-        "operationId": "getClusterGroupUsers",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/UserResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Retrieve the users of a cluster group",
-        "tags": [
-          "Cluster groups"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.0",
-            "state": "Added"
-          }
-        ],
-        "x-immich-permission": "clusterGroup.read"
-      }
-    },
     "/config": {
       "get": {
         "description": "Retrieve the system configuration properties that are visible to logged in users.",
@@ -6747,472 +6289,6 @@
           }
         ],
         "x-immich-permission": "asset.download",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/duplicates": {
-      "delete": {
-        "description": "Delete multiple duplicate assets specified by their IDs.",
-        "operationId": "deleteDuplicates",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkIdsDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Delete duplicates",
-        "tags": [
-          "Duplicates"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "duplicate.delete",
-        "x-immich-state": "Stable"
-      },
-      "get": {
-        "description": "Retrieve a list of duplicate assets available to the authenticated user.",
-        "operationId": "getAssetDuplicates",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DuplicateResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Retrieve duplicates",
-        "tags": [
-          "Duplicates"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "duplicate.read",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/duplicates/resolve": {
-      "post": {
-        "description": "Resolve duplicate groups by synchronizing metadata across assets and deleting/trashing duplicates.",
-        "operationId": "resolveDuplicates",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DuplicateResolveDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/BulkIdResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Resolve duplicate groups",
-        "tags": [
-          "Duplicates"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.0.0",
-            "state": "Added"
-          },
-          {
-            "version": "v3.0.0",
-            "state": "Alpha"
-          }
-        ],
-        "x-immich-permission": "duplicate.delete",
-        "x-immich-state": "Alpha"
-      }
-    },
-    "/duplicates/{id}": {
-      "delete": {
-        "description": "Dismiss a duplicate group by its ID, unlinking all assets in the group without deleting them.",
-        "operationId": "deleteDuplicate",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Dismiss a duplicate group",
-        "tags": [
-          "Duplicates"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "duplicate.delete",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/faces": {
-      "get": {
-        "description": "Retrieve all faces belonging to an asset.",
-        "operationId": "getFaces",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "query",
-            "description": "Face ID",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/AssetFaceResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Retrieve faces for asset",
-        "tags": [
-          "Faces"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "face.read",
-        "x-immich-state": "Stable"
-      },
-      "post": {
-        "description": "Create a new face that has not been discovered by facial recognition. The content of the bounding box is considered a face.",
-        "operationId": "createFace",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssetFaceCreateDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Create a face",
-        "tags": [
-          "Faces"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "face.create",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/faces/{id}": {
-      "delete": {
-        "description": "Delete a face identified by the id. Optionally can be force deleted.",
-        "operationId": "deleteFace",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssetFaceDeleteDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Delete a face",
-        "tags": [
-          "Faces"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "face.delete",
-        "x-immich-state": "Stable"
-      },
-      "put": {
-        "description": "Re-assign the face provided in the body to the person identified by the id in the path parameter.",
-        "operationId": "reassignFacesById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FaceDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PersonResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Re-assign a face to another person",
-        "tags": [
-          "Faces"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "face.update",
         "x-immich-state": "Stable"
       }
     },
@@ -10103,1056 +9179,6 @@
         "x-immich-state": "Alpha"
       }
     },
-    "/people": {
-      "delete": {
-        "description": "Bulk delete a list of people at once.",
-        "operationId": "deletePeople",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PeopleDeleteDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Delete people",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.delete",
-        "x-immich-state": "Stable"
-      },
-      "get": {
-        "description": "Retrieve a list of all people.",
-        "operationId": "getAllPeople",
-        "parameters": [
-          {
-            "name": "closestAssetId",
-            "required": false,
-            "in": "query",
-            "description": "Closest asset ID for similarity search",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "closestPersonId",
-            "required": false,
-            "in": "query",
-            "description": "Closest person ID for similarity search",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "isFavorite",
-            "required": false,
-            "in": "query",
-            "description": "Filter by favorite status",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "isHidden",
-            "required": false,
-            "in": "query",
-            "description": "Filter by hidden status",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "name",
-            "required": false,
-            "in": "query",
-            "description": "Filter by person name",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "description": "Page number for pagination",
-            "schema": {
-              "minimum": 1,
-              "maximum": 9007199254740991,
-              "default": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "sharedById",
-            "required": false,
-            "in": "query",
-            "description": "Only include people to which the user gave access",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "sharedWithId",
-            "required": false,
-            "in": "query",
-            "description": "Only include people to which the user was given access",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "size",
-            "required": false,
-            "in": "query",
-            "description": "Number of items per page",
-            "schema": {
-              "minimum": 1,
-              "maximum": 1000,
-              "default": 500,
-              "type": "integer"
-            }
-          },
-          {
-            "name": "withHidden",
-            "required": false,
-            "in": "query",
-            "description": "Include hidden people",
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Get all people",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.read",
-        "x-immich-state": "Stable"
-      },
-      "post": {
-        "description": "Create a new person that can have multiple faces assigned to them.",
-        "operationId": "createPerson",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PersonCreateDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PersonResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Create a person",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.create",
-        "x-immich-state": "Stable"
-      },
-      "put": {
-        "description": "Bulk update multiple people at once.",
-        "operationId": "updatePeople",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PeopleUpdateDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/BulkIdResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Update people",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.update",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/people/merge": {
-      "post": {
-        "description": "Merge an ordered list of people together into a single person. The final name and birth date are always the first defined value, following the order. Also automatically merges people for other users in the cluster group, skipping people that would result in overriding a previously set name or birth date.",
-        "operationId": "mergePeople",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MergePersonDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/BulkIdResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Merge people",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.2.1",
-            "state": "Added"
-          },
-          {
-            "version": "v3.2.1",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.merge",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/people/users": {
-      "delete": {
-        "description": "Remove user access to people",
-        "operationId": "removeUsersFromPeople",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PersonUsersDeleteDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Remove users from people",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.3.0",
-            "state": "Added"
-          },
-          {
-            "version": "v3.3.0",
-            "state": "Beta"
-          }
-        ],
-        "x-immich-permission": "person.update",
-        "x-immich-state": "Beta"
-      },
-      "get": {
-        "description": "Retrieve a list of users and the people to which they have been given access",
-        "operationId": "getUsersForPeople",
-        "parameters": [
-          {
-            "name": "direction",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "$ref": "#/components/schemas/SharingDirection"
-            }
-          },
-          {
-            "name": "personId",
-            "required": false,
-            "in": "query",
-            "description": "Person ID",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "role",
-            "required": false,
-            "in": "query",
-            "description": "Role of user",
-            "schema": {
-              "$ref": "#/components/schemas/PersonUserRole"
-            }
-          },
-          {
-            "name": "sharedById",
-            "required": false,
-            "in": "query",
-            "description": "User ID of the user that gave access",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          {
-            "name": "sharedWithId",
-            "required": false,
-            "in": "query",
-            "description": "User ID of the user that was given access",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PersonUsersResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Get people access",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.3.0",
-            "state": "Added"
-          },
-          {
-            "version": "v3.3.0",
-            "state": "Beta"
-          }
-        ],
-        "x-immich-permission": "person.read",
-        "x-immich-state": "Beta"
-      },
-      "put": {
-        "description": "Give users access to people",
-        "operationId": "upsertPeopleUsers",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PeopleUsersUpsertDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Upsert user access",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v3.3.0",
-            "state": "Added"
-          },
-          {
-            "version": "v3.3.0",
-            "state": "Beta"
-          }
-        ],
-        "x-immich-permission": "person.update",
-        "x-immich-state": "Beta"
-      }
-    },
-    "/people/{id}": {
-      "delete": {
-        "description": "Delete an individual person.",
-        "operationId": "deletePerson",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PersonDeleteDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Delete person",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.delete",
-        "x-immich-state": "Stable"
-      },
-      "get": {
-        "description": "Retrieve a person by id.",
-        "operationId": "getPerson",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PersonResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Get a person",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.read",
-        "x-immich-state": "Stable"
-      },
-      "put": {
-        "description": "Update an individual person.",
-        "operationId": "updatePerson",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PersonUpdateDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PersonResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Update person",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          },
-          {
-            "version": "v3.0.0",
-            "state": "Updated",
-            "description": "This endpoint now also supports PATCH, in addition to PUT. PATCH will become the default in v4, and then PUT will be dropped in v5. Please migrate accordingly."
-          }
-        ],
-        "x-immich-permission": "person.update",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/people/{id}/merge": {
-      "post": {
-        "deprecated": true,
-        "description": "Merge a list of people into the person specified in the path parameter.",
-        "operationId": "mergePersonLegacy",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MergePersonDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/BulkIdResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Merge people",
-        "tags": [
-          "People",
-          "Deprecated"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          },
-          {
-            "version": "v3.2.1",
-            "state": "Deprecated",
-            "replacementId": "mergePeople"
-          }
-        ],
-        "x-immich-permission": "person.merge",
-        "x-immich-state": "Deprecated"
-      }
-    },
-    "/people/{id}/reassign": {
-      "put": {
-        "description": "Bulk reassign a list of faces to a different person.",
-        "operationId": "reassignFaces",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssetFaceUpdateDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PersonResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Reassign faces",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.reassign",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/people/{id}/statistics": {
-      "get": {
-        "description": "Retrieve statistics about a specific person.",
-        "operationId": "getPersonStatistics",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PersonStatisticsResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Get person statistics",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.statistics",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/people/{id}/thumbnail": {
-      "get": {
-        "description": "Retrieve the thumbnail file for a person.",
-        "operationId": "getPersonThumbnail",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "format": "binary",
-                  "type": "string"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Get person thumbnail",
-        "tags": [
-          "People"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.read",
-        "x-immich-state": "Stable"
-      }
-    },
     "/plugins": {
       "get": {
         "description": "Retrieve a list of plugins available to the authenticated user.",
@@ -12330,61 +10356,6 @@
             }
           },
           {
-            "name": "ocr",
-            "required": false,
-            "in": "query",
-            "description": "Filter by OCR text content",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated",
-            "deprecated": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "personIds",
-            "required": false,
-            "in": "query",
-            "description": "Filter by person IDs",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated",
-            "deprecated": true,
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$"
-              }
-            }
-          },
-          {
             "name": "rating",
             "required": false,
             "in": "query",
@@ -12873,78 +10844,6 @@
         "x-immich-state": "Stable"
       }
     },
-    "/search/person": {
-      "get": {
-        "description": "Search for people by name.",
-        "operationId": "searchPerson",
-        "parameters": [
-          {
-            "name": "name",
-            "required": true,
-            "in": "query",
-            "description": "Person name to search for",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "withHidden",
-            "required": false,
-            "in": "query",
-            "description": "Include hidden people",
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PersonResponseDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Search people",
-        "tags": [
-          "Search"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "person.read",
-        "x-immich-state": "Stable"
-      }
-    },
     "/search/places": {
       "get": {
         "description": "Search for places by name.",
@@ -13050,66 +10949,6 @@
           }
         ],
         "summary": "Search random assets",
-        "tags": [
-          "Search"
-        ],
-        "x-immich-history": [
-          {
-            "version": "v1",
-            "state": "Added"
-          },
-          {
-            "version": "v1",
-            "state": "Beta"
-          },
-          {
-            "version": "v2",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-permission": "asset.read",
-        "x-immich-state": "Stable"
-      }
-    },
-    "/search/smart": {
-      "post": {
-        "description": "Perform a smart search for assets by using machine learning vectors to determine relevance.",
-        "operationId": "searchSmart",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SmartSearchDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SearchResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "cookie": []
-          },
-          {
-            "api_key": []
-          }
-        ],
-        "summary": "Smart asset search",
         "tags": [
           "Search"
         ],
@@ -16616,17 +14455,6 @@
             }
           },
           {
-            "name": "personId",
-            "required": false,
-            "in": "query",
-            "description": "Filter assets containing a specific person (face recognition)",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            }
-          },
-          {
             "name": "slug",
             "required": false,
             "in": "query",
@@ -16812,17 +14640,6 @@
             "description": "Date to group and order assets by (takenAt for date taken, createdAt for date added to Immich)",
             "schema": {
               "$ref": "#/components/schemas/AssetOrderBy"
-            }
-          },
-          {
-            "name": "personId",
-            "required": false,
-            "in": "query",
-            "description": "Filter assets containing a specific person (face recognition)",
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
             }
           },
           {
@@ -18624,10 +16441,6 @@
       "description": "Administrative endpoints related to authentication."
     },
     {
-      "name": "Cluster groups",
-      "description": "A cluster group is a set of users whose faces are clustered together, so that a person can be shared between them."
-    },
-    {
       "name": "Config (user)",
       "description": "The system configuration properties that are visible to logged in users."
     },
@@ -18650,14 +16463,6 @@
     {
       "name": "Download",
       "description": "Endpoints for downloading assets or collections of assets."
-    },
-    {
-      "name": "Duplicates",
-      "description": "Endpoints for managing and identifying duplicate assets."
-    },
-    {
-      "name": "Faces",
-      "description": "A face is a detected human face within an asset, which can be associated with a person. Faces are normally detected via machine learning, but can also be created manually."
     },
     {
       "name": "Integrity (admin)",
@@ -18700,10 +16505,6 @@
       "description": "A passkey is a WebAuthn credential that can be used to login without a password."
     },
     {
-      "name": "People",
-      "description": "A person is a collection of faces, which can be favorited and named. A person can also be merged into another person. People are automatically created via the face recognition job."
-    },
-    {
       "name": "Plugins",
       "description": "A plugin is an installed module that makes filters and actions available for the workflow feature."
     },
@@ -18713,7 +16514,7 @@
     },
     {
       "name": "Search",
-      "description": "Endpoints related to searching assets via text, smart search, optical character recognition (OCR), and other filters like person, album, and other metadata. Search endpoints usually support pagination and sorting."
+      "description": "Endpoints related to searching assets via text, and other filters like album, and other metadata. Search endpoints usually support pagination and sorting."
     },
     {
       "name": "Server",
@@ -18917,23 +16718,6 @@
         ],
         "type": "object"
       },
-      "AdminConfigClipDto": {
-        "properties": {
-          "enabled": {
-            "description": "Whether the task is enabled",
-            "type": "boolean"
-          },
-          "modelName": {
-            "description": "Name of the model to use",
-            "type": "string"
-          }
-        },
-        "required": [
-          "enabled",
-          "modelName"
-        ],
-        "type": "object"
-      },
       "AdminConfigDatabaseBackupDto": {
         "properties": {
           "cronExpression": {
@@ -18982,14 +16766,8 @@
           "logging": {
             "$ref": "#/components/schemas/AdminConfigLoggingDto"
           },
-          "machineLearning": {
-            "$ref": "#/components/schemas/AdminConfigMachineLearningDto"
-          },
           "map": {
             "$ref": "#/components/schemas/AdminConfigMapDto"
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/AdminConfigMetadataDto"
           },
           "newVersionCheck": {
             "$ref": "#/components/schemas/AdminConfigNewVersionCheckDto"
@@ -19039,9 +16817,7 @@
           "job",
           "library",
           "logging",
-          "machineLearning",
           "map",
-          "metadata",
           "newVersionCheck",
           "nightlyTasks",
           "notifications",
@@ -19055,26 +16831,6 @@
           "theme",
           "trash",
           "user"
-        ],
-        "type": "object"
-      },
-      "AdminConfigDuplicateDetectionDto": {
-        "properties": {
-          "enabled": {
-            "description": "Whether the task is enabled",
-            "type": "boolean"
-          },
-          "maxDistance": {
-            "description": "Maximum distance threshold for duplicate detection",
-            "format": "double",
-            "maximum": 0.1,
-            "minimum": 0.001,
-            "type": "number"
-          }
-        },
-        "required": [
-          "enabled",
-          "maxDistance"
         ],
         "type": "object"
       },
@@ -19232,58 +16988,6 @@
           "enabled",
           "resolutions",
           "videoCodecs"
-        ],
-        "type": "object"
-      },
-      "AdminConfigFacesDto": {
-        "properties": {
-          "import": {
-            "description": "Import",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "import"
-        ],
-        "type": "object"
-      },
-      "AdminConfigFacialRecognitionDto": {
-        "properties": {
-          "enabled": {
-            "description": "Whether the task is enabled",
-            "type": "boolean"
-          },
-          "maxDistance": {
-            "description": "Maximum distance threshold for face recognition",
-            "format": "double",
-            "maximum": 2,
-            "minimum": 0.1,
-            "type": "number"
-          },
-          "minFaces": {
-            "description": "Minimum number of faces required for recognition",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "minScore": {
-            "description": "Minimum confidence score for face detection",
-            "format": "double",
-            "maximum": 1,
-            "minimum": 0.1,
-            "type": "number"
-          },
-          "modelName": {
-            "description": "Name of the model to use",
-            "type": "string"
-          }
-        },
-        "required": [
-          "enabled",
-          "maxDistance",
-          "minFaces",
-          "minScore",
-          "modelName"
         ],
         "type": "object"
       },
@@ -19450,9 +17154,6 @@
           "editor": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
-          "faceDetection": {
-            "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
-          },
           "integrityCheck": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
@@ -19468,16 +17169,10 @@
           "notifications": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
-          "ocr": {
-            "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
-          },
           "search": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
           "sidecar": {
-            "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
-          },
-          "smartSearch": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
           "thumbnailGeneration": {
@@ -19493,16 +17188,13 @@
         "required": [
           "backgroundTask",
           "editor",
-          "faceDetection",
           "integrityCheck",
           "library",
           "metadataExtraction",
           "migration",
           "notifications",
-          "ocr",
           "search",
           "sidecar",
-          "smartSearch",
           "thumbnailGeneration",
           "videoConversion",
           "workflow"
@@ -19583,71 +17275,6 @@
         ],
         "type": "object"
       },
-      "AdminConfigMachineLearningAvailabilityChecksDto": {
-        "properties": {
-          "enabled": {
-            "description": "Enabled",
-            "type": "boolean"
-          },
-          "interval": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "timeout": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "enabled",
-          "interval",
-          "timeout"
-        ],
-        "type": "object"
-      },
-      "AdminConfigMachineLearningDto": {
-        "properties": {
-          "availabilityChecks": {
-            "$ref": "#/components/schemas/AdminConfigMachineLearningAvailabilityChecksDto"
-          },
-          "clip": {
-            "$ref": "#/components/schemas/AdminConfigClipDto"
-          },
-          "duplicateDetection": {
-            "$ref": "#/components/schemas/AdminConfigDuplicateDetectionDto"
-          },
-          "enabled": {
-            "description": "Enabled",
-            "type": "boolean"
-          },
-          "facialRecognition": {
-            "$ref": "#/components/schemas/AdminConfigFacialRecognitionDto"
-          },
-          "ocr": {
-            "$ref": "#/components/schemas/AdminConfigOcrDto"
-          },
-          "urls": {
-            "description": "ML service URLs",
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1,
-            "type": "array"
-          }
-        },
-        "required": [
-          "availabilityChecks",
-          "clip",
-          "duplicateDetection",
-          "enabled",
-          "facialRecognition",
-          "ocr",
-          "urls"
-        ],
-        "type": "object"
-      },
       "AdminConfigMapDto": {
         "properties": {
           "darkStyle": {
@@ -19672,17 +17299,6 @@
         ],
         "type": "object"
       },
-      "AdminConfigMetadataDto": {
-        "properties": {
-          "faces": {
-            "$ref": "#/components/schemas/AdminConfigFacesDto"
-          }
-        },
-        "required": [
-          "faces"
-        ],
-        "type": "object"
-      },
       "AdminConfigNewVersionCheckDto": {
         "properties": {
           "channel": {
@@ -19701,10 +17317,6 @@
       },
       "AdminConfigNightlyTasksDto": {
         "properties": {
-          "clusterNewFaces": {
-            "description": "Cluster new faces",
-            "type": "boolean"
-          },
           "databaseCleanup": {
             "description": "Database cleanup",
             "type": "boolean"
@@ -19728,7 +17340,6 @@
           }
         },
         "required": [
-          "clusterNewFaces",
           "databaseCleanup",
           "generateMemories",
           "missingThumbnails",
@@ -19866,46 +17477,6 @@
           "storageQuotaClaim",
           "timeout",
           "tokenEndpointAuthMethod"
-        ],
-        "type": "object"
-      },
-      "AdminConfigOcrDto": {
-        "properties": {
-          "enabled": {
-            "description": "Whether the task is enabled",
-            "type": "boolean"
-          },
-          "maxResolution": {
-            "description": "Maximum resolution for OCR processing",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "minDetectionScore": {
-            "description": "Minimum confidence score for text detection",
-            "format": "double",
-            "maximum": 1,
-            "minimum": 0.1,
-            "type": "number"
-          },
-          "minRecognitionScore": {
-            "description": "Minimum confidence score for text recognition",
-            "format": "double",
-            "maximum": 1,
-            "minimum": 0.1,
-            "type": "number"
-          },
-          "modelName": {
-            "description": "Name of the model to use",
-            "type": "string"
-          }
-        },
-        "required": [
-          "enabled",
-          "maxResolution",
-          "minDetectionScore",
-          "minRecognitionScore",
-          "modelName"
         ],
         "type": "object"
       },
@@ -20601,11 +18172,6 @@
             "description": "Asset description",
             "type": "string"
           },
-          "duplicateId": {
-            "description": "Duplicate ID",
-            "nullable": true,
-            "type": "string"
-          },
           "ids": {
             "description": "Asset IDs to update",
             "items": {
@@ -20897,198 +18463,6 @@
         ],
         "type": "object"
       },
-      "AssetFaceCreateDto": {
-        "properties": {
-          "assetId": {
-            "description": "Asset ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "height": {
-            "description": "Face bounding box height",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "imageHeight": {
-            "description": "Image height in pixels",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "imageWidth": {
-            "description": "Image width in pixels",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "personId": {
-            "description": "Person ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "userId": {
-            "description": "User ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "width": {
-            "description": "Face bounding box width",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "x": {
-            "description": "Face bounding box X coordinate",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "y": {
-            "description": "Face bounding box Y coordinate",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "assetId",
-          "height",
-          "imageHeight",
-          "imageWidth",
-          "personId",
-          "width",
-          "x",
-          "y"
-        ],
-        "type": "object"
-      },
-      "AssetFaceDeleteDto": {
-        "properties": {
-          "force": {
-            "description": "Force delete even if person has other faces",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "force"
-        ],
-        "type": "object"
-      },
-      "AssetFaceResponseDto": {
-        "description": "Asset face with person",
-        "properties": {
-          "boundingBoxX1": {
-            "description": "Bounding box X1 coordinate",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxX2": {
-            "description": "Bounding box X2 coordinate",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxY1": {
-            "description": "Bounding box Y1 coordinate",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxY2": {
-            "description": "Bounding box Y2 coordinate",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "id": {
-            "description": "Face ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "imageHeight": {
-            "description": "Image height in pixels",
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "imageWidth": {
-            "description": "Image width in pixels",
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "person": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PersonResponseDto"
-              }
-            ],
-            "nullable": true
-          },
-          "sourceType": {
-            "$ref": "#/components/schemas/SourceType"
-          }
-        },
-        "required": [
-          "boundingBoxX1",
-          "boundingBoxX2",
-          "boundingBoxY1",
-          "boundingBoxY2",
-          "id",
-          "imageHeight",
-          "imageWidth",
-          "person"
-        ],
-        "type": "object"
-      },
-      "AssetFaceUpdateDto": {
-        "properties": {
-          "data": {
-            "description": "Face update items",
-            "items": {
-              "$ref": "#/components/schemas/AssetFaceUpdateItem"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "data"
-        ],
-        "type": "object"
-      },
-      "AssetFaceUpdateItem": {
-        "properties": {
-          "assetId": {
-            "description": "Asset ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "personId": {
-            "description": "Person ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "userId": {
-            "description": "User ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "personId"
-        ],
-        "type": "object"
-      },
       "AssetFileResponseDto": {
         "properties": {
           "createdAt": {
@@ -21205,7 +18579,6 @@
       "AssetJobName": {
         "description": "Job name",
         "enum": [
-          "refresh-faces",
           "refresh-metadata",
           "regenerate-thumbnail",
           "transcode-video"
@@ -21499,90 +18872,6 @@
         ],
         "type": "object"
       },
-      "AssetOcrResponseDto": {
-        "properties": {
-          "assetId": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "boxScore": {
-            "description": "Confidence score for text detection box",
-            "format": "double",
-            "type": "number"
-          },
-          "id": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "text": {
-            "description": "Recognized text",
-            "type": "string"
-          },
-          "textScore": {
-            "description": "Confidence score for text recognition",
-            "format": "double",
-            "type": "number"
-          },
-          "x1": {
-            "description": "Normalized x coordinate of box corner 1 (0-1)",
-            "format": "double",
-            "type": "number"
-          },
-          "x2": {
-            "description": "Normalized x coordinate of box corner 2 (0-1)",
-            "format": "double",
-            "type": "number"
-          },
-          "x3": {
-            "description": "Normalized x coordinate of box corner 3 (0-1)",
-            "format": "double",
-            "type": "number"
-          },
-          "x4": {
-            "description": "Normalized x coordinate of box corner 4 (0-1)",
-            "format": "double",
-            "type": "number"
-          },
-          "y1": {
-            "description": "Normalized y coordinate of box corner 1 (0-1)",
-            "format": "double",
-            "type": "number"
-          },
-          "y2": {
-            "description": "Normalized y coordinate of box corner 2 (0-1)",
-            "format": "double",
-            "type": "number"
-          },
-          "y3": {
-            "description": "Normalized y coordinate of box corner 3 (0-1)",
-            "format": "double",
-            "type": "number"
-          },
-          "y4": {
-            "description": "Normalized y coordinate of box corner 4 (0-1)",
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "required": [
-          "assetId",
-          "boxScore",
-          "id",
-          "text",
-          "textScore",
-          "x1",
-          "x2",
-          "x3",
-          "x4",
-          "y1",
-          "y2",
-          "y3",
-          "y4"
-        ],
-        "type": "object"
-      },
       "AssetOrder": {
         "description": "Asset sort order",
         "enum": [
@@ -21616,13 +18905,6 @@
           "createdAt": {
             "description": "The UTC timestamp when the asset was originally uploaded to Immich.",
             "format": "date-time",
-            "type": "string"
-          },
-          "duplicateId": {
-            "description": "Duplicate group ID",
-            "format": "uuid",
-            "nullable": true,
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
             "type": "string"
           },
           "duration": {
@@ -21741,12 +19023,6 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
             "type": "string"
-          },
-          "people": {
-            "items": {
-              "$ref": "#/components/schemas/PersonResponseDto"
-            },
-            "type": "array"
           },
           "resized": {
             "description": "Is resized",
@@ -22133,56 +19409,6 @@
         "required": [
           "newPassword",
           "password"
-        ],
-        "type": "object"
-      },
-      "ClusterGroupRequestCreateDto": {
-        "properties": {
-          "userId": {
-            "description": "User to invite into the cluster group",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "userId"
-        ],
-        "type": "object"
-      },
-      "ClusterGroupRequestResponseDto": {
-        "properties": {
-          "clusterGroupId": {
-            "description": "Cluster group the user is invited to join",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "createdAt": {
-            "description": "Creation date",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string"
-          },
-          "id": {
-            "description": "Request ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "userId": {
-            "description": "User the request was created for",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "clusterGroupId",
-          "createdAt",
-          "id",
-          "userId"
         ],
         "type": "object"
       },
@@ -22654,87 +19880,6 @@
         },
         "type": "object"
       },
-      "DuplicateResolveDto": {
-        "properties": {
-          "groups": {
-            "description": "List of duplicate groups to resolve",
-            "items": {
-              "$ref": "#/components/schemas/DuplicateResolveGroupDto"
-            },
-            "minItems": 1,
-            "type": "array"
-          }
-        },
-        "required": [
-          "groups"
-        ],
-        "type": "object"
-      },
-      "DuplicateResolveGroupDto": {
-        "properties": {
-          "duplicateId": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "keepAssetIds": {
-            "description": "Asset IDs to keep",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "trashAssetIds": {
-            "description": "Asset IDs to trash or delete",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "duplicateId",
-          "keepAssetIds",
-          "trashAssetIds"
-        ],
-        "type": "object"
-      },
-      "DuplicateResponseDto": {
-        "properties": {
-          "assets": {
-            "description": "Duplicate assets",
-            "items": {
-              "$ref": "#/components/schemas/AssetResponseDto"
-            },
-            "type": "array"
-          },
-          "duplicateId": {
-            "description": "Duplicate group ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "suggestedKeepAssetIds": {
-            "description": "Suggested asset IDs to keep based on file size and EXIF data",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "assets",
-          "duplicateId",
-          "suggestedKeepAssetIds"
-        ],
-        "type": "object"
-      },
       "EmailNotificationsResponse": {
         "properties": {
           "albumInvite": {
@@ -22978,20 +20123,6 @@
         },
         "type": "object"
       },
-      "FaceDto": {
-        "properties": {
-          "id": {
-            "description": "Face ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
-      },
       "FoldersResponse": {
         "properties": {
           "enabled": {
@@ -23192,10 +20323,6 @@
         "enum": [
           "AssetDelete",
           "AssetDeleteCheck",
-          "AssetDetectFacesQueueAll",
-          "AssetDetectFaces",
-          "AssetDetectDuplicatesQueueAll",
-          "AssetDetectDuplicates",
           "AssetEditThumbnailGeneration",
           "AssetEncodeVideoQueueAll",
           "AssetEncodeVideo",
@@ -23208,8 +20335,6 @@
           "AuditTableCleanup",
           "AuthChallengeCleanup",
           "DatabaseBackup",
-          "FacialRecognitionQueueAll",
-          "FacialRecognition",
           "FileDelete",
           "FileMigrationQueueAll",
           "LibraryDeleteCheck",
@@ -23230,22 +20355,15 @@
           "UserDelete",
           "UserDeleteCheck",
           "UserSyncUsage",
-          "PersonCleanup",
-          "PersonFileMigration",
-          "PersonGenerateThumbnail",
           "SessionCleanup",
           "SendMail",
           "SidecarQueueAll",
           "SidecarCheck",
           "SidecarWrite",
-          "SmartSearchQueueAll",
-          "SmartSearch",
           "StorageTemplateMigration",
           "StorageTemplateMigrationSingle",
           "TagCleanup",
           "VersionCheck",
-          "OcrQueueAll",
-          "Ocr",
           "WorkflowAssetTrigger",
           "IntegrityUntrackedFilesQueueAll",
           "IntegrityUntrackedFiles",
@@ -23593,7 +20711,6 @@
       "ManualJobName": {
         "description": "Manual job name",
         "enum": [
-          "person-cleanup",
           "tag-cleanup",
           "user-cleanup",
           "memory-cleanup",
@@ -23804,16 +20921,6 @@
       },
       "MemoryDataDto": {
         "properties": {
-          "personId": {
-            "description": "Person ID (birthday memories)",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "personName": {
-            "description": "Name of the person when the memory was created (birthday memories)",
-            "type": "string"
-          },
           "year": {
             "description": "Year of the memory",
             "maximum": 9999,
@@ -23945,8 +21052,7 @@
       "MemoryType": {
         "description": "Memory type",
         "enum": [
-          "on_this_day",
-          "birthday"
+          "on_this_day"
         ],
         "type": "string"
       },
@@ -23977,23 +21083,6 @@
             "type": "string"
           }
         },
-        "type": "object"
-      },
-      "MergePersonDto": {
-        "properties": {
-          "ids": {
-            "description": "Person IDs to merge",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "ids"
-        ],
         "type": "object"
       },
       "MetadataSearchDto": {
@@ -24399,26 +21488,6 @@
             ],
             "x-immich-state": "Deprecated"
           },
-          "ocr": {
-            "deprecated": true,
-            "description": "Filter by OCR text content",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
           "order": {
             "$ref": "#/components/schemas/AssetOrder",
             "deprecated": true,
@@ -24494,31 +21563,6 @@
             "maximum": 9007199254740991,
             "minimum": 1,
             "type": "integer",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "personIds": {
-            "deprecated": true,
-            "description": "Filter by person IDs",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array",
             "x-immich-history": [
               {
                 "version": "v1",
@@ -24862,10 +21906,6 @@
             "description": "Include EXIF data in response",
             "type": "boolean"
           },
-          "withPeople": {
-            "description": "Include people data in response",
-            "type": "boolean"
-          },
           "withStacked": {
             "description": "Include stacked assets",
             "type": "boolean"
@@ -25022,7 +22062,6 @@
           "SystemMessage",
           "AlbumInvite",
           "AlbumUpdate",
-          "ClusterGroupRequest",
           "Custom"
         ],
         "type": "string"
@@ -25456,277 +22495,6 @@
         ],
         "type": "object"
       },
-      "PeopleDeleteDto": {
-        "properties": {
-          "ids": {
-            "description": "IDs to process",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "userId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "ids"
-        ],
-        "type": "object",
-        "x-immich-history": [
-          {
-            "version": "v3.3",
-            "state": "Added"
-          }
-        ]
-      },
-      "PeopleResponse": {
-        "properties": {
-          "enabled": {
-            "description": "Whether people are enabled",
-            "type": "boolean"
-          },
-          "minimumFaces": {
-            "description": "People face threshold",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "sidebarWeb": {
-            "description": "Whether people appear in web sidebar",
-            "type": "boolean"
-          },
-          "updateStrategy": {
-            "$ref": "#/components/schemas/PersonUpdateStrategy"
-          }
-        },
-        "required": [
-          "enabled",
-          "sidebarWeb",
-          "updateStrategy"
-        ],
-        "type": "object"
-      },
-      "PeopleResponseDto": {
-        "description": "People response",
-        "properties": {
-          "hasNextPage": {
-            "description": "Whether there are more pages",
-            "type": "boolean",
-            "x-immich-history": [
-              {
-                "version": "v1.110.0",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              }
-            ],
-            "x-immich-state": "Stable"
-          },
-          "hidden": {
-            "description": "Number of hidden people",
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "people": {
-            "items": {
-              "$ref": "#/components/schemas/PersonResponseDto"
-            },
-            "type": "array"
-          },
-          "total": {
-            "description": "Total number of people",
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "hidden",
-          "people",
-          "total"
-        ],
-        "type": "object"
-      },
-      "PeopleUpdate": {
-        "properties": {
-          "enabled": {
-            "description": "Whether people are enabled",
-            "type": "boolean"
-          },
-          "minimumFaces": {
-            "description": "People face threshold",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "sidebarWeb": {
-            "description": "Whether people appear in web sidebar",
-            "type": "boolean"
-          },
-          "updateStrategy": {
-            "$ref": "#/components/schemas/PersonUpdateStrategy"
-          }
-        },
-        "type": "object"
-      },
-      "PeopleUpdateDto": {
-        "properties": {
-          "people": {
-            "description": "People to update",
-            "items": {
-              "$ref": "#/components/schemas/PeopleUpdateItem"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "people"
-        ],
-        "type": "object"
-      },
-      "PeopleUpdateItem": {
-        "properties": {
-          "birthDate": {
-            "description": "Person date of birth",
-            "format": "date",
-            "nullable": true,
-            "type": "string"
-          },
-          "color": {
-            "description": "Person color (hex)",
-            "nullable": true,
-            "pattern": "^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
-            "type": "string"
-          },
-          "featureFaceAssetId": {
-            "description": "Asset ID used for feature face thumbnail",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "id": {
-            "description": "Person ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "isFavorite": {
-            "description": "Mark as favorite",
-            "type": "boolean"
-          },
-          "isHidden": {
-            "description": "Person visibility (hidden)",
-            "type": "boolean"
-          },
-          "name": {
-            "description": "Person name",
-            "type": "string"
-          },
-          "userId": {
-            "description": "Restrict the update to the person record of this User ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
-      },
-      "PeopleUserResponseDto": {
-        "properties": {
-          "avatarColor": {
-            "$ref": "#/components/schemas/UserAvatarColor"
-          },
-          "email": {
-            "description": "User email",
-            "format": "email",
-            "pattern": "^[\\p{L}\\p{M}\\p{N}.!#$%&'*+/=?^_`{|}~-]+@[\\p{L}\\p{N}](?:[\\p{L}\\p{M}\\p{N}-]{0,61}[\\p{L}\\p{M}\\p{N}])?(?:\\.[\\p{L}\\p{N}](?:[\\p{L}\\p{M}\\p{N}-]{0,61}[\\p{L}\\p{M}\\p{N}])?)*$",
-            "type": "string"
-          },
-          "id": {
-            "description": "User ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "name": {
-            "description": "User name",
-            "type": "string"
-          },
-          "profileChangedAt": {
-            "description": "Profile change date",
-            "format": "date-time",
-            "type": "string"
-          },
-          "profileImagePath": {
-            "description": "Profile image path",
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/PersonUserRole",
-            "description": "Access role"
-          }
-        },
-        "required": [
-          "avatarColor",
-          "email",
-          "id",
-          "name",
-          "profileChangedAt",
-          "profileImagePath",
-          "role"
-        ],
-        "type": "object"
-      },
-      "PeopleUsersUpsertDto": {
-        "properties": {
-          "personIds": {
-            "description": "Person IDs, required when type is omitted",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "role": {
-            "$ref": "#/components/schemas/PersonUserRole",
-            "description": "Role that should be applied"
-          },
-          "sharedWithIds": {
-            "description": "User IDs that should be given access to the person",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "type": {
-            "$ref": "#/components/schemas/PeopleUsersUpsertType"
-          }
-        },
-        "required": [
-          "role",
-          "sharedWithIds"
-        ],
-        "type": "object"
-      },
-      "PeopleUsersUpsertType": {
-        "description": "Which people to update when personIds is omitted",
-        "enum": [
-          "everyone"
-        ],
-        "type": "string"
-      },
       "Permission": {
         "description": "List of permissions",
         "enum": [
@@ -25776,20 +22544,9 @@
           "backup.download",
           "backup.upload",
           "backup.delete",
-          "clusterGroup.read",
-          "clusterGroup.leave",
-          "clusterGroupRequest.create",
-          "clusterGroupRequest.read",
-          "clusterGroupRequest.delete",
           "adminConfig.read",
           "adminConfig.update",
           "userConfig.read",
-          "duplicate.read",
-          "duplicate.delete",
-          "face.create",
-          "face.read",
-          "face.update",
-          "face.delete",
           "folder.read",
           "job.create",
           "job.read",
@@ -25821,13 +22578,6 @@
           "passkey.read",
           "passkey.update",
           "passkey.delete",
-          "person.create",
-          "person.read",
-          "person.update",
-          "person.delete",
-          "person.statistics",
-          "person.merge",
-          "person.reassign",
           "pinCode.create",
           "pinCode.update",
           "pinCode.delete",
@@ -25903,334 +22653,6 @@
           "adminAuth.unlinkAll"
         ],
         "type": "string"
-      },
-      "PersonCreateDto": {
-        "properties": {
-          "birthDate": {
-            "description": "Person date of birth",
-            "format": "date",
-            "nullable": true,
-            "type": "string"
-          },
-          "color": {
-            "description": "Person color (hex)",
-            "nullable": true,
-            "pattern": "^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
-            "type": "string"
-          },
-          "isFavorite": {
-            "description": "Mark as favorite",
-            "type": "boolean"
-          },
-          "isHidden": {
-            "description": "Person visibility (hidden)",
-            "type": "boolean"
-          },
-          "name": {
-            "description": "Person name",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "PersonDeleteDto": {
-        "default": {},
-        "properties": {
-          "userId": {
-            "type": "string"
-          }
-        },
-        "type": "object",
-        "x-immich-history": [
-          {
-            "version": "v3.3",
-            "state": "Added"
-          },
-          {
-            "version": "v3.3",
-            "state": "Stable"
-          }
-        ],
-        "x-immich-state": "Stable"
-      },
-      "PersonOtherResponseDto": {
-        "properties": {
-          "birthDate": {
-            "nullable": true,
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/PersonUserRole"
-          },
-          "sharedById": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "birthDate",
-          "name",
-          "role",
-          "sharedById"
-        ],
-        "type": "object"
-      },
-      "PersonResponseDto": {
-        "properties": {
-          "birthDate": {
-            "description": "Person date of birth",
-            "format": "date",
-            "nullable": true,
-            "type": "string"
-          },
-          "color": {
-            "description": "Person color (hex)",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1.126.0",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              }
-            ],
-            "x-immich-state": "Stable"
-          },
-          "id": {
-            "description": "Person ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "isFavorite": {
-            "description": "Is favorite",
-            "type": "boolean",
-            "x-immich-history": [
-              {
-                "version": "v1.126.0",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              }
-            ],
-            "x-immich-state": "Stable"
-          },
-          "isHidden": {
-            "description": "Is hidden",
-            "type": "boolean"
-          },
-          "name": {
-            "description": "Person name",
-            "type": "string"
-          },
-          "otherPeople": {
-            "items": {
-              "$ref": "#/components/schemas/PersonOtherResponseDto"
-            },
-            "type": "array"
-          },
-          "sharedBy": {
-            "description": "Users that gave the current user access to this person",
-            "items": {
-              "$ref": "#/components/schemas/PeopleUserResponseDto"
-            },
-            "type": "array"
-          },
-          "sharedWith": {
-            "description": "Users the current user gave access to this person",
-            "items": {
-              "$ref": "#/components/schemas/PeopleUserResponseDto"
-            },
-            "type": "array"
-          },
-          "thumbnailPath": {
-            "description": "Thumbnail path",
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "Last update date",
-            "format": "date-time",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1.107.0",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              }
-            ],
-            "x-immich-state": "Stable"
-          }
-        },
-        "required": [
-          "birthDate",
-          "id",
-          "isHidden",
-          "name",
-          "otherPeople",
-          "sharedBy",
-          "sharedWith",
-          "thumbnailPath"
-        ],
-        "type": "object"
-      },
-      "PersonStatisticsResponseDto": {
-        "properties": {
-          "assets": {
-            "description": "Number of assets",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "assets"
-        ],
-        "type": "object"
-      },
-      "PersonUpdateDto": {
-        "properties": {
-          "birthDate": {
-            "description": "Person date of birth",
-            "format": "date",
-            "nullable": true,
-            "type": "string"
-          },
-          "color": {
-            "description": "Person color (hex)",
-            "nullable": true,
-            "pattern": "^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
-            "type": "string"
-          },
-          "featureFaceAssetId": {
-            "description": "Asset ID used for feature face thumbnail",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "isFavorite": {
-            "description": "Mark as favorite",
-            "type": "boolean"
-          },
-          "isHidden": {
-            "description": "Person visibility (hidden)",
-            "type": "boolean"
-          },
-          "name": {
-            "description": "Person name",
-            "type": "string"
-          },
-          "userId": {
-            "description": "Restrict the update to the person record of this User ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "PersonUpdateStrategy": {
-        "description": "Which person records to update when editing a person",
-        "enum": [
-          "self",
-          "everyone"
-        ],
-        "type": "string"
-      },
-      "PersonUserRole": {
-        "description": "Levels of access for managing people resources on behalf of another user.",
-        "enum": [
-          "read",
-          "write",
-          "admin"
-        ],
-        "type": "string"
-      },
-      "PersonUsersDeleteDto": {
-        "items": {
-          "properties": {
-            "personId": {
-              "description": "Person ID",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            },
-            "sharedById": {
-              "description": "User ID of the user that gave access to the person",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            },
-            "sharedWithId": {
-              "description": "User ID of the user that was given access to the person",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          "required": [
-            "personId",
-            "sharedWithId"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "PersonUsersResponseDto": {
-        "items": {
-          "properties": {
-            "personId": {
-              "description": "Person ID",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            },
-            "role": {
-              "$ref": "#/components/schemas/PersonUserRole",
-              "description": "Access role"
-            },
-            "sharedBy": {
-              "$ref": "#/components/schemas/UserResponseDto",
-              "description": "The user that gave access to this person"
-            },
-            "sharedById": {
-              "description": "User ID of the user that gave access to this person",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            },
-            "sharedWith": {
-              "$ref": "#/components/schemas/UserResponseDto",
-              "description": "The user that was given access to this person"
-            },
-            "sharedWithId": {
-              "description": "User ID of the user that was given access to this person",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          "required": [
-            "personId",
-            "sharedById",
-            "sharedWithId",
-            "sharedBy",
-            "sharedWith",
-            "role"
-          ],
-          "type": "object"
-        },
-        "type": "array"
       },
       "PinCodeChangeDto": {
         "properties": {
@@ -26750,10 +23172,6 @@
           "thumbnailGeneration",
           "metadataExtraction",
           "videoConversion",
-          "faceDetection",
-          "facialRecognition",
-          "smartSearch",
-          "duplicateDetection",
           "backgroundTask",
           "storageTemplateMigration",
           "migration",
@@ -26762,7 +23180,6 @@
           "library",
           "notifications",
           "backupDatabase",
-          "ocr",
           "workflow",
           "integrityCheck",
           "editor"
@@ -26903,16 +23320,7 @@
           "backupDatabase": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
-          "duplicateDetection": {
-            "$ref": "#/components/schemas/QueueResponseLegacyDto"
-          },
           "editor": {
-            "$ref": "#/components/schemas/QueueResponseLegacyDto"
-          },
-          "faceDetection": {
-            "$ref": "#/components/schemas/QueueResponseLegacyDto"
-          },
-          "facialRecognition": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
           "integrityCheck": {
@@ -26930,16 +23338,10 @@
           "notifications": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
-          "ocr": {
-            "$ref": "#/components/schemas/QueueResponseLegacyDto"
-          },
           "search": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
           "sidecar": {
-            "$ref": "#/components/schemas/QueueResponseLegacyDto"
-          },
-          "smartSearch": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
           "storageTemplateMigration": {
@@ -26958,19 +23360,14 @@
         "required": [
           "backgroundTask",
           "backupDatabase",
-          "duplicateDetection",
           "editor",
-          "faceDetection",
-          "facialRecognition",
           "integrityCheck",
           "library",
           "metadataExtraction",
           "migration",
           "notifications",
-          "ocr",
           "search",
           "sidecar",
-          "smartSearch",
           "storageTemplateMigration",
           "thumbnailGeneration",
           "videoConversion",
@@ -27288,51 +23685,6 @@
             ],
             "x-immich-state": "Deprecated"
           },
-          "ocr": {
-            "deprecated": true,
-            "description": "Filter by OCR text content",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "personIds": {
-            "deprecated": true,
-            "description": "Filter by person IDs",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
           "rating": {
             "deprecated": true,
             "description": "Filter by rating [1-5], or null for unrated",
@@ -27618,10 +23970,6 @@
           },
           "withExif": {
             "description": "Include EXIF data in response",
-            "type": "boolean"
-          },
-          "withPeople": {
-            "description": "Include people data in response",
             "type": "boolean"
           },
           "withStacked": {
@@ -27987,9 +24335,6 @@
           "hasAlbums": {
             "$ref": "#/components/schemas/BoolFilter"
           },
-          "hasPeople": {
-            "$ref": "#/components/schemas/BoolFilter"
-          },
           "hasTags": {
             "$ref": "#/components/schemas/BoolFilter"
           },
@@ -28020,9 +24365,6 @@
           "model": {
             "$ref": "#/components/schemas/StringFilterNullable"
           },
-          "ocr": {
-            "$ref": "#/components/schemas/StringSimilarityFilter"
-          },
           "or": {
             "items": {
               "$ref": "#/components/schemas/SearchFilterBranch"
@@ -28035,9 +24377,6 @@
           },
           "originalPath": {
             "$ref": "#/components/schemas/StringPatternFilter"
-          },
-          "personIds": {
-            "$ref": "#/components/schemas/IdsFilter"
           },
           "rating": {
             "$ref": "#/components/schemas/NumberFilterNullable"
@@ -28096,9 +24435,6 @@
           "hasAlbums": {
             "$ref": "#/components/schemas/BoolFilter"
           },
-          "hasPeople": {
-            "$ref": "#/components/schemas/BoolFilter"
-          },
           "hasTags": {
             "$ref": "#/components/schemas/BoolFilter"
           },
@@ -28129,17 +24465,11 @@
           "model": {
             "$ref": "#/components/schemas/StringFilterNullable"
           },
-          "ocr": {
-            "$ref": "#/components/schemas/StringSimilarityFilter"
-          },
           "originalFileName": {
             "$ref": "#/components/schemas/StringPatternFilter"
           },
           "originalPath": {
             "$ref": "#/components/schemas/StringPatternFilter"
-          },
-          "personIds": {
-            "$ref": "#/components/schemas/IdsFilter"
           },
           "rating": {
             "$ref": "#/components/schemas/NumberFilterNullable"
@@ -28382,12 +24712,6 @@
             "description": "Map light style URL",
             "type": "string"
           },
-          "minFaces": {
-            "description": "People min faces server default",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
           "oauthAccountManagementUrl": {
             "default": "",
             "description": "OAuth account management URL",
@@ -28422,7 +24746,6 @@
           "maintenanceMode",
           "mapDarkStyleUrl",
           "mapLightStyleUrl",
-          "minFaces",
           "oauthButtonText",
           "publicUsers",
           "trashDays",
@@ -28446,20 +24769,8 @@
             "description": "Whether config file is available",
             "type": "boolean"
           },
-          "duplicateDetection": {
-            "description": "Whether duplicate detection is enabled",
-            "type": "boolean"
-          },
           "email": {
             "description": "Whether email notifications are enabled",
-            "type": "boolean"
-          },
-          "facialRecognition": {
-            "description": "Whether facial recognition is enabled",
-            "type": "boolean"
-          },
-          "importFaces": {
-            "description": "Whether face import is enabled",
             "type": "boolean"
           },
           "map": {
@@ -28472,10 +24783,6 @@
           },
           "oauthAutoLaunch": {
             "description": "Whether OAuth auto-launch is enabled",
-            "type": "boolean"
-          },
-          "ocr": {
-            "description": "Whether OCR is enabled",
             "type": "boolean"
           },
           "passwordLogin": {
@@ -28498,10 +24805,6 @@
             "description": "Whether sidecar files are supported",
             "type": "boolean"
           },
-          "smartSearch": {
-            "description": "Whether smart search is enabled",
-            "type": "boolean"
-          },
           "trash": {
             "description": "Whether trash feature is enabled",
             "type": "boolean"
@@ -28509,20 +24812,15 @@
         },
         "required": [
           "configFile",
-          "duplicateDetection",
           "email",
-          "facialRecognition",
-          "importFaces",
           "map",
           "oauth",
           "oauthAutoLaunch",
-          "ocr",
           "passwordLogin",
           "realtimeTranscoding",
           "reverseGeocoding",
           "search",
           "sidecar",
-          "smartSearch",
           "trash"
         ],
         "type": "object"
@@ -29168,14 +25466,6 @@
         },
         "type": "object"
       },
-      "SharingDirection": {
-        "description": "Sharing direction",
-        "enum": [
-          "shared-by",
-          "shared-with"
-        ],
-        "type": "string"
-      },
       "SignUpDto": {
         "properties": {
           "email": {
@@ -29202,696 +25492,6 @@
           "password"
         ],
         "type": "object"
-      },
-      "SmartSearchDto": {
-        "properties": {
-          "albumIds": {
-            "deprecated": true,
-            "description": "Filter by album IDs",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "city": {
-            "deprecated": true,
-            "description": "Filter by city name",
-            "nullable": true,
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "country": {
-            "deprecated": true,
-            "description": "Filter by country name",
-            "nullable": true,
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "createdAfter": {
-            "deprecated": true,
-            "description": "Filter by creation date (after)",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "createdBefore": {
-            "deprecated": true,
-            "description": "Filter by creation date (before)",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "filter": {
-            "$ref": "#/components/schemas/SearchFilter",
-            "x-immich-history": [
-              {
-                "version": "v3.2.0",
-                "state": "Added"
-              }
-            ]
-          },
-          "isEncoded": {
-            "deprecated": true,
-            "description": "Filter by encoded status",
-            "type": "boolean",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "isFavorite": {
-            "deprecated": true,
-            "description": "Filter by favorite status",
-            "type": "boolean",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "isMotion": {
-            "deprecated": true,
-            "description": "Filter by motion photo status",
-            "type": "boolean",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "isNotInAlbum": {
-            "deprecated": true,
-            "description": "Filter assets not in any album",
-            "type": "boolean",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "isOffline": {
-            "deprecated": true,
-            "description": "Filter by offline status",
-            "type": "boolean",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "language": {
-            "description": "Search language code",
-            "type": "string"
-          },
-          "lensModel": {
-            "deprecated": true,
-            "description": "Filter by lens model",
-            "nullable": true,
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "libraryId": {
-            "deprecated": true,
-            "description": "Library ID to filter by",
-            "format": "uuid",
-            "nullable": true,
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "make": {
-            "deprecated": true,
-            "description": "Filter by camera make",
-            "nullable": true,
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "model": {
-            "deprecated": true,
-            "description": "Filter by camera model",
-            "nullable": true,
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "ocr": {
-            "deprecated": true,
-            "description": "Filter by OCR text content",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "page": {
-            "deprecated": true,
-            "description": "Page number",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "personIds": {
-            "deprecated": true,
-            "description": "Filter by person IDs",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "query": {
-            "description": "Natural language search query",
-            "type": "string"
-          },
-          "queryAssetId": {
-            "description": "Asset ID to use as search reference",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "rating": {
-            "deprecated": true,
-            "description": "Filter by rating [1-5], or null for unrated",
-            "maximum": 5,
-            "minimum": 1,
-            "nullable": true,
-            "type": "integer",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v2.6.0",
-                "state": "Updated",
-                "description": "Using -1 as a rating is deprecated and will be removed in the next major version."
-              },
-              {
-                "version": "v3",
-                "state": "Updated",
-                "description": "Using -1 as a rating is no longer valid."
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "size": {
-            "default": 100,
-            "description": "Number of results to return",
-            "maximum": 1000,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "state": {
-            "deprecated": true,
-            "description": "Filter by state/province name",
-            "nullable": true,
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "tagIds": {
-            "deprecated": true,
-            "description": "Filter by tag IDs",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "nullable": true,
-            "type": "array",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "takenAfter": {
-            "deprecated": true,
-            "description": "Filter by taken date (after)",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "takenBefore": {
-            "deprecated": true,
-            "description": "Filter by taken date (before)",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "trashedAfter": {
-            "deprecated": true,
-            "description": "Filter by trash date (after)",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "trashedBefore": {
-            "deprecated": true,
-            "description": "Filter by trash date (before)",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "type": {
-            "$ref": "#/components/schemas/AssetTypeEnum",
-            "deprecated": true,
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "updatedAfter": {
-            "deprecated": true,
-            "description": "Filter by update date (after)",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "updatedBefore": {
-            "deprecated": true,
-            "description": "Filter by update date (before)",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "visibility": {
-            "$ref": "#/components/schemas/AssetVisibility",
-            "deprecated": true,
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "withDeleted": {
-            "deprecated": true,
-            "description": "Include deleted assets",
-            "type": "boolean",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "withExif": {
-            "description": "Include EXIF data in response",
-            "type": "boolean"
-          }
-        },
-        "type": "object"
-      },
-      "SourceType": {
-        "description": "Face detection source type",
-        "enum": [
-          "machine-learning",
-          "exif",
-          "manual"
-        ],
-        "type": "string"
       },
       "StackCreateDto": {
         "properties": {
@@ -30281,51 +25881,6 @@
             ],
             "x-immich-state": "Deprecated"
           },
-          "ocr": {
-            "deprecated": true,
-            "description": "Filter by OCR text content",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
-          "personIds": {
-            "deprecated": true,
-            "description": "Filter by person IDs",
-            "items": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-              "type": "string"
-            },
-            "type": "array",
-            "x-immich-history": [
-              {
-                "version": "v1",
-                "state": "Added"
-              },
-              {
-                "version": "v2",
-                "state": "Stable"
-              },
-              {
-                "version": "v3.2.0",
-                "state": "Deprecated"
-              }
-            ],
-            "x-immich-state": "Deprecated"
-          },
           "rating": {
             "deprecated": true,
             "description": "Filter by rating [1-5], or null for unrated",
@@ -30690,18 +26245,6 @@
             "type": "string"
           }
         },
-        "type": "object"
-      },
-      "StringSimilarityFilter": {
-        "properties": {
-          "matches": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "matches"
-        ],
         "type": "object"
       },
       "SyncAckDeleteDto": {
@@ -31216,182 +26759,6 @@
         ],
         "type": "object"
       },
-      "SyncAssetFaceDeleteV1": {
-        "properties": {
-          "assetFaceId": {
-            "description": "Asset face ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetFaceId"
-        ],
-        "type": "object"
-      },
-      "SyncAssetFaceV1": {
-        "properties": {
-          "assetId": {
-            "description": "Asset ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "boundingBoxX1": {
-            "description": "Bounding box X1",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxX2": {
-            "description": "Bounding box X2",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxY1": {
-            "description": "Bounding box Y1",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxY2": {
-            "description": "Bounding box Y2",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "id": {
-            "description": "Asset face ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "imageHeight": {
-            "description": "Image height",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "imageWidth": {
-            "description": "Image width",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "personId": {
-            "description": "Person ID",
-            "nullable": true,
-            "type": "string"
-          },
-          "sourceType": {
-            "description": "Source type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "boundingBoxX1",
-          "boundingBoxX2",
-          "boundingBoxY1",
-          "boundingBoxY2",
-          "id",
-          "imageHeight",
-          "imageWidth",
-          "personId",
-          "sourceType"
-        ],
-        "type": "object"
-      },
-      "SyncAssetFaceV3": {
-        "properties": {
-          "assetId": {
-            "description": "Asset ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "boundingBoxX1": {
-            "description": "Bounding box X1",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxX2": {
-            "description": "Bounding box X2",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxY1": {
-            "description": "Bounding box Y1",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "boundingBoxY2": {
-            "description": "Bounding box Y2",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "deletedAt": {
-            "description": "Face deleted at",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "nullable": true,
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string"
-          },
-          "id": {
-            "description": "Asset face ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "imageHeight": {
-            "description": "Image height",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "imageWidth": {
-            "description": "Image width",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "isVisible": {
-            "description": "Is the face visible in the asset",
-            "type": "boolean"
-          },
-          "personId": {
-            "description": "Person ID",
-            "nullable": true,
-            "type": "string"
-          },
-          "sourceType": {
-            "description": "Source type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "boundingBoxX1",
-          "boundingBoxX2",
-          "boundingBoxY1",
-          "boundingBoxY2",
-          "deletedAt",
-          "id",
-          "imageHeight",
-          "imageWidth",
-          "isVisible",
-          "personId",
-          "sourceType"
-        ],
-        "type": "object"
-      },
       "SyncAssetMetadataDeleteV1": {
         "properties": {
           "assetId": {
@@ -31433,122 +26800,6 @@
           "assetId",
           "key",
           "value"
-        ],
-        "type": "object"
-      },
-      "SyncAssetOcrDeleteV1": {
-        "properties": {
-          "assetId": {
-            "description": "Original asset ID of the deleted OCR entry",
-            "type": "string"
-          },
-          "deletedAt": {
-            "description": "Timestamp when the OCR entry was deleted",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string"
-          },
-          "id": {
-            "description": "Audit row ID of the deleted OCR entry",
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "deletedAt",
-          "id"
-        ],
-        "type": "object"
-      },
-      "SyncAssetOcrV1": {
-        "properties": {
-          "assetId": {
-            "description": "Asset ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "boxScore": {
-            "description": "Confidence score of the bounding box",
-            "format": "double",
-            "type": "number"
-          },
-          "id": {
-            "description": "OCR entry ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "isVisible": {
-            "description": "Whether the OCR entry is visible",
-            "type": "boolean"
-          },
-          "text": {
-            "description": "Recognized text content",
-            "type": "string"
-          },
-          "textScore": {
-            "description": "Confidence score of the recognized text",
-            "format": "double",
-            "type": "number"
-          },
-          "x1": {
-            "description": "Top-left X coordinate (normalized 0–1)",
-            "format": "double",
-            "type": "number"
-          },
-          "x2": {
-            "description": "Top-right X coordinate (normalized 0–1)",
-            "format": "double",
-            "type": "number"
-          },
-          "x3": {
-            "description": "Bottom-right X coordinate (normalized 0–1)",
-            "format": "double",
-            "type": "number"
-          },
-          "x4": {
-            "description": "Bottom-left X coordinate (normalized 0–1)",
-            "format": "double",
-            "type": "number"
-          },
-          "y1": {
-            "description": "Top-left Y coordinate (normalized 0–1)",
-            "format": "double",
-            "type": "number"
-          },
-          "y2": {
-            "description": "Top-right Y coordinate (normalized 0–1)",
-            "format": "double",
-            "type": "number"
-          },
-          "y3": {
-            "description": "Bottom-right Y coordinate (normalized 0–1)",
-            "format": "double",
-            "type": "number"
-          },
-          "y4": {
-            "description": "Bottom-left Y coordinate (normalized 0–1)",
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "required": [
-          "assetId",
-          "boxScore",
-          "id",
-          "isVisible",
-          "text",
-          "textScore",
-          "x1",
-          "x2",
-          "x3",
-          "x4",
-          "y1",
-          "y2",
-          "y3",
-          "y4"
         ],
         "type": "object"
       },
@@ -32036,8 +27287,6 @@
           "AssetEditDeleteV1",
           "AssetMetadataV1",
           "AssetMetadataDeleteV1",
-          "AssetOcrV1",
-          "AssetOcrDeleteV1",
           "PartnerV1",
           "PartnerDeleteV1",
           "PartnerAssetV1",
@@ -32076,12 +27325,6 @@
           "MemoryToAssetDeleteV1",
           "StackV1",
           "StackDeleteV1",
-          "PersonV1",
-          "PersonDeleteV1",
-          "AssetFaceV1",
-          "AssetFaceV2",
-          "AssetFaceV3",
-          "AssetFaceDeleteV1",
           "UserMetadataV1",
           "UserMetadataDeleteV1",
           "SyncAckV1",
@@ -32385,93 +27628,6 @@
         ],
         "type": "object"
       },
-      "SyncPersonDeleteV1": {
-        "properties": {
-          "personId": {
-            "description": "Person ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "personId"
-        ],
-        "type": "object"
-      },
-      "SyncPersonV1": {
-        "properties": {
-          "birthDate": {
-            "description": "Birth date",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "nullable": true,
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string"
-          },
-          "color": {
-            "description": "Color",
-            "nullable": true,
-            "type": "string"
-          },
-          "createdAt": {
-            "description": "Created at",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string"
-          },
-          "faceAssetId": {
-            "description": "Face asset ID",
-            "nullable": true,
-            "type": "string"
-          },
-          "id": {
-            "description": "Person ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "isFavorite": {
-            "description": "Is favorite",
-            "type": "boolean"
-          },
-          "isHidden": {
-            "description": "Is hidden",
-            "type": "boolean"
-          },
-          "name": {
-            "description": "Person name",
-            "type": "string"
-          },
-          "ownerId": {
-            "description": "Owner ID",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "Updated at",
-            "example": "2024-01-01T00:00:00.000Z",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "birthDate",
-          "color",
-          "createdAt",
-          "faceAssetId",
-          "id",
-          "isFavorite",
-          "isHidden",
-          "name",
-          "ownerId",
-          "updatedAt"
-        ],
-        "type": "object"
-      },
       "SyncRequestType": {
         "description": "Sync request type",
         "enum": [
@@ -32487,7 +27643,6 @@
           "AssetExifsV1",
           "AssetEditsV1",
           "AssetMetadataV1",
-          "AssetOcrV1",
           "AuthUsersV1",
           "AuthUsersV2",
           "MemoriesV1",
@@ -32501,10 +27656,6 @@
           "PartnerStacksV1",
           "StacksV1",
           "UsersV1",
-          "PeopleV1",
-          "AssetFacesV1",
-          "AssetFacesV2",
-          "AssetFacesV3",
           "UserMetadataV1"
         ],
         "type": "string"
@@ -33503,18 +28654,6 @@
           "avatarColor": {
             "$ref": "#/components/schemas/UserAvatarColor"
           },
-          "clusterGroupId": {
-            "description": "Cluster group the user is a member of",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
-            "type": "string",
-            "x-immich-history": [
-              {
-                "version": "v3.2.0",
-                "state": "Added"
-              }
-            ]
-          },
           "createdAt": {
             "description": "Creation date",
             "example": "2024-01-01T00:00:00.000Z",
@@ -33607,7 +28746,6 @@
         },
         "required": [
           "avatarColor",
-          "clusterGroupId",
           "createdAt",
           "deletedAt",
           "email",
@@ -33697,18 +28835,6 @@
         ],
         "type": "string"
       },
-      "UserConfigClipDto": {
-        "properties": {
-          "enabled": {
-            "description": "Whether the task is enabled",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "enabled"
-        ],
-        "type": "object"
-      },
       "UserConfigDto": {
         "description": "Configuration properties that are visible to a logged user",
         "properties": {
@@ -33717,9 +28843,6 @@
           },
           "image": {
             "$ref": "#/components/schemas/UserConfigImageDto"
-          },
-          "machineLearning": {
-            "$ref": "#/components/schemas/UserConfigMachineLearningDto"
           },
           "map": {
             "$ref": "#/components/schemas/UserConfigMapDto"
@@ -33752,7 +28875,6 @@
         "required": [
           "ffmpeg",
           "image",
-          "machineLearning",
           "map",
           "notifications",
           "oauth",
@@ -33762,18 +28884,6 @@
           "server",
           "trash",
           "user"
-        ],
-        "type": "object"
-      },
-      "UserConfigDuplicateDetectionDto": {
-        "properties": {
-          "enabled": {
-            "description": "Whether the task is enabled",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "enabled"
         ],
         "type": "object"
       },
@@ -33813,25 +28923,6 @@
           "enabled",
           "resolutions",
           "videoCodecs"
-        ],
-        "type": "object"
-      },
-      "UserConfigFacialRecognitionDto": {
-        "properties": {
-          "enabled": {
-            "description": "Whether the task is enabled",
-            "type": "boolean"
-          },
-          "minFaces": {
-            "description": "Minimum number of faces required for recognition",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "enabled",
-          "minFaces"
         ],
         "type": "object"
       },
@@ -33877,34 +28968,6 @@
           "fullsize",
           "preview",
           "thumbnail"
-        ],
-        "type": "object"
-      },
-      "UserConfigMachineLearningDto": {
-        "properties": {
-          "clip": {
-            "$ref": "#/components/schemas/UserConfigClipDto"
-          },
-          "duplicateDetection": {
-            "$ref": "#/components/schemas/UserConfigDuplicateDetectionDto"
-          },
-          "enabled": {
-            "description": "Enabled",
-            "type": "boolean"
-          },
-          "facialRecognition": {
-            "$ref": "#/components/schemas/UserConfigFacialRecognitionDto"
-          },
-          "ocr": {
-            "$ref": "#/components/schemas/UserConfigOcrDto"
-          }
-        },
-        "required": [
-          "clip",
-          "duplicateDetection",
-          "enabled",
-          "facialRecognition",
-          "ocr"
         ],
         "type": "object"
       },
@@ -33961,18 +29024,6 @@
         "required": [
           "autoLaunch",
           "buttonText",
-          "enabled"
-        ],
-        "type": "object"
-      },
-      "UserConfigOcrDto": {
-        "properties": {
-          "enabled": {
-            "description": "Whether the task is enabled",
-            "type": "boolean"
-          }
-        },
-        "required": [
           "enabled"
         ],
         "type": "object"
@@ -34135,9 +29186,6 @@
           "memories": {
             "$ref": "#/components/schemas/MemoriesResponse"
           },
-          "people": {
-            "$ref": "#/components/schemas/PeopleResponse"
-          },
           "purchase": {
             "$ref": "#/components/schemas/PurchaseResponse"
           },
@@ -34161,7 +29209,6 @@
           "emailNotifications",
           "folders",
           "memories",
-          "people",
           "purchase",
           "ratings",
           "recentlyAdded",
@@ -34192,9 +29239,6 @@
           },
           "memories": {
             "$ref": "#/components/schemas/MemoriesUpdate"
-          },
-          "people": {
-            "$ref": "#/components/schemas/PeopleUpdate"
           },
           "purchase": {
             "$ref": "#/components/schemas/PurchaseUpdate"

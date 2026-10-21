@@ -1,12 +1,41 @@
 import { Kysely, sql } from 'kysely';
+import type { VectorExtension } from 'src/types.js';
 import { ErrorMessages } from 'src/constants.js';
+import { DatabaseExtension } from 'src/enum.js';
 import { getVectorExtension } from 'src/repositories/database.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
-import { vectorIndexQuery } from 'src/utils/database.js';
 
 const lastMigrationSql = sql<{ name: string }>`SELECT "name" FROM "migrations" ORDER BY "timestamp" DESC LIMIT 1;`;
 const tableExists = sql<{ result: string | null }>`select to_regclass('migrations') as "result"`;
 const logger = LoggingRepository.create();
+
+type VectorIndexQueryOptions = { table: string; vectorExtension: VectorExtension; indexName: string; lists?: number };
+
+// this used to live in utils/database.ts, it is inlined as migrations must stay self-contained
+function vectorIndexQuery({ vectorExtension, table, indexName, lists }: VectorIndexQueryOptions): string {
+  switch (vectorExtension) {
+    case DatabaseExtension.VectorChord: {
+      return `
+        CREATE INDEX IF NOT EXISTS ${indexName} ON ${table} USING vchordrq (embedding vector_cosine_ops) WITH (options = $$
+        residual_quantization = false
+        [build.internal]
+        lists = [${lists ?? 1}]
+        spherical_centroids = true
+        build_threads = 4
+        sampling_factor = 1024
+        $$)`;
+    }
+    case DatabaseExtension.Vector: {
+      return `
+        CREATE INDEX IF NOT EXISTS ${indexName} ON ${table}
+        USING hnsw (embedding vector_cosine_ops)
+        WITH (ef_construction = 300, m = 16)`;
+    }
+    default: {
+      throw new Error(`Unsupported vector extension: '${vectorExtension}'`);
+    }
+  }
+}
 
 export async function up(db: Kysely<any>): Promise<void> {
   const { rows } = await tableExists.execute(db);

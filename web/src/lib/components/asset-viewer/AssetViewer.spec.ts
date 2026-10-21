@@ -14,17 +14,8 @@ vi.mock('$lib/managers/feature-flags-manager.svelte', () => ({
   featureFlagsManager: {
     init: vi.fn(),
     loadFeatureFlags: vi.fn(),
-    value: { smartSearch: true, trash: true },
+    value: { trash: true },
   } as never,
-}));
-
-vi.mock('$lib/stores/ocr.svelte', () => ({
-  ocrManager: {
-    clear: vi.fn(),
-    getAssetOcr: vi.fn(),
-    hasOcrData: false,
-    showOverlay: false,
-  },
 }));
 
 vi.mock('@immich/sdk', async () => {

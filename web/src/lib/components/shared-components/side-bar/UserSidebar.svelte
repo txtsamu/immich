@@ -8,10 +8,8 @@
   import { recentAlbumsDropdown } from '$lib/stores/preferences.store';
   import { NavbarGroup, NavbarItem } from '@immich/ui';
   import {
-    mdiAccount,
     mdiAccountMultiple,
     mdiAccountMultipleOutline,
-    mdiAccountOutline,
     mdiArchiveArrowDown,
     mdiArchiveArrowDownOutline,
     mdiCards,
@@ -50,10 +48,6 @@
 
   {#if authManager.preferences.memories.enabled && authManager.preferences.memories.sidebarWeb}
     <NavbarItem title={$t('memories')} href={Route.memories()} icon={mdiCardsOutline} activeIcon={mdiCards} />
-  {/if}
-
-  {#if authManager.preferences.people.enabled && authManager.preferences.people.sidebarWeb}
-    <NavbarItem title={$t('people')} href={Route.people()} icon={mdiAccountOutline} activeIcon={mdiAccount} />
   {/if}
 
   {#if authManager.preferences.sharedLinks.enabled && authManager.preferences.sharedLinks.sidebarWeb}

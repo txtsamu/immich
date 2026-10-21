@@ -102,7 +102,6 @@ export async function enableTagsPreference(context: BrowserContext) {
         albums: { defaultAssetOrder: 'desc' },
         folders: { enabled: false, sidebarWeb: false },
         memories: { enabled: true, duration: 5 },
-        people: { enabled: true, sidebarWeb: false },
         sharedLinks: { enabled: true, sidebarWeb: false },
         ratings: { enabled: false },
         tags: { enabled: true, sidebarWeb: false },

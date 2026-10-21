@@ -11,7 +11,6 @@ config_roots = [
   "web",
   "docs",
   ".github",
-  "machine-learning",
   "native",
 ]
 

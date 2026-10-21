@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { type Kysely, sql } from 'kysely';
-import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
@@ -10,12 +10,9 @@ import {
   anyUuid,
   asUuid,
   withAudioStream,
-  withDefaultVisibility,
   withEdits,
   withExif,
   withExifInner,
-  withFaces,
-  withFilePath,
   withFiles,
   withVideoFormat,
   withVideoStream,
@@ -25,17 +22,6 @@ import { mimeTypes } from 'src/utils/mime-types.js';
 @Injectable()
 export class AssetJobRepository {
   constructor(@InjectKysely() private db: Kysely<DB>) {}
-
-  @GenerateSql({ params: [DummyValue.UUID] })
-  getForSearchDuplicatesJob(id: string) {
-    return this.db
-      .selectFrom('asset')
-      .where('asset.id', '=', asUuid(id))
-      .leftJoin('smart_search', 'asset.id', 'smart_search.assetId')
-      .select(['id', 'type', 'ownerId', 'duplicateId', 'stackId', 'visibility', 'smart_search.embedding'])
-      .limit(1)
-      .executeTakeFirst();
-  }
 
   @GenerateSql({ params: [DummyValue.UUID] })
   getForSidecarWriteJob(id: string) {
@@ -149,10 +135,7 @@ export class AssetJobRepository {
     return this.db
       .selectFrom('asset')
       .select(columns.asset)
-      .select(withFaces)
       .select((eb) => withFiles(eb, AssetFileType.Sidecar))
-      .innerJoin('user', 'user.id', 'asset.ownerId')
-      .select(['user.clusterGroupId'])
       .where('asset.id', '=', id)
       .executeTakeFirst();
   }
@@ -175,89 +158,6 @@ export class AssetJobRepository {
       .where('asset_file.assetId', '=', id)
       .$if(!!fileType, (qb) => qb.where('asset_file.type', '=', fileType!))
       .execute();
-  }
-
-  private assetsWithPreviews() {
-    return this.db
-      .selectFrom('asset')
-      .where('asset.visibility', '!=', AssetVisibility.Hidden)
-      .where('asset.deletedAt', 'is', null)
-      .innerJoin('asset_job_status as job_status', 'assetId', 'asset.id')
-      .where((eb) =>
-        eb.exists((qb) =>
-          qb
-            .selectFrom('asset_file')
-            .whereRef('assetId', '=', 'asset.id')
-            .where('asset_file.type', '=', AssetFileType.Preview),
-        ),
-      );
-  }
-
-  @GenerateSql({ params: [], stream: true })
-  streamForSearchDuplicates(force?: boolean) {
-    return this.db
-      .selectFrom('asset')
-      .select(['asset.id'])
-      .where('asset.deletedAt', 'is', null)
-      .innerJoin('smart_search', 'asset.id', 'smart_search.assetId')
-      .$call(withDefaultVisibility)
-      .$if(!force, (qb) =>
-        qb
-          .innerJoin('asset_job_status as job_status', 'job_status.assetId', 'asset.id')
-          .where('job_status.duplicatesDetectedAt', 'is', null),
-      )
-      .stream();
-  }
-
-  @GenerateSql({ params: [], stream: true })
-  streamForEncodeClip(force?: boolean) {
-    return this.assetsWithPreviews()
-      .select(['asset.id'])
-      .$if(!force, (qb) =>
-        qb.where((eb) => eb.not((eb) => eb.exists(eb.selectFrom('smart_search').whereRef('assetId', '=', 'asset.id')))),
-      )
-      .stream();
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID] })
-  getForClipEncoding(id: string) {
-    return this.db
-      .selectFrom('asset')
-      .select(['asset.id', 'asset.visibility'])
-      .select((eb) => withFiles(eb, AssetFileType.Preview))
-      .where('asset.id', '=', id)
-      .executeTakeFirst();
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID] })
-  getForDetectFacesJob(id: string) {
-    return this.db
-      .selectFrom('asset')
-      .select(['asset.id', 'asset.visibility'])
-      .$call(withExifInner)
-      .select((eb) => withFaces(eb, true, true))
-      .select((eb) =>
-        jsonObjectFrom(
-          eb
-            .selectFrom('asset_file')
-            .select(columns.assetFiles)
-            .whereRef('asset_file.assetId', '=', 'asset.id')
-            .where('asset_file.type', '=', sql.lit(AssetFileType.Preview))
-            .orderBy('asset_file.isEdited', 'desc')
-            .limit(sql.lit(1)),
-        ).as('previewFile'),
-      )
-      .where('asset.id', '=', id)
-      .executeTakeFirst();
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID] })
-  getForOcr(id: string) {
-    return this.db
-      .selectFrom('asset')
-      .select((eb) => ['asset.visibility', withFilePath(eb, AssetFileType.Preview).as('previewFile')])
-      .where('asset.id', '=', id)
-      .executeTakeFirst();
   }
 
   @GenerateSql({ params: [[DummyValue.UUID]] })
@@ -439,30 +339,6 @@ export class AssetJobRepository {
           ),
         ),
       )
-      .stream();
-  }
-
-  @GenerateSql({ params: [], stream: true })
-  streamForDetectFacesJob(force?: boolean) {
-    return this.assetsWithPreviews()
-      .$if(force === false, (qb) => qb.where('job_status.facesRecognizedAt', 'is', null))
-      .select(['asset.id'])
-      .orderBy('asset.fileCreatedAt', 'desc')
-      .stream();
-  }
-
-  @GenerateSql({ params: [], stream: true })
-  streamForOcrJob(force?: boolean) {
-    return this.db
-      .selectFrom('asset')
-      .select(['asset.id'])
-      .$if(!force, (qb) =>
-        qb
-          .innerJoin('asset_job_status', 'asset_job_status.assetId', 'asset.id')
-          .where('asset_job_status.ocrAt', 'is', null),
-      )
-      .where('asset.deletedAt', 'is', null)
-      .where('asset.visibility', '!=', AssetVisibility.Hidden)
       .stream();
   }
 

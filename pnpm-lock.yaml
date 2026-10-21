@@ -816,9 +816,6 @@ importers:
       '@photo-sphere-viewer/equirectangular-video-adapter':
         specifier: ^5.14.0
         version: 5.15.1(@photo-sphere-viewer/core@5.15.1)(@photo-sphere-viewer/video-plugin@5.15.1(@photo-sphere-viewer/core@5.15.1))
-      '@photo-sphere-viewer/markers-plugin':
-        specifier: ^5.14.0
-        version: 5.15.1(@photo-sphere-viewer/core@5.15.1)
       '@photo-sphere-viewer/resolution-plugin':
         specifier: ^5.14.0
         version: 5.15.1(@photo-sphere-viewer/core@5.15.1)(@photo-sphere-viewer/settings-plugin@5.15.1(@photo-sphere-viewer/core@5.15.1))
@@ -900,9 +897,6 @@ importers:
       socket.io-client:
         specifier: ~4.8.0
         version: 4.8.4(supports-color@8.1.1)
-      svelte-confetti:
-        specifier: ^2.3.2
-        version: 2.3.2(svelte@5.57.2(@typescript-eslint/types@8.71.2))
       svelte-gestures:
         specifier: ^5.2.2
         version: 5.2.2
@@ -4088,11 +4082,6 @@ packages:
     peerDependencies:
       '@photo-sphere-viewer/core': 5.15.1
       '@photo-sphere-viewer/video-plugin': 5.15.1
-
-  '@photo-sphere-viewer/markers-plugin@5.15.1':
-    resolution: {integrity: sha512-57WiHy8fcQfwid9x07ADiQJGxzcFxclbR2yIqeggzfPDguwJlCKwX5tj8brTRqwouUiHpkb80QWxHByxt45LcA==}
-    peerDependencies:
-      '@photo-sphere-viewer/core': 5.15.1
 
   '@photo-sphere-viewer/resolution-plugin@5.15.1':
     resolution: {integrity: sha512-Sp14tgFv1XRkXbsFO+dWSgfwGjxB4ibsB+wXe64M4RI/NSDu+1Uzqtxj85Vbz7gOw3CaP1e8acXrd/IEg6CEHg==}
@@ -11941,11 +11930,6 @@ packages:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: ^5.0.0 || ^6.0.0
 
-  svelte-confetti@2.3.2:
-    resolution: {integrity: sha512-cfIwoGqMPYWRYDUz2g7mG1uHYWy7VBepelQdzCC3j/M42UrAqaBYmIi9xaoQfow4fbINHO9WuARnTyK2bjjGQg==}
-    peerDependencies:
-      svelte: '>=5.0.0'
-
   svelte-eslint-parser@1.9.0:
     resolution: {integrity: sha512-aKdKQAZP7MobfVcQNyy5Yk0QjlC9m5T1lTS0qA7+0EIsFzFX3WgbGHfb8267QK+4hI8Az9+2f+hk5sp39op8sg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0, pnpm: 10.34.6}
@@ -17221,10 +17205,6 @@ snapshots:
       '@photo-sphere-viewer/core': 5.15.1
       '@photo-sphere-viewer/video-plugin': 5.15.1(@photo-sphere-viewer/core@5.15.1)
       three: 0.185.1
-
-  '@photo-sphere-viewer/markers-plugin@5.15.1(@photo-sphere-viewer/core@5.15.1)':
-    dependencies:
-      '@photo-sphere-viewer/core': 5.15.1
 
   '@photo-sphere-viewer/resolution-plugin@5.15.1(@photo-sphere-viewer/core@5.15.1)(@photo-sphere-viewer/settings-plugin@5.15.1(@photo-sphere-viewer/core@5.15.1))':
     dependencies:
@@ -26145,10 +26125,6 @@ snapshots:
       typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - picomatch
-
-  svelte-confetti@2.3.2(svelte@5.57.2(@typescript-eslint/types@8.71.2)):
-    dependencies:
-      svelte: 5.57.2(@typescript-eslint/types@8.71.2)
 
   svelte-eslint-parser@1.9.0(svelte@5.57.2(@typescript-eslint/types@8.71.2)):
     dependencies:

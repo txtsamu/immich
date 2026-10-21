@@ -1,12 +1,11 @@
 {
-  "name": "Immich - Backend, Frontend and ML",
+  "name": "Immich - Backend and Frontend",
   "service": "immich-server",
   "runServices": [
     "immich-init",
     "immich-server",
     "redis",
-    "database",
-    "immich-machine-learning"
+    "database"
   ],
   "dockerComposeFile": [
     "../docker/docker-compose.dev.yml",

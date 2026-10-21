@@ -82,7 +82,6 @@
       href: Route.viewMemory({ id: memory.id, assetId: memory.assets[0].id }),
       alt: $t('memory_lane_title', { values: { title: $getAltText(toTimelineAsset(memory.assets[0])) } }),
       src: getAssetMediaUrl({ id: memory.assets[0].id }),
-      type: memory.type,
     })),
   );
 

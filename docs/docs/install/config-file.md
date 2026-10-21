@@ -74,9 +74,6 @@ The default configuration looks like this:
     "backgroundTask": {
       "concurrency": 5
     },
-    "faceDetection": {
-      "concurrency": 2
-    },
     "library": {
       "concurrency": 5
     },
@@ -89,17 +86,11 @@ The default configuration looks like this:
     "notifications": {
       "concurrency": 5
     },
-    "ocr": {
-      "concurrency": 1
-    },
     "search": {
       "concurrency": 5
     },
     "sidecar": {
       "concurrency": 5
-    },
-    "smartSearch": {
-      "concurrency": 2
     },
     "thumbnailGeneration": {
       "concurrency": 3
@@ -121,52 +112,15 @@ The default configuration looks like this:
     "enabled": true,
     "level": "log"
   },
-  "machineLearning": {
-    "availabilityChecks": {
-      "enabled": true,
-      "interval": 30000,
-      "timeout": 2000
-    },
-    "clip": {
-      "enabled": true,
-      "modelName": "ViT-B-32__openai"
-    },
-    "duplicateDetection": {
-      "enabled": true,
-      "maxDistance": 0.01
-    },
-    "enabled": true,
-    "facialRecognition": {
-      "enabled": true,
-      "maxDistance": 0.5,
-      "minFaces": 3,
-      "minScore": 0.7,
-      "modelName": "buffalo_l"
-    },
-    "ocr": {
-      "enabled": true,
-      "maxResolution": 736,
-      "minDetectionScore": 0.5,
-      "minRecognitionScore": 0.8,
-      "modelName": "PP-OCRv5_mobile"
-    },
-    "urls": ["http://immich-machine-learning:3003"]
-  },
   "map": {
     "darkStyle": "https://tiles.immich.cloud/v1/style/dark.json",
     "enabled": true,
     "lightStyle": "https://tiles.immich.cloud/v1/style/light.json"
   },
-  "metadata": {
-    "faces": {
-      "import": false
-    }
-  },
   "newVersionCheck": {
     "enabled": true
   },
   "nightlyTasks": {
-    "clusterNewFaces": true,
     "databaseCleanup": true,
     "generateMemories": true,
     "missingThumbnails": true,

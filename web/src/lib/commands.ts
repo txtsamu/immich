@@ -1,11 +1,9 @@
 import { defaultProvider, screencastManager, themeManager, ThemePreference, type ActionItem } from '@immich/ui';
 import {
   mdiAccountMultipleOutline,
-  mdiAccountOutline,
   mdiArchiveArrowDownOutline,
   mdiBookshelf,
   mdiCog,
-  mdiContentDuplicate,
   mdiCrosshairsGps,
   mdiFolderOutline,
   mdiHeartOutline,
@@ -95,13 +93,6 @@ export const getPagesProvider = ($t: MessageFormatter) => {
       $if: () => authManager.authenticated && featureFlagsManager.value.map,
     },
     {
-      title: $t('people'),
-      description: $t('people_feature_description'),
-      icon: mdiAccountOutline,
-      onAction: () => goto(Route.people()),
-      $if: () => authManager.authenticated && authManager.preferences.people.enabled,
-    },
-    {
       title: $t('places'),
       icon: mdiMapMarkerOutline,
       onAction: () => goto(Route.places()),
@@ -184,11 +175,6 @@ export const getPagesProvider = ($t: MessageFormatter) => {
   ].map((route) => ({ $if: () => authManager.authenticated, ...route }));
 
   const utilityPages: ActionItem[] = [
-    {
-      title: $t('review_duplicates'),
-      icon: mdiContentDuplicate,
-      onAction: () => goto(Route.duplicatesUtility()),
-    },
     {
       title: $t('review_large_files'),
       icon: mdiImageSizeSelectLarge,

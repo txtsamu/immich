@@ -1,8 +1,8 @@
-import { LoginResponseDto, QueueCommand, QueueName, updateConfig } from '@immich/sdk';
+import { LoginResponseDto, QueueCommand, QueueName } from '@immich/sdk';
 import { cpSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { asBearerAuth, testAssetDir, utils } from 'src/utils.js';
+import { testAssetDir, utils } from 'src/utils.js';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 describe('/jobs', () => {
@@ -24,28 +24,6 @@ describe('/jobs', () => {
         command: QueueCommand.Resume,
         force: false,
       });
-
-      await utils.queueCommand(admin.accessToken, QueueName.FaceDetection, {
-        command: QueueCommand.Resume,
-        force: false,
-      });
-
-      await utils.queueCommand(admin.accessToken, QueueName.SmartSearch, {
-        command: QueueCommand.Resume,
-        force: false,
-      });
-
-      await utils.queueCommand(admin.accessToken, QueueName.DuplicateDetection, {
-        command: QueueCommand.Resume,
-        force: false,
-      });
-
-      const config = await utils.getSystemConfig(admin.accessToken);
-      config.machineLearning.duplicateDetection.enabled = false;
-      config.machineLearning.enabled = false;
-      config.metadata.faces.import = false;
-      config.machineLearning.clip.enabled = false;
-      await updateConfig({ adminConfigDto: config }, { headers: asBearerAuth(admin.accessToken) });
     });
 
     it('should queue metadata extraction for missing assets', async () => {

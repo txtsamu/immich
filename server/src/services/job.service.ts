@@ -14,10 +14,6 @@ const asJobItem = (dto: JobCreateDto): JobItem => {
       return { name: JobName.TagCleanup };
     }
 
-    case ManualJobName.PersonCleanup: {
-      return { name: JobName.PersonCleanup };
-    }
-
     case ManualJobName.UserCleanup: {
       return { name: JobName.UserDeleteCheck };
     }
@@ -123,12 +119,6 @@ export class JobService extends BaseService {
         break;
       }
 
-      case JobName.PersonGenerateThumbnail: {
-        const { ownerId, personGroupId } = item.data;
-        this.websocketRepository.clientSend('on_person_thumbnail', ownerId, personGroupId);
-        break;
-      }
-
       case JobName.AssetEditThumbnailGeneration: {
         const asset = await this.assetRepository.getById(item.data.id);
         const edits = await this.assetEditRepository.getWithSyncInfo(item.data.id);
@@ -175,17 +165,10 @@ export class JobService extends BaseService {
           break;
         }
 
-        const jobs: JobItem[] = [
-          { name: JobName.SmartSearch, data: item.data },
-          { name: JobName.AssetDetectFaces, data: item.data },
-          { name: JobName.Ocr, data: item.data },
-        ];
-
         if (asset.type === AssetType.Video) {
-          jobs.push({ name: JobName.AssetEncodeVideo, data: item.data });
+          await this.jobRepository.queue({ name: JobName.AssetEncodeVideo, data: item.data });
         }
 
-        await this.jobRepository.queueAll(jobs);
         if (asset.visibility === AssetVisibility.Timeline || asset.visibility === AssetVisibility.Archive) {
           this.websocketRepository.clientSend('on_upload_success', asset.ownerId, mapAsset(asset));
           if (asset.exifInfo) {
@@ -245,13 +228,6 @@ export class JobService extends BaseService {
           }
         }
 
-        break;
-      }
-
-      case JobName.SmartSearch: {
-        if (item.data.source === 'upload') {
-          await this.jobRepository.queue({ name: JobName.AssetDetectDuplicates, data: item.data });
-        }
         break;
       }
 

@@ -7,7 +7,6 @@ import type {
   JobCreateDto,
   LoginResponseDto,
   PasskeyResponseDto,
-  PersonResponseDto,
   QueueResponseDto,
   ReleaseEventV1,
   SharedLinkResponseDto,
@@ -55,12 +54,6 @@ export type Events = {
   AlbumShare: [];
   AlbumUserUpdate: [{ albumId: string; userId: string; role: AlbumUserRole }];
   AlbumUserDelete: [{ albumId: string; userId: string }];
-
-  PersonUpdate: [PersonResponseDto];
-  PersonShare: [{ personId: string }];
-  PersonUserDelete: [{ personId: string; userId: string }];
-  PersonThumbnailReady: [{ id: string }];
-  PersonAssetDelete: [{ id: string; assetId: string }];
 
   BackupDeleteStatus: [{ filename: string; isDeleting: boolean }];
   BackupDeleted: [{ filename: string }];

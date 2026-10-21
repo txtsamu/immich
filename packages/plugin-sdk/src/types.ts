@@ -15,7 +15,6 @@ type DeepPartial<T> = T extends Date
 
 export type WorkflowEventMap = {
   [WorkflowType.AssetV1]: AssetV1;
-  // [WorkflowType.AssetPersonV1]: AssetPersonV1;
 } & { [K in WorkflowType]: unknown };
 
 export type WorkflowEventData<T extends WorkflowType> = WorkflowEventMap[T];
@@ -24,7 +23,6 @@ export enum WorkflowTrigger {
   AssetCreate = 'AssetCreate',
   AssetMetadataExtraction = 'AssetMetadataExtraction',
   AssetTagged = 'AssetTagged',
-  // PersonRecognized = 'PersonRecognized',
 }
 
 export type WorkflowEventPayload<
@@ -91,7 +89,6 @@ export type AssetV1 = {
     deletedAt: string | null;
     localDateTime: string;
     stackId: string | null;
-    duplicateId: string | null;
     visibility: AssetVisibility;
     isEdited: boolean;
     tags: TagResponseDto[];
@@ -130,9 +127,3 @@ export type AssetV1 = {
   };
 };
 
-// export type AssetPersonV1 = AssetV1 & {
-//   person: {
-//     id: string;
-//     name: string;
-//   };
-// };

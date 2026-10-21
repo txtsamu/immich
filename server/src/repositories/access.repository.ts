@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { type Kysely, type NotNull, sql } from 'kysely';
+import { type Kysely, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
-import { PersonUserRole } from 'src/dtos/person.dto.js';
 import { AlbumUserRole, AssetVisibility } from 'src/enum.js';
-import { PersonId } from 'src/repositories/person.repository.js';
 import { DB } from 'src/schema/index.js';
 import { asUuid } from 'src/utils/database.js';
 
@@ -332,28 +330,6 @@ class AuthDeviceAccess {
   }
 }
 
-class DuplicateAccess {
-  constructor(private db: Kysely<DB>) {}
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
-  @ChunkedSet({ paramIndex: 1 })
-  async checkOwnerAccess(userId: string, duplicateIds: Set<string>) {
-    if (duplicateIds.size === 0) {
-      return new Set<string>();
-    }
-
-    return this.db
-      .selectFrom('asset')
-      .select('asset.duplicateId')
-      .where('asset.duplicateId', 'in', [...duplicateIds])
-      .where('asset.ownerId', '=', userId)
-      .where('asset.deletedAt', 'is', null)
-      .$narrowType<{ duplicateId: NotNull }>()
-      .execute()
-      .then((assets) => new Set(assets.map((asset) => asset.duplicateId)));
-  }
-}
-
 class NotificationAccess {
   constructor(private db: Kysely<DB>) {}
 
@@ -454,80 +430,6 @@ class MemoryAccess {
   }
 }
 
-class ClusterGroupAccess {
-  constructor(private db: Kysely<DB>) {}
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
-  @ChunkedSet({ paramIndex: 1 })
-  checkInviteAccess(userId: string, clusterGroupIds: Set<string>) {
-    if (clusterGroupIds.size === 0) {
-      return new Set<string>();
-    }
-
-    return this.db
-      .selectFrom('cluster_group_request')
-      .select('cluster_group_request.clusterGroupId')
-      .where('cluster_group_request.clusterGroupId', 'in', [...clusterGroupIds])
-      .where('cluster_group_request.userId', '=', userId)
-      .execute()
-      .then((requests) => new Set(requests.map((request) => request.clusterGroupId)));
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
-  @ChunkedSet({ paramIndex: 1 })
-  async checkOwnerAccess(userId: string, clusterGroupIds: Set<string>) {
-    if (clusterGroupIds.size === 0) {
-      return new Set<string>();
-    }
-
-    return this.db
-      .selectFrom('user')
-      .select('user.clusterGroupId')
-      .where('user.clusterGroupId', 'in', [...clusterGroupIds])
-      .where('user.id', '=', userId)
-      .execute()
-      .then((users) => new Set(users.map((user) => user.clusterGroupId)));
-  }
-}
-
-class ClusterGroupRequestAccess {
-  constructor(private db: Kysely<DB>) {}
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
-  @ChunkedSet({ paramIndex: 1 })
-  checkOwnerAccess(userId: string, clusterGroupRequestIds: Set<string>) {
-    if (clusterGroupRequestIds.size === 0) {
-      return new Set<string>();
-    }
-
-    return this.db
-      .selectFrom('cluster_group_request')
-      .select('cluster_group_request.id')
-      .where('cluster_group_request.id', 'in', [...clusterGroupRequestIds])
-      .where('cluster_group_request.userId', '=', userId)
-      .execute()
-      .then((requests) => new Set(requests.map(({ id }) => id)));
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
-  @ChunkedSet({ paramIndex: 1 })
-  checkGroupAccess(userId: string, clusterGroupRequestIds: Set<string>) {
-    if (clusterGroupRequestIds.size === 0) {
-      return new Set<string>();
-    }
-
-    return this.db
-      .selectFrom('cluster_group_request')
-      .select('cluster_group_request.id')
-      .where('cluster_group_request.id', 'in', [...clusterGroupRequestIds])
-      .where('cluster_group_request.clusterGroupId', '=', (eb) =>
-        eb.selectFrom('user').select('user.clusterGroupId').where('user.id', '=', userId),
-      )
-      .execute()
-      .then((requests) => new Set(requests.map(({ id }) => id)));
-  }
-}
-
 class PasskeyAccess {
   constructor(private db: Kysely<DB>) {}
 
@@ -545,77 +447,6 @@ class PasskeyAccess {
       .where('passkey.userId', '=', userId)
       .execute()
       .then((passkeys) => new Set(passkeys.map((passkey) => passkey.id)));
-  }
-}
-
-class PersonAccess {
-  constructor(private db: Kysely<DB>) {}
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET, [PersonUserRole.Admin]] })
-  @ChunkedSet({ paramIndex: 1 })
-  async checkAccess(userId: string, personIds: Set<PersonId>, roles: PersonUserRole[]) {
-    if (personIds.size === 0 || roles.length === 0) {
-      return new Set<PersonId>();
-    }
-
-    const personGroupIds = personIds
-      .values()
-      .map(({ personGroupId }) => personGroupId)
-      .toArray();
-    const ownerIds = personIds
-      .values()
-      .map(({ ownerId }) => ownerId)
-      .toArray();
-
-    return this.db
-      .selectFrom(
-        sql<{ personGroupId: string; ownerId: string }>`(
-      select
-        unnest(${personGroupIds}::uuid[]) as "personGroupId",
-        unnest(${ownerIds}::uuid[]) as "ownerId"
-    )`.as('people'),
-      )
-      .select(['personGroupId', 'ownerId'])
-      .where((eb) =>
-        eb.or([
-          eb.exists(
-            eb
-              .selectFrom('person')
-              .whereRef('people.personGroupId', '=', 'person.personGroupId')
-              .whereRef('people.ownerId', '=', 'person.ownerId')
-              .where('person.ownerId', '=', userId)
-              .selectAll(),
-          ),
-          eb.exists(
-            eb
-              .selectFrom('person_user')
-              .where('person_user.sharedWithId', '=', userId)
-              .where('person_user.role', 'in', roles)
-              .whereRef('people.personGroupId', '=', 'person_user.personGroupId')
-              .whereRef('people.ownerId', '=', 'person_user.sharedById')
-              .selectAll(),
-          ),
-        ]),
-      )
-      .execute()
-      .then((items) => new Set(items));
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
-  @ChunkedSet({ paramIndex: 1 })
-  async checkFaceOwnerAccess(userId: string, assetFaceIds: Set<string>) {
-    if (assetFaceIds.size === 0) {
-      return new Set<string>();
-    }
-
-    return this.db
-      .selectFrom('asset_face')
-      .select('asset_face.id')
-      .leftJoin('asset', (join) => join.onRef('asset.id', '=', 'asset_face.assetId').on('asset.deletedAt', 'is', null))
-      .where('asset_face.id', 'in', [...assetFaceIds])
-      .where('asset.ownerId', '=', userId)
-      .execute()
-      .then((faces) => new Set(faces.map((face) => face.id)));
   }
 }
 
@@ -686,12 +517,8 @@ export class AccessRepository {
   asset: AssetAccess;
   assetFile: AssetFileAccess;
   authDevice: AuthDeviceAccess;
-  duplicate: DuplicateAccess;
   memory: MemoryAccess;
   notification: NotificationAccess;
-  clusterGroup: ClusterGroupAccess;
-  clusterGroupRequest: ClusterGroupRequestAccess;
-  person: PersonAccess;
   partner: PartnerAccess;
   passkey: PasskeyAccess;
   session: SessionAccess;
@@ -706,12 +533,8 @@ export class AccessRepository {
     this.asset = new AssetAccess(db);
     this.assetFile = new AssetFileAccess(db);
     this.authDevice = new AuthDeviceAccess(db);
-    this.duplicate = new DuplicateAccess(db);
     this.memory = new MemoryAccess(db);
     this.notification = new NotificationAccess(db);
-    this.clusterGroup = new ClusterGroupAccess(db);
-    this.clusterGroupRequest = new ClusterGroupRequestAccess(db);
-    this.person = new PersonAccess(db);
     this.partner = new PartnerAccess(db);
     this.passkey = new PasskeyAccess(db);
     this.session = new SessionAccess(db);

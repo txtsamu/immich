@@ -149,10 +149,6 @@ You can _archive_ them. This will hide the asset from the main timeline and fold
 
 See [Backup and Restore](/administration/backup-and-restore.md).
 
-### Does Immich support reading existing face tag metadata?
-
-Yes, it creates new faces and persons from the imported asset metadata. For details see the [feature request #4348](https://github.com/immich-app/immich/discussions/4348) and [PR #6455](https://github.com/immich-app/immich/pull/6455).
-
 ### Does Immich support the filtering of NSFW images?
 
 No, it currently does not. There is an [open feature request on Github](https://github.com/immich-app/immich/discussions/2451).
@@ -164,8 +160,6 @@ There are three thumbnail jobs for each asset:
 - Blurred (thumbhash)
 - Preview (Webp)
 - Thumbnail (Jpeg)
-
-Also, there are additional jobs for person (face) thumbnails.
 
 ### Why do files from WhatsApp not appear with the correct date?
 
@@ -219,7 +213,6 @@ services:
 +     - originals:/usr/src/app/originals
 ...
 volumes:
-  model-cache:
 + originals:
 +   driver_opts:
 +     type: cifs
@@ -266,90 +259,20 @@ However, when the trash is emptied, the files will re-appear in the main timelin
 
 ---
 
-## Machine Learning
-
-### How does smart search work?
-
-Immich uses CLIP models. An ML model converts each image to an "embedding", which is essentially a string of numbers that semantically encodes what is in the image. The same is done for the text that you enter when you do a search, and that text embedding is then compared with those of the images to find similar ones. As such, there are no "tags", "labels", or "descriptions" generated that you can look at. For more information about CLIP and its capabilities, read about it [here](https://openai.com/research/clip).
-
-### How does facial recognition work?
-
-See [How Facial Recognition Works](/features/facial-recognition#how-facial-recognition-works) for details.
-
-### How can I disable machine learning?
-
-:::info
-Disabling machine learning will result in a poor experience for searching and the 'Explore' page, as these are reliant on it to work as intended.
-:::
-
-Machine learning can be disabled under Administration > Settings > Machine Learning Settings, either entirely or by model type. For instance, you can choose to disable smart search with CLIP, but keep facial recognition enabled. This means that the machine learning service will only process the enabled jobs.
-
-However, disabling all jobs will not disable the machine learning service itself. To prevent it from starting up at all in this case, you can comment out the `immich-machine-learning` section of the docker-compose.yml.
-
-### I'm getting errors about models being corrupt or failing to download. What do I do?
-
-You can delete the model cache volume, where models are downloaded. This will give the service a clean environment to download the model again. If models are failing to download entirely, you can manually download them from [Hugging Face][huggingface] and place them in the cache folder.
-
-### Can I use a custom CLIP model?
-
-No, this is not supported. Only models listed in the [Hugging Face][huggingface] page are compatible. Feel free to make a feature request if there's a model not listed here that you think should be added.
-
-### I want to be able to search in other languages besides English. How can I do that?
-
-You can change to a multilingual CLIP model. See [here](/features/searching#clip-models) for instructions.
-
-### Does Immich support Facial Recognition for videos?
-
-Immich's machine learning feature operates on the generated thumbnail. If a face is visible in the video's thumbnail it will be picked up by facial recognition.
-Scanning the entire video for faces may be implemented in the future.
-
-### Does Immich have animal recognition?
-
-No.
-:::tip
-You can use [Smart Search](/features/searching.md) for this to some extent. For example, if you have a Golden Retriever and a Chihuahua, type these words in the smart search and watch the results.
-:::
-
-### I'm getting a lot of "faces" that aren't faces, what can I do?
-
-You can increase the MIN DETECTION SCORE to 0.8 to help prevent bad thumbnails. Setting the score too high (above 0.9) might filter out too many real faces depending on the library used. If you just want to hide specific faces, you can adjust the 'MIN FACES DETECTED' setting in the administration panel  
-to increase the bar for what the algorithm considers a "core face" for that person, reducing the chance of bad thumbnails being chosen.
-
-### The immich_model-cache volume takes up a lot of space, what could be the problem?
-
-If you installed several models and chose not to use some of them, it might be worth deleting the old models that are in immich_model-cache. To do this you can mount the model cache and remove the undesired models.
-
-<details>
-<summary>Steps</summary>
-
-```bash
-docker run -it --rm -v immich_model-cache:/mnt-models alpine sh
-cd /mnt-models
-ls clip/ facial-recognition/
-# rm -r clip/ABC facial-recognition/DEF # delete unused models
-```
-
-</details>
-
----
-
 ## Performance
 
 ### Why is Immich slow on low-memory systems like the Raspberry Pi?
 
-Immich optionally uses transcoding and machine learning for several features. However, it can be too heavy to run on a Raspberry Pi. You can [mitigate](/FAQ#can-i-lower-cpu-and-ram-usage) this or host Immich's machine-learning container on a [more powerful system](/guides/remote-machine-learning), or [disable](/FAQ#how-can-i-disable-machine-learning) machine learning entirely.
+Immich optionally uses transcoding for several features. However, it can be too heavy to run on a Raspberry Pi. You can [mitigate](/FAQ#can-i-lower-cpu-and-ram-usage) this.
 
 ### Can I lower CPU and RAM usage?
 
-The initial backup is the most intensive due to the number of jobs running. The most CPU-intensive ones are transcoding and machine learning jobs (Smart Search, Face Detection), and to a lesser extent thumbnail generation. Here are some ways to lower their CPU usage:
+The initial backup is the most intensive due to the number of jobs running. The most CPU-intensive ones are transcoding, and to a lesser extent thumbnail generation. Here are some ways to lower their CPU usage:
 
 - Lower the job concurrency for these jobs to 1.
 - Under Settings > Transcoding Settings > Threads, set the number of threads to a low number like 1 or 2.
-- Under Settings > Machine Learning Settings > Facial Recognition > Model Name, you can change the facial recognition model to `buffalo_s` instead of `buffalo_l`. The former is a smaller and faster model, albeit not as good.
-  - For facial recognition on new images to work properly, You must re-run the Face Detection job for all images after this.
 - At the container level, you can [set resource constraints](/FAQ#can-i-limit-cpu-and-ram-usage) to lower usage further.
   - It's recommended to only apply these constraints _after_ taking some of the measures here for best performance.
-- If these changes are not enough, see [above](/FAQ#how-can-i-disable-machine-learning) for instructions on how to disable machine learning.
 
 ### Can I limit CPU and RAM usage?
 
@@ -372,22 +295,6 @@ deploy:
 For more details, you can look at the [original docker docs](https://docs.docker.com/config/containers/resource_constraints/) or use this [guide](https://www.baeldung.com/ops/docker-memory-limit).
 
 Note that memory constraints work by terminating the container, so this can introduce instability if set too low.
-
-### How can I boost machine learning speed?
-
-:::note
-This advice improves throughput, not latency. This is to say that it will make Smart Search jobs process more quickly, but it won't make searching faster.
-:::
-
-You can increase throughput by increasing the job concurrency for machine learning jobs (Smart Search, Face Detection). With higher concurrency, the host will work on more assets in parallel. You can do this by navigating to Administration > Settings > Job Settings and increasing concurrency as needed.
-
-:::danger
-On a normal machine, 2 or 3 concurrent jobs can probably max the CPU. Storage speed and latency can quickly become the limiting factor beyond this, particularly when using HDDs.
-
-The concurrency can be increased more comfortably with a GPU, but should still not be above 16 in most cases.
-
-Do not exaggerate with the job concurrency because you're probably thoroughly overloading the server.
-:::
 
 ### My server shows Server Status Offline | Version Unknown. What can I do?
 
@@ -419,7 +326,7 @@ You may need to add mount points or docker volumes for the following internal co
 
 - `redis:/data`
 
-The non-root user/group needs read/write access to the volume mounts, including `UPLOAD_LOCATION` and `/cache` for machine-learning.
+The non-root user/group needs read/write access to the volume mounts, including `UPLOAD_LOCATION`.
 
 :::note Docker Compose Volumes
 The Docker Compose top level volume element does not support non-root access, all of the above volumes must be local volume mounts.
@@ -465,19 +372,6 @@ After removing the containers and volumes, there are a few directories that need
 If you use portainer, bring down the stack in portainer. Go into the volumes section  
 and remove all the volumes related to immich then restart the stack.
 :::
-
-### Why does the machine learning service report workers crashing?
-
-:::note
-If the error says the worker is exiting, then this is normal. This is a feature intended to reduce RAM consumption when the service isn't being used.
-:::
-
-There are a few reasons why this can happen.
-
-If the error mentions SIGKILL or error code 137, it most likely means the service is running out of memory.
-Consider either increasing the server's RAM or moving the service to a server with more RAM.
-
-If it mentions SIGILL (note the lack of a K) or error code 132, it most likely means your server's CPU is incompatible with Immich.
 
 ## Database
 
@@ -564,5 +458,3 @@ No, we have no feature sponsorship scheme. The Immich team [works on Immich full
 A common alternative suggestion is to offer bounties that can be collected by anyone who submits a pull request, but we don't want those either; the Zig project has [explained the reason well](https://ziglang.org/news/bounties-damage-open-source-projects/).
 
 If you really want to pay someone to build a feature you like, you're welcome to hire somebody directly and pay them for their time, but please note that we provide no guarantee that we'll merge the resulting work so we recommend that you check in with us first.
-
-[huggingface]: https://huggingface.co/immich-app

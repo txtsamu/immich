@@ -52,9 +52,7 @@ export const newAssetRepositoryMock = (): Mocked<RepositoryInterface<AssetReposi
     getForThumbnail: vitest.fn(),
     getForVideo: vitest.fn(),
     getForEdit: vitest.fn(),
-    getForOcr: vitest.fn(),
     getForMetadataExtractionTags: vitest.fn(),
-    getForFaces: vitest.fn(),
     getForUpdateTags: vitest.fn(),
   };
 };

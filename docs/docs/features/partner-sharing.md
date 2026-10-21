@@ -12,12 +12,10 @@ Partner sharing does _not_ include:
 
 - Already existing partner albums
 - If an asset is favorited
-- People and facial recognition data
 
 :::note
 
 - Partner sharing is one-way. To view your partner's assets, they must also share them with you.
-- Partner sharing may result in displaying duplicate assets on the main timeline, as duplicates are only detected on a per-user basis.
 
 :::
 

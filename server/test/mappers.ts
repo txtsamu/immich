@@ -2,19 +2,14 @@ import { Selectable, ShallowDehydrateObject } from 'kysely';
 import type { AudioStreamInfo, VideoFormat, VideoStreamInfo } from 'src/types.js';
 import { MapAsset } from 'src/dtos/asset-response.dto.js';
 import { AssetEditActionItem } from 'src/dtos/editing.dto.js';
-import { AssetFileType } from 'src/enum.js';
-import { FaceSearchResult } from 'src/repositories/search.repository.js';
 import { ActivityTable } from 'src/schema/tables/activity.table.js';
-import { AssetTable } from 'src/schema/tables/asset.table.js';
 import { PartnerTable } from 'src/schema/tables/partner.table.js';
 import { AlbumFactory } from 'test/factories/album.factory.js';
-import { AssetFaceFactory } from 'test/factories/asset-face.factory.js';
 import { AssetFactory } from 'test/factories/asset.factory.js';
 import { MemoryFactory } from 'test/factories/memory.factory.js';
 import { SharedLinkFactory } from 'test/factories/shared-link.factory.js';
 import { StackFactory } from 'test/factories/stack.factory.js';
 import { UserFactory } from 'test/factories/user.factory.js';
-import { newUuid } from 'test/small.factory.js';
 
 export const getForStorageTemplate = (asset: ReturnType<AssetFactory['build']>) => {
   return {
@@ -37,46 +32,6 @@ export const getForStorageTemplate = (asset: ReturnType<AssetFactory['build']>) 
     isEdited: asset.isEdited,
   };
 };
-
-export const getAsDetectedFace = (face: ReturnType<AssetFaceFactory['build']>) => ({
-  faces: [
-    {
-      boundingBox: {
-        x1: face.boundingBoxX1,
-        y1: face.boundingBoxY1,
-        x2: face.boundingBoxX2,
-        y2: face.boundingBoxY2,
-      },
-      embedding: '[1, 2, 3, 4]',
-      score: 0.2,
-    },
-  ],
-  imageHeight: face.imageHeight,
-  imageWidth: face.imageWidth,
-});
-
-export const getForFacialRecognitionJob = (
-  face: ReturnType<AssetFaceFactory['build']>,
-  asset:
-    (Pick<Selectable<AssetTable>, 'ownerId' | 'visibility' | 'fileCreatedAt'> & { clusterGroupId?: string }) | null,
-) => ({
-  ...face,
-  asset: asset
-    ? {
-        ownerId: asset.ownerId,
-        clusterGroupId: asset.clusterGroupId ?? newUuid(),
-        visibility: asset.visibility,
-        fileCreatedAt: asset.fileCreatedAt.toISOString(),
-      }
-    : null,
-  faceSearch: { faceId: face.id, embedding: '[1, 2, 3, 4]' },
-});
-
-export const getForFaceSearch = (face: ReturnType<AssetFaceFactory['build']>, distance: number): FaceSearchResult => ({
-  id: face.id,
-  personGroupId: face.personGroupId,
-  distance,
-});
 
 export const getDehydrated = <T extends Record<string, unknown>>(entity: T) => {
   const copiedEntity = structuredClone(entity);
@@ -110,10 +65,6 @@ export const getForActivity = (activity: Selectable<ActivityTable> & { user: Ret
 export const getForAsset = (asset: ReturnType<AssetFactory['build']>) => {
   return {
     ...asset,
-    faces: asset.faces.map((face) => ({
-      ...getDehydrated(face),
-      person: face.person ? getDehydrated(face.person) : null,
-    })),
     owner: getDehydrated(asset.owner),
     stack: asset.stack
       ? { ...getDehydrated(asset.stack), assets: asset.stack.assets.map((asset) => getDehydrated(asset)) }
@@ -137,12 +88,8 @@ export const getForMemory = (memory: ReturnType<MemoryFactory['build']>) => ({
   assets: memory.assets.map((asset) => getDehydrated(asset)),
 });
 
-export const getForMetadataExtraction = (
-  asset: ReturnType<AssetFactory['build']>,
-  { clusterGroupId }: { clusterGroupId?: string } = {},
-) => ({
+export const getForMetadataExtraction = (asset: ReturnType<AssetFactory['build']>) => ({
   id: asset.id,
-  clusterGroupId: clusterGroupId ?? newUuid(),
   checksum: asset.checksum,
   checksumAlgorithm: asset.checksumAlgorithm,
   fileCreatedAt: asset.fileCreatedAt,
@@ -159,7 +106,6 @@ export const getForMetadataExtraction = (
   isEdited: asset.isEdited,
   width: asset.width,
   height: asset.height,
-  faces: asset.faces.map((face) => getDehydrated(face)),
   files: asset.files.map((file) => getDehydrated(file)),
 });
 
@@ -177,22 +123,6 @@ export const getForGenerateThumbnail = (asset: ReturnType<AssetFactory['build']>
   videoStream: null as (VideoStreamInfo & { timeBase: number }) | null,
   audioStream: null as AudioStreamInfo | null,
   format: null as VideoFormat | null,
-});
-
-export const getForAssetFace = (face: ReturnType<AssetFaceFactory['build']>) => ({
-  ...face,
-  person: face.person ? getDehydrated(face.person) : null,
-});
-
-export const getForDetectedFaces = (asset: ReturnType<AssetFactory['build']>) => ({
-  id: asset.id,
-  visibility: asset.visibility,
-  exifInfo: getDehydrated(asset.exifInfo),
-  faces: asset.faces.map((face) => getDehydrated(face)),
-  previewFile: asset.files
-    .filter((file) => file.type === AssetFileType.Preview)
-    .toSorted((a) => (a.isEdited ? -1 : 1))
-    .map((file) => getDehydrated(file))[0],
 });
 
 export const getForSidecarWrite = (asset: ReturnType<AssetFactory['build']>) => ({

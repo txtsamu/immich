@@ -51,7 +51,6 @@ export const timelineAssetFactory = Sync.makeFactory<TimelineAsset>({
   livePhotoVideoId: Sync.each(() => faker.string.uuid()),
   city: faker.location.city(),
   country: faker.location.country(),
-  people: [faker.person.fullName()],
 });
 
 export const toResponseDto = (...timelineAsset: TimelineAsset[]) => {

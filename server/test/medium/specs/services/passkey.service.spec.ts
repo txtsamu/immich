@@ -2,7 +2,6 @@ import { Kysely } from 'kysely';
 import { AuthChallengeType, SystemMetadataKey } from 'src/enum.js';
 import { AccessRepository } from 'src/repositories/access.repository.js';
 import { AuthChallengeRepository } from 'src/repositories/auth-challenge.repository.js';
-import { ClusterGroupRepository } from 'src/repositories/cluster-group.repository.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { CryptoRepository } from 'src/repositories/crypto.repository.js';
 import { DatabaseRepository } from 'src/repositories/database.repository.js';
@@ -55,7 +54,6 @@ const setup = (db?: Kysely<DB>) => {
     real: [
       AccessRepository,
       AuthChallengeRepository,
-      ClusterGroupRepository,
       ConfigRepository,
       CryptoRepository,
       DatabaseRepository,

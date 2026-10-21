@@ -6,30 +6,30 @@ describe('SearchManager', () => {
     searchManager.reset();
   });
 
-  it('defaults to smart search', () => {
-    expect(searchManager.filter.queryType).toBe('smart');
+  it('defaults to metadata search', () => {
+    expect(searchManager.filter.queryType).toBe('metadata');
   });
 
   it('remembers the selected query type', () => {
-    searchManager.setQueryType('metadata');
-    expect(searchManager.filter.queryType).toBe('metadata');
+    searchManager.setQueryType('description');
+    expect(searchManager.filter.queryType).toBe('description');
 
     searchManager.reset();
-    expect(searchManager.filter.queryType).toBe('metadata');
+    expect(searchManager.filter.queryType).toBe('description');
   });
 
   it('overrides a previously stored query type', () => {
     localStorage.setItem('searchQueryType', 'metadata');
     searchManager.reset();
 
-    searchManager.setQueryType('smart');
+    searchManager.setQueryType('fullPath');
     searchManager.reset();
-    expect(searchManager.filter.queryType).toBe('smart');
+    expect(searchManager.filter.queryType).toBe('fullPath');
   });
 
   it('ignores an invalid stored query type', () => {
     localStorage.setItem('searchQueryType', 'invalid');
     searchManager.reset();
-    expect(searchManager.filter.queryType).toBe('smart');
+    expect(searchManager.filter.queryType).toBe('metadata');
   });
 });

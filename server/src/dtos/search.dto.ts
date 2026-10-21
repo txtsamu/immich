@@ -45,7 +45,6 @@ const BaseSearchSchema = z.object({
   model: z.string().nullable().optional().describe('Filter by camera model').meta(DEPRECATED_FLAT_FIELD),
   lensModel: z.string().nullable().optional().describe('Filter by lens model').meta(DEPRECATED_FLAT_FIELD),
   isNotInAlbum: z.boolean().optional().describe('Filter assets not in any album').meta(DEPRECATED_FLAT_FIELD),
-  personIds: z.array(z.uuidv4()).optional().describe('Filter by person IDs').meta(DEPRECATED_FLAT_FIELD),
   tagIds: z.array(z.uuidv4()).nullish().describe('Filter by tag IDs').meta(DEPRECATED_FLAT_FIELD),
   albumIds: z.array(z.uuidv4()).optional().describe('Filter by album IDs').meta(DEPRECATED_FLAT_FIELD),
   rating: z
@@ -64,7 +63,6 @@ const BaseSearchSchema = z.object({
         .getExtensions(),
       deprecated: true,
     }),
-  ocr: z.string().optional().describe('Filter by OCR text content').meta(DEPRECATED_FLAT_FIELD),
 });
 
 const BaseSearchWithResultsSchema = BaseSearchSchema.extend({
@@ -83,13 +81,6 @@ const SearchPlacesSchema = z
     name: z.string().describe('Place name to search for'),
   })
   .meta({ id: 'SearchPlacesDto' });
-
-const SearchPeopleSchema = z
-  .object({
-    name: z.string().describe('Person name to search for'),
-    withHidden: stringToBool.optional().describe('Include hidden people'),
-  })
-  .meta({ id: 'SearchPeopleDto' });
 
 const PlacesResponseSchema = z
   .object({
@@ -226,12 +217,6 @@ const enumFilterSchema = <T extends z.core.util.EnumLike>(values: z.ZodEnum<T>, 
 const EnumFilterAssetTypeSchema = enumFilterSchema(AssetTypeSchema, 'EnumFilterAssetType');
 const EnumFilterAssetVisibilitySchema = enumFilterSchema(AssetVisibilitySchema, 'EnumFilterAssetVisibility');
 
-const StringSimilarityFilterSchema = z
-  .object({
-    matches: z.string().min(1),
-  })
-  .meta({ id: 'StringSimilarityFilter' });
-
 export const DEFAULT_SEARCH_ORDER = {
   field: SearchOrderField.FileCreatedAt,
   direction: AssetOrder.Desc,
@@ -254,7 +239,6 @@ const searchFilterBranchShape = {
   isOffline: BoolFilterSchema,
   isEncoded: BoolFilterSchema,
   hasAlbums: BoolFilterSchema,
-  hasPeople: BoolFilterSchema,
   hasTags: BoolFilterSchema,
   city: StringFilterNullableSchema,
   state: StringFilterNullableSchema,
@@ -265,14 +249,12 @@ const searchFilterBranchShape = {
   description: StringPatternFilterSchema,
   originalFileName: StringPatternFilterSchema,
   originalPath: StringPatternFilterSchema,
-  ocr: StringSimilarityFilterSchema,
   rating: NumberFilterNullableSchema,
   fileSizeInBytes: NumberFilterSchema,
   takenAt: DateFilterSchema,
   createdAt: DateFilterSchema,
   updatedAt: DateFilterSchema,
   trashedAt: DateFilterNullableSchema,
-  personIds: IdsFilterSchema,
   tagIds: IdsFilterSchema,
   albumIds: IdsFilterSchema,
   checksum: StringFilterSchema,
@@ -357,7 +339,6 @@ const cursorField = z.string().min(1).optional().describe('Cursor for the next p
 
 const RandomSearchBaseSchema = BaseSearchWithResultsSchema.extend({
   withStacked: z.boolean().optional().describe('Include stacked assets'),
-  withPeople: z.boolean().optional().describe('Include people data in response'),
   filter: filterField,
 });
 
@@ -387,24 +368,11 @@ const StatisticsSearchSchema = withShapeExclusivity(
   }),
 ).meta({ id: 'StatisticsSearchDto' });
 
-const SmartSearchSchema = withShapeExclusivity(
-  BaseSearchWithResultsSchema.extend({
-    size: z.int().min(1).max(1000).default(100).describe('Number of results to return'),
-    query: z.string().trim().optional().describe('Natural language search query'),
-    queryAssetId: z.uuidv4().optional().describe('Asset ID to use as search reference'),
-    language: z.string().optional().describe('Search language code'),
-    page: z.int().min(1).optional().describe('Page number').meta(DEPRECATED_FLAT_FIELD),
-    filter: filterField,
-  }),
-).meta({ id: 'SmartSearchDto' });
-
 export class RandomSearchDto extends createZodDto(RandomSearchSchema) {}
 export class LargeAssetSearchDto extends createZodDto(LargeAssetSearchSchema) {}
 export class MetadataSearchDto extends createZodDto(MetadataSearchSchema) {}
 export class StatisticsSearchDto extends createZodDto(StatisticsSearchSchema) {}
-export class SmartSearchDto extends createZodDto(SmartSearchSchema) {}
 export class SearchPlacesDto extends createZodDto(SearchPlacesSchema) {}
-export class SearchPeopleDto extends createZodDto(SearchPeopleSchema) {}
 export class PlacesResponseDto extends createZodDto(PlacesResponseSchema) {}
 export class SearchSuggestionRequestDto extends createZodDto(SearchSuggestionRequestSchema) {}
 

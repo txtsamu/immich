@@ -6,7 +6,6 @@ import { AssetRepository } from 'src/repositories/asset.repository.js';
 import { DatabaseRepository } from 'src/repositories/database.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { PartnerRepository } from 'src/repositories/partner.repository.js';
-import { PersonRepository } from 'src/repositories/person.repository.js';
 import { SearchRepository } from 'src/repositories/search.repository.js';
 import { DB } from 'src/schema/index.js';
 import { SearchService } from 'src/services/search.service.js';
@@ -16,19 +15,10 @@ import { getKyselyDB } from 'test/utils.js';
 
 let defaultDatabase: Kysely<DB>;
 
-const unitVector = (index: number) => JSON.stringify(Array.from({ length: 512 }, (_, i) => (i === index ? 1 : 0)));
-
 const setup = (db?: Kysely<DB>) => {
   return newMediumService(SearchService, {
     database: db || defaultDatabase,
-    real: [
-      AccessRepository,
-      AssetRepository,
-      DatabaseRepository,
-      SearchRepository,
-      PartnerRepository,
-      PersonRepository,
-    ],
+    real: [AccessRepository, AssetRepository, DatabaseRepository, SearchRepository, PartnerRepository],
     mock: [LoggingRepository],
   });
 };
@@ -82,32 +72,6 @@ describe(SearchService.name, () => {
   });
 
   describe('searchStatistics', () => {
-    it('should return statistics when filtering by personIds', async () => {
-      const { sut, ctx } = setup();
-      const { user } = await ctx.newUser();
-      const { asset } = await ctx.newAsset({ ownerId: user.id });
-      const { person } = await ctx.newPerson({ ownerId: user.id });
-      await ctx.newAssetFace({ assetId: asset.id, personGroupId: person.personGroupId });
-
-      const auth = factory.auth({ user: { id: user.id } });
-
-      const result = await sut.searchStatistics(auth, { personIds: [person.personGroupId] });
-
-      expect(result).toEqual({ total: 1 });
-    });
-
-    it('should return zero when no assets match the personIds filter', async () => {
-      const { sut, ctx } = setup();
-      const { user } = await ctx.newUser();
-      const { person } = await ctx.newPerson({ ownerId: user.id });
-
-      const auth = factory.auth({ user: { id: user.id } });
-
-      const result = await sut.searchStatistics(auth, { personIds: [person.personGroupId] });
-
-      expect(result).toEqual({ total: 0 });
-    });
-
     it('should not return locked assets of partner in elevated session', async () => {
       const { sut, ctx } = setup();
       const { user } = await ctx.newUser();
@@ -439,30 +403,6 @@ describe(SearchService.name, () => {
       });
 
       expect(response.assets.items.map(({ id }) => id)).toEqual([assetIds[1], assetIds[0], assetIds[2]]);
-    });
-
-    it('should order smart search results by embedding distance with cursor offsets', async () => {
-      const { ctx } = setup();
-      const { user } = await ctx.newUser();
-      const searchRepository = ctx.get(SearchRepository);
-
-      const assetIds: string[] = [];
-      for (let i = 0; i < 3; i++) {
-        const { asset } = await ctx.newAsset({ ownerId: user.id });
-        await searchRepository.upsert(asset.id, unitVector(i));
-        assetIds.push(asset.id);
-      }
-
-      const options = { filter: {}, embedding: unitVector(0) };
-      const scope = { userIds: [user.id], lockedOwnerId: user.id };
-      const firstPage = await searchRepository.searchSmartV3({ take: 2 }, options, scope);
-      expect(firstPage.items.length).toBe(2);
-      expect(firstPage.items[0].id).toBe(assetIds[0]);
-      expect(firstPage.hasNextPage).toBe(true);
-
-      const secondPage = await searchRepository.searchSmartV3({ take: 2, skip: 2 }, options, scope);
-      expect(secondPage.items.length).toBe(1);
-      expect(secondPage.hasNextPage).toBe(false);
     });
   });
 });

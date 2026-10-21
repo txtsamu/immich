@@ -17,13 +17,10 @@ import {
   mdiAccountCircleOutline,
   mdiAlertOutline,
   mdiCogRefreshOutline,
-  mdiCompare,
   mdiContentCopy,
   mdiDatabaseRefreshOutline,
   mdiDownload,
   mdiDownloadBox,
-  mdiFaceRecognition,
-  mdiHeadSyncOutline,
   mdiHeart,
   mdiHeartOutline,
   mdiImageRefreshOutline,
@@ -48,7 +45,6 @@ import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manage
 import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
 import { authManager } from '$lib/managers/auth-manager.svelte';
 import { eventManager } from '$lib/managers/event-manager.svelte';
-import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
 import AssetAddToAlbumModal from '$lib/modals/AssetAddToAlbumModal.svelte';
 import AssetTagModal from '$lib/modals/AssetTagModal.svelte';
 import ProfileImageCropperModal from '$lib/modals/ProfileImageCropperModal.svelte';
@@ -103,12 +99,6 @@ export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseD
     shortcuts: { key: 't' },
   };
 
-  const RefreshFacesJob: ActionItem = {
-    title: $t('refresh_faces'),
-    icon: mdiHeadSyncOutline,
-    onAction: () => onAction(AssetJobName.RefreshFaces),
-  };
-
   const RefreshMetadataJob: ActionItem = {
     title: $t('refresh_metadata'),
     icon: mdiDatabaseRefreshOutline,
@@ -133,7 +123,6 @@ export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseD
     CreateSharedLink,
     RemoveFromAlbum,
     Tag,
-    RefreshFacesJob,
     RefreshMetadataJob,
     RegenerateThumbnailJob,
     TranscodeVideoJob,
@@ -149,7 +138,6 @@ export const getAssetActions = (
   const authUser = authManager.authenticated ? authManager.user : undefined;
   const isOwner = !!(authUser && authUser.id === asset.ownerId);
   const isAlbumOwner = !!(authUser && authUser.id === album?.albumUsers[0].user.id);
-  const smartSearchEnabled = featureFlagsManager.value.smartSearch;
 
   const Share: ActionItem = {
     title: $t('share'),
@@ -288,14 +276,6 @@ export const getAssetActions = (
     shortcuts: { key: 't' },
   };
 
-  const TagPeople: ActionItem = {
-    title: $t('tag_people'),
-    icon: mdiFaceRecognition,
-    $if: () => isOwner && asset.type === AssetTypeEnum.Image && !asset.isTrashed,
-    onAction: () => assetViewerManager.toggleFaceEditMode(),
-    shortcuts: { key: 'p' },
-  };
-
   const Edit: ActionItem = {
     title: $t('editor'),
     icon: mdiTune,
@@ -324,20 +304,6 @@ export const getAssetActions = (
     icon: mdiImageSearch,
     $if: () => isOwner && asset.visibility !== AssetVisibility.Locked && !asset.isArchived && !asset.isTrashed,
     onAction: () => goto(Route.photos({ at: asset.stackPrimaryAssetId ?? asset.id })),
-  };
-
-  const ViewSimilar: ActionItem = {
-    title: $t('view_similar_photos'),
-    icon: mdiCompare,
-    $if: () =>
-      asset.visibility !== AssetVisibility.Locked && !asset.isArchived && !asset.isTrashed && smartSearchEnabled,
-    onAction: () => goto(Route.search({ queryAssetId: asset.stackPrimaryAssetId ?? asset.id })),
-  };
-
-  const RefreshFacesJob: ActionItem = {
-    title: $t('refresh_faces'),
-    icon: mdiHeadSyncOutline,
-    onAction: () => handleRunAssetJob({ name: AssetJobName.RefreshFaces, assetIds: [asset.id] }),
   };
 
   const RefreshMetadataJob: ActionItem = {
@@ -378,12 +344,9 @@ export const getAssetActions = (
     ZoomOut,
     Copy,
     Tag,
-    TagPeople,
     Edit,
     SetProfilePicture,
     ViewInTimeline,
-    ViewSimilar,
-    RefreshFacesJob,
     RefreshMetadataJob,
     RegenerateThumbnailJob,
     TranscodeVideoJob,
@@ -534,7 +497,6 @@ const handleRemoveAssetsFromAlbum = async (assetIds: string[], album: AlbumRespo
 
 const getAssetJobMessage = ($t: MessageFormatter, job: AssetJobName) => {
   const messages: Record<AssetJobName, string> = {
-    [AssetJobName.RefreshFaces]: $t('refreshing_faces'),
     [AssetJobName.RefreshMetadata]: $t('refreshing_metadata'),
     [AssetJobName.RegenerateThumbnail]: $t('regenerating_thumbnails'),
     [AssetJobName.TranscodeVideo]: $t('refreshing_encoded_video'),

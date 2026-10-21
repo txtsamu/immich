@@ -96,9 +96,6 @@ export const AssetOrderBySchema = z.enum(AssetOrderBy).describe('Asset sorting p
 export enum MemoryType {
   /** pictures taken on this day X years ago */
   OnThisDay = 'on_this_day',
-
-  /** pictures of a person, shown leading up to their birthday */
-  Birthday = 'birthday',
 }
 
 export const MemoryTypeSchema = z.enum(MemoryType).describe('Memory type').meta({ id: 'MemoryType' });
@@ -193,24 +190,10 @@ export enum Permission {
   BackupUpload = 'backup.upload',
   BackupDelete = 'backup.delete',
 
-  ClusterGroupRead = 'clusterGroup.read',
-  ClusterGroupLeave = 'clusterGroup.leave',
-  ClusterGroupRequestCreate = 'clusterGroupRequest.create',
-  ClusterGroupRequestRead = 'clusterGroupRequest.read',
-  ClusterGroupRequestDelete = 'clusterGroupRequest.delete',
-
   AdminConfigRead = 'adminConfig.read',
   AdminConfigUpdate = 'adminConfig.update',
 
   UserConfigRead = 'userConfig.read',
-
-  DuplicateRead = 'duplicate.read',
-  DuplicateDelete = 'duplicate.delete',
-
-  FaceCreate = 'face.create',
-  FaceRead = 'face.read',
-  FaceUpdate = 'face.update',
-  FaceDelete = 'face.delete',
 
   FolderRead = 'folder.read',
 
@@ -253,14 +236,6 @@ export enum Permission {
   PasskeyRead = 'passkey.read',
   PasskeyUpdate = 'passkey.update',
   PasskeyDelete = 'passkey.delete',
-
-  PersonCreate = 'person.create',
-  PersonRead = 'person.read',
-  PersonUpdate = 'person.update',
-  PersonDelete = 'person.delete',
-  PersonStatistics = 'person.statistics',
-  PersonMerge = 'person.merge',
-  PersonReassign = 'person.reassign',
 
   PinCodeCreate = 'pinCode.create',
   PinCodeUpdate = 'pinCode.update',
@@ -384,7 +359,6 @@ export const StorageFolderSchema = z.enum(StorageFolder).describe('Storage folde
 export enum SystemMetadataKey {
   MediaLocation = 'MediaLocation',
   ReverseGeocodingState = 'reverse-geocoding-state',
-  FacialRecognitionState = 'facial-recognition-state',
   MemoriesState = 'memories-state',
   AdminOnboarding = 'admin-onboarding',
   MaintenanceMode = 'maintenance-mode',
@@ -428,16 +402,6 @@ export const UserAvatarColorSchema = z
   .describe('User avatar color')
   .meta({ id: 'UserAvatarColor' });
 
-export enum PersonUpdateStrategy {
-  Self = 'self',
-  Everyone = 'everyone',
-}
-
-export const PersonUpdateStrategySchema = z
-  .enum(PersonUpdateStrategy)
-  .describe('Which person records to update when editing a person')
-  .meta({ id: 'PersonUpdateStrategy' });
-
 export enum UserStatus {
   Active = 'active',
   Removing = 'removing',
@@ -452,14 +416,6 @@ export enum AssetStatus {
   Deleted = 'deleted',
 }
 
-export enum SourceType {
-  MachineLearning = 'machine-learning',
-  Exif = 'exif',
-  Manual = 'manual',
-}
-
-export const SourceTypeSchema = z.enum(SourceType).describe('Face detection source type').meta({ id: 'SourceType' });
-
 export enum IntegrityReport {
   UntrackedFile = 'untracked_file',
   MissingFile = 'missing_file',
@@ -472,7 +428,6 @@ export const IntegrityReportSchema = z
   .meta({ id: 'IntegrityReport' });
 
 export enum ManualJobName {
-  PersonCleanup = 'person-cleanup',
   TagCleanup = 'tag-cleanup',
   UserCleanup = 'user-cleanup',
   MemoryCleanup = 'memory-cleanup',
@@ -496,15 +451,11 @@ export enum AssetPathType {
   EncodedVideo = 'encoded_video',
 }
 
-export enum PersonPathType {
-  Face = 'face',
-}
-
 export enum UserPathType {
   Profile = 'profile',
 }
 
-export type PathType = AssetFileType | AssetPathType | PersonPathType | UserPathType;
+export type PathType = AssetFileType | AssetPathType | UserPathType;
 
 export enum TranscodePolicy {
   All = 'all',
@@ -853,10 +804,6 @@ export enum QueueName {
   ThumbnailGeneration = 'thumbnailGeneration',
   MetadataExtraction = 'metadataExtraction',
   VideoConversion = 'videoConversion',
-  FaceDetection = 'faceDetection',
-  FacialRecognition = 'facialRecognition',
-  SmartSearch = 'smartSearch',
-  DuplicateDetection = 'duplicateDetection',
   BackgroundTask = 'backgroundTask',
   StorageTemplateMigration = 'storageTemplateMigration',
   Migration = 'migration',
@@ -865,7 +812,6 @@ export enum QueueName {
   Library = 'library',
   Notification = 'notifications',
   BackupDatabase = 'backupDatabase',
-  Ocr = 'ocr',
   Workflow = 'workflow',
   IntegrityCheck = 'integrityCheck',
   Editor = 'editor',
@@ -886,10 +832,6 @@ export const QueueJobStatusSchema = z.enum(QueueJobStatus).describe('Queue job s
 export enum JobName {
   AssetDelete = 'AssetDelete',
   AssetDeleteCheck = 'AssetDeleteCheck',
-  AssetDetectFacesQueueAll = 'AssetDetectFacesQueueAll',
-  AssetDetectFaces = 'AssetDetectFaces',
-  AssetDetectDuplicatesQueueAll = 'AssetDetectDuplicatesQueueAll',
-  AssetDetectDuplicates = 'AssetDetectDuplicates',
   AssetEditThumbnailGeneration = 'AssetEditThumbnailGeneration',
   AssetEncodeVideoQueueAll = 'AssetEncodeVideoQueueAll',
   AssetEncodeVideo = 'AssetEncodeVideo',
@@ -905,9 +847,6 @@ export enum JobName {
   AuthChallengeCleanup = 'AuthChallengeCleanup',
 
   DatabaseBackup = 'DatabaseBackup',
-
-  FacialRecognitionQueueAll = 'FacialRecognitionQueueAll',
-  FacialRecognition = 'FacialRecognition',
 
   FileDelete = 'FileDelete',
   FileMigrationQueueAll = 'FileMigrationQueueAll',
@@ -936,10 +875,6 @@ export enum JobName {
   UserDeleteCheck = 'UserDeleteCheck',
   UserSyncUsage = 'UserSyncUsage',
 
-  PersonCleanup = 'PersonCleanup',
-  PersonFileMigration = 'PersonFileMigration',
-  PersonGenerateThumbnail = 'PersonGenerateThumbnail',
-
   SessionCleanup = 'SessionCleanup',
 
   SendMail = 'SendMail',
@@ -948,19 +883,12 @@ export enum JobName {
   SidecarCheck = 'SidecarCheck',
   SidecarWrite = 'SidecarWrite',
 
-  SmartSearchQueueAll = 'SmartSearchQueueAll',
-  SmartSearch = 'SmartSearch',
-
   StorageTemplateMigration = 'StorageTemplateMigration',
   StorageTemplateMigrationSingle = 'StorageTemplateMigrationSingle',
 
   TagCleanup = 'TagCleanup',
 
   VersionCheck = 'VersionCheck',
-
-  // OCR
-  OcrQueueAll = 'OcrQueueAll',
-  Ocr = 'Ocr',
 
   // Workflow
   WorkflowAssetTrigger = 'WorkflowAssetTrigger',
@@ -1007,18 +935,12 @@ export enum QueueCleanType {
   Failed = 'failed',
 }
 
-export enum VectorIndex {
-  Clip = 'clip_index',
-  Face = 'face_index',
-}
-
 export enum DatabaseLock {
   GeodataImport = 100,
   Migrations = 200,
   SystemFileMounts = 300,
   StorageTemplateMigration = 420,
   VersionHistory = 500,
-  CLIPDimSize = 512,
   Library = 1337,
   NightlyJobs = 600,
   PluginImport = 666,
@@ -1030,8 +952,6 @@ export enum DatabaseLock {
   IntegrityCheck = 67,
   VersionCheck = 800,
   HlsSessionCleanup = 850,
-  FacialRecognition = 900,
-  DuplicateDetection = 1000,
 }
 
 export enum MaintenanceAction {
@@ -1065,7 +985,6 @@ export enum SyncRequestType {
   AssetExifsV1 = 'AssetExifsV1',
   AssetEditsV1 = 'AssetEditsV1',
   AssetMetadataV1 = 'AssetMetadataV1',
-  AssetOcrV1 = 'AssetOcrV1',
   AuthUsersV1 = 'AuthUsersV1',
   AuthUsersV2 = 'AuthUsersV2',
   MemoriesV1 = 'MemoriesV1',
@@ -1080,12 +999,6 @@ export enum SyncRequestType {
   PartnerStacksV1 = 'PartnerStacksV1',
   StacksV1 = 'StacksV1',
   UsersV1 = 'UsersV1',
-  PeopleV1 = 'PeopleV1',
-  /** @deprecated */
-  AssetFacesV1 = 'AssetFacesV1',
-  /** @deprecated */
-  AssetFacesV2 = 'AssetFacesV2',
-  AssetFacesV3 = 'AssetFacesV3',
   UserMetadataV1 = 'UserMetadataV1',
 }
 
@@ -1110,8 +1023,6 @@ export enum SyncEntityType {
   AssetEditDeleteV1 = 'AssetEditDeleteV1',
   AssetMetadataV1 = 'AssetMetadataV1',
   AssetMetadataDeleteV1 = 'AssetMetadataDeleteV1',
-  AssetOcrV1 = 'AssetOcrV1',
-  AssetOcrDeleteV1 = 'AssetOcrDeleteV1',
 
   PartnerV1 = 'PartnerV1',
   PartnerDeleteV1 = 'PartnerDeleteV1',
@@ -1165,16 +1076,6 @@ export enum SyncEntityType {
   StackV1 = 'StackV1',
   StackDeleteV1 = 'StackDeleteV1',
 
-  PersonV1 = 'PersonV1',
-  PersonDeleteV1 = 'PersonDeleteV1',
-
-  /** @deprecated */
-  AssetFaceV1 = 'AssetFaceV1',
-  /** @deprecated */
-  AssetFaceV2 = 'AssetFaceV2',
-  AssetFaceV3 = 'AssetFaceV3',
-  AssetFaceDeleteV1 = 'AssetFaceDeleteV1',
-
   UserMetadataV1 = 'UserMetadataV1',
   UserMetadataDeleteV1 = 'UserMetadataDeleteV1',
 
@@ -1203,7 +1104,6 @@ export enum NotificationType {
   SystemMessage = 'SystemMessage',
   AlbumInvite = 'AlbumInvite',
   AlbumUpdate = 'AlbumUpdate',
-  ClusterGroupRequest = 'ClusterGroupRequest',
   Custom = 'Custom',
 }
 
@@ -1271,8 +1171,6 @@ export enum ApiTag {
   DatabaseBackups = 'Database Backups (admin)',
   Deprecated = 'Deprecated',
   Download = 'Download',
-  Duplicates = 'Duplicates',
-  Faces = 'Faces',
   Integrity = 'Integrity (admin)',
   Jobs = 'Jobs',
   Libraries = 'Libraries',
@@ -1281,10 +1179,8 @@ export enum ApiTag {
   Memories = 'Memories',
   Notifications = 'Notifications',
   NotificationsAdmin = 'Notifications (admin)',
-  ClusterGroups = 'Cluster groups',
   Partners = 'Partners',
   Passkeys = 'Passkeys',
-  People = 'People',
   Plugins = 'Plugins',
   Queues = 'Queues',
   Search = 'Search',
@@ -1311,7 +1207,6 @@ export const WorkflowTriggerSchema = z
 
 export enum WorkflowType {
   AssetV1 = 'AssetV1',
-  // AssetPersonV1 = 'AssetPersonV1',
 }
 
 export const WorkflowTypeSchema = z.enum(WorkflowType).describe('Workflow type').meta({ id: 'WorkflowType' });

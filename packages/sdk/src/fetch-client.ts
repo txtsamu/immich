@@ -166,16 +166,13 @@ export type AdminConfigJobSettingsDto = {
 export type AdminConfigJobDto = {
     backgroundTask: AdminConfigJobSettingsDto;
     editor: AdminConfigJobSettingsDto;
-    faceDetection: AdminConfigJobSettingsDto;
     integrityCheck: AdminConfigJobSettingsDto;
     library: AdminConfigJobSettingsDto;
     metadataExtraction: AdminConfigJobSettingsDto;
     migration: AdminConfigJobSettingsDto;
     notifications: AdminConfigJobSettingsDto;
-    ocr: AdminConfigJobSettingsDto;
     search: AdminConfigJobSettingsDto;
     sidecar: AdminConfigJobSettingsDto;
-    smartSearch: AdminConfigJobSettingsDto;
     thumbnailGeneration: AdminConfigJobSettingsDto;
     videoConversion: AdminConfigJobSettingsDto;
     workflow: AdminConfigJobSettingsDto;
@@ -199,59 +196,6 @@ export type AdminConfigLoggingDto = {
     enabled: boolean;
     level: LogLevel;
 };
-export type AdminConfigMachineLearningAvailabilityChecksDto = {
-    /** Enabled */
-    enabled: boolean;
-    interval: number;
-    timeout: number;
-};
-export type AdminConfigClipDto = {
-    /** Whether the task is enabled */
-    enabled: boolean;
-    /** Name of the model to use */
-    modelName: string;
-};
-export type AdminConfigDuplicateDetectionDto = {
-    /** Whether the task is enabled */
-    enabled: boolean;
-    /** Maximum distance threshold for duplicate detection */
-    maxDistance: number;
-};
-export type AdminConfigFacialRecognitionDto = {
-    /** Whether the task is enabled */
-    enabled: boolean;
-    /** Maximum distance threshold for face recognition */
-    maxDistance: number;
-    /** Minimum number of faces required for recognition */
-    minFaces: number;
-    /** Minimum confidence score for face detection */
-    minScore: number;
-    /** Name of the model to use */
-    modelName: string;
-};
-export type AdminConfigOcrDto = {
-    /** Whether the task is enabled */
-    enabled: boolean;
-    /** Maximum resolution for OCR processing */
-    maxResolution: number;
-    /** Minimum confidence score for text detection */
-    minDetectionScore: number;
-    /** Minimum confidence score for text recognition */
-    minRecognitionScore: number;
-    /** Name of the model to use */
-    modelName: string;
-};
-export type AdminConfigMachineLearningDto = {
-    availabilityChecks: AdminConfigMachineLearningAvailabilityChecksDto;
-    clip: AdminConfigClipDto;
-    duplicateDetection: AdminConfigDuplicateDetectionDto;
-    /** Enabled */
-    enabled: boolean;
-    facialRecognition: AdminConfigFacialRecognitionDto;
-    ocr: AdminConfigOcrDto;
-    /** ML service URLs */
-    urls: string[];
-};
 export type AdminConfigMapDto = {
     /** Dark map style URL */
     darkStyle: string;
@@ -260,21 +204,12 @@ export type AdminConfigMapDto = {
     /** Light map style URL */
     lightStyle: string;
 };
-export type AdminConfigFacesDto = {
-    /** Import */
-    "import": boolean;
-};
-export type AdminConfigMetadataDto = {
-    faces: AdminConfigFacesDto;
-};
 export type AdminConfigNewVersionCheckDto = {
     channel: ReleaseChannel;
     /** Enabled */
     enabled: boolean;
 };
 export type AdminConfigNightlyTasksDto = {
-    /** Cluster new faces */
-    clusterNewFaces: boolean;
     /** Database cleanup */
     databaseCleanup: boolean;
     /** Generate memories */
@@ -422,9 +357,7 @@ export type AdminConfigDto = {
     job: AdminConfigJobDto;
     library: AdminConfigLibraryDto;
     logging: AdminConfigLoggingDto;
-    machineLearning: AdminConfigMachineLearningDto;
     map: AdminConfigMapDto;
-    metadata: AdminConfigMetadataDto;
     newVersionCheck: AdminConfigNewVersionCheckDto;
     nightlyTasks: AdminConfigNightlyTasksDto;
     notifications: AdminConfigNotificationsDto;
@@ -564,8 +497,6 @@ export type UserLicense = {
 };
 export type UserAdminResponseDto = {
     avatarColor: UserAvatarColor;
-    /** Cluster group the user is a member of */
-    clusterGroupId: string;
     /** Creation date */
     createdAt: string;
     /** Deletion date */
@@ -690,15 +621,6 @@ export type MemoriesResponse = {
     /** Whether memories appear in web sidebar */
     sidebarWeb: boolean;
 };
-export type PeopleResponse = {
-    /** Whether people are enabled */
-    enabled: boolean;
-    /** People face threshold */
-    minimumFaces?: number;
-    /** Whether people appear in web sidebar */
-    sidebarWeb: boolean;
-    updateStrategy: PersonUpdateStrategy;
-};
 export type PurchaseResponse = {
     /** Date until which to hide buy button */
     hideBuyButtonUntil: string;
@@ -732,7 +654,6 @@ export type UserPreferencesResponseDto = {
     emailNotifications: EmailNotificationsResponse;
     folders: FoldersResponse;
     memories: MemoriesResponse;
-    people: PeopleResponse;
     purchase: PurchaseResponse;
     ratings: RatingsResponse;
     recentlyAdded: RecentlyAddedResponse;
@@ -777,15 +698,6 @@ export type MemoriesUpdate = {
     /** Whether memories appear in web sidebar */
     sidebarWeb?: boolean;
 };
-export type PeopleUpdate = {
-    /** Whether people are enabled */
-    enabled?: boolean;
-    /** People face threshold */
-    minimumFaces?: number;
-    /** Whether people appear in web sidebar */
-    sidebarWeb?: boolean;
-    updateStrategy?: PersonUpdateStrategy;
-};
 export type PurchaseUpdate = {
     /** Date until which to hide buy button */
     hideBuyButtonUntil?: string;
@@ -820,7 +732,6 @@ export type UserPreferencesUpdateDto = {
     emailNotifications?: EmailNotificationsUpdate;
     folders?: FoldersUpdate;
     memories?: MemoriesUpdate;
-    people?: PeopleUpdate;
     purchase?: PurchaseUpdate;
     ratings?: RatingsUpdate;
     recentlyAdded?: RecentlyAddedUpdate;
@@ -1084,8 +995,6 @@ export type AssetBulkUpdateDto = {
     dateTimeRelative?: number;
     /** Asset description */
     description?: string;
-    /** Duplicate ID */
-    duplicateId?: string | null;
     /** Asset IDs to update */
     ids: string[];
     /** Mark as favorite */
@@ -1227,50 +1136,6 @@ export type ExifResponseDto = {
     /** Time zone */
     timeZone?: string | null;
 };
-export type PersonOtherResponseDto = {
-    birthDate: string | null;
-    name: string;
-    role: PersonUserRole;
-    sharedById: string;
-};
-export type PeopleUserResponseDto = {
-    avatarColor: UserAvatarColor;
-    /** User email */
-    email: string;
-    /** User ID */
-    id: string;
-    /** User name */
-    name: string;
-    /** Profile change date */
-    profileChangedAt: string;
-    /** Profile image path */
-    profileImagePath: string;
-    /** Access role */
-    role: PersonUserRole;
-};
-export type PersonResponseDto = {
-    /** Person date of birth */
-    birthDate: string | null;
-    /** Person color (hex) */
-    color?: string;
-    /** Person ID */
-    id: string;
-    /** Is favorite */
-    isFavorite?: boolean;
-    /** Is hidden */
-    isHidden: boolean;
-    /** Person name */
-    name: string;
-    otherPeople: PersonOtherResponseDto[];
-    /** Users that gave the current user access to this person */
-    sharedBy: PeopleUserResponseDto[];
-    /** Users the current user gave access to this person */
-    sharedWith: PeopleUserResponseDto[];
-    /** Thumbnail path */
-    thumbnailPath: string;
-    /** Last update date */
-    updatedAt?: string;
-};
 export type AssetStackResponseDto = {
     /** Number of assets in stack */
     assetCount: number;
@@ -1300,8 +1165,6 @@ export type AssetResponseDto = {
     checksum: string;
     /** The UTC timestamp when the asset was originally uploaded to Immich. */
     createdAt: string;
-    /** Duplicate group ID */
-    duplicateId?: string | null;
     /** Video/gif duration in milliseconds (null for static images) */
     duration: number | null;
     exifInfo?: ExifResponseDto;
@@ -1340,7 +1203,6 @@ export type AssetResponseDto = {
     owner?: UserResponseDto;
     /** Owner user ID */
     ownerId: string;
-    people?: PersonResponseDto[];
     /** Is resized */
     resized?: boolean;
     stack?: (AssetStackResponseDto) | null;
@@ -1423,32 +1285,6 @@ export type AssetMetadataResponseDto = {
 export type AssetMetadataUpsertDto = {
     /** Metadata items to upsert */
     items: AssetMetadataUpsertItemDto[];
-};
-export type AssetOcrResponseDto = {
-    assetId: string;
-    /** Confidence score for text detection box */
-    boxScore: number;
-    id: string;
-    /** Recognized text */
-    text: string;
-    /** Confidence score for text recognition */
-    textScore: number;
-    /** Normalized x coordinate of box corner 1 (0-1) */
-    x1: number;
-    /** Normalized x coordinate of box corner 2 (0-1) */
-    x2: number;
-    /** Normalized x coordinate of box corner 3 (0-1) */
-    x3: number;
-    /** Normalized x coordinate of box corner 4 (0-1) */
-    x4: number;
-    /** Normalized y coordinate of box corner 1 (0-1) */
-    y1: number;
-    /** Normalized y coordinate of box corner 2 (0-1) */
-    y2: number;
-    /** Normalized y coordinate of box corner 3 (0-1) */
-    y3: number;
-    /** Normalized y coordinate of box corner 4 (0-1) */
-    y4: number;
 };
 export type SignUpDto = {
     /** User email */
@@ -1536,20 +1372,6 @@ export type ValidateAccessTokenResponseDto = {
     /** Authentication status */
     authStatus: boolean;
 };
-export type ClusterGroupRequestResponseDto = {
-    /** Cluster group the user is invited to join */
-    clusterGroupId: string;
-    /** Creation date */
-    createdAt: string;
-    /** Request ID */
-    id: string;
-    /** User the request was created for */
-    userId: string;
-};
-export type ClusterGroupRequestCreateDto = {
-    /** User to invite into the cluster group */
-    userId: string;
-};
 export type UserConfigFFmpegRealtimeDto = {
     /** Enable real-time HLS transcoding (alpha) */
     enabled: boolean;
@@ -1573,32 +1395,6 @@ export type UserConfigImageDto = {
     fullsize: UserConfigGeneratedFullsizeImageDto;
     preview: UserConfigGeneratedImageDto;
     thumbnail: UserConfigGeneratedImageDto;
-};
-export type UserConfigClipDto = {
-    /** Whether the task is enabled */
-    enabled: boolean;
-};
-export type UserConfigDuplicateDetectionDto = {
-    /** Whether the task is enabled */
-    enabled: boolean;
-};
-export type UserConfigFacialRecognitionDto = {
-    /** Whether the task is enabled */
-    enabled: boolean;
-    /** Minimum number of faces required for recognition */
-    minFaces: number;
-};
-export type UserConfigOcrDto = {
-    /** Whether the task is enabled */
-    enabled: boolean;
-};
-export type UserConfigMachineLearningDto = {
-    clip: UserConfigClipDto;
-    duplicateDetection: UserConfigDuplicateDetectionDto;
-    /** Enabled */
-    enabled: boolean;
-    facialRecognition: UserConfigFacialRecognitionDto;
-    ocr: UserConfigOcrDto;
 };
 export type UserConfigMapDto = {
     /** Dark map style URL */
@@ -1656,7 +1452,6 @@ export type UserConfigUserDto = {
 export type UserConfigDto = {
     ffmpeg: UserConfigFFmpegDto;
     image: UserConfigImageDto;
-    machineLearning: UserConfigMachineLearningDto;
     map: UserConfigMapDto;
     notifications: UserConfigNotificationsDto;
     oauth: UserConfigOAuthDto;
@@ -1697,71 +1492,6 @@ export type DownloadResponseDto = {
     /** Total size in bytes */
     totalSize: number;
 };
-export type DuplicateResponseDto = {
-    /** Duplicate assets */
-    assets: AssetResponseDto[];
-    /** Duplicate group ID */
-    duplicateId: string;
-    /** Suggested asset IDs to keep based on file size and EXIF data */
-    suggestedKeepAssetIds: string[];
-};
-export type DuplicateResolveGroupDto = {
-    duplicateId: string;
-    /** Asset IDs to keep */
-    keepAssetIds: string[];
-    /** Asset IDs to trash or delete */
-    trashAssetIds: string[];
-};
-export type DuplicateResolveDto = {
-    /** List of duplicate groups to resolve */
-    groups: DuplicateResolveGroupDto[];
-};
-export type AssetFaceResponseDto = {
-    /** Bounding box X1 coordinate */
-    boundingBoxX1: number;
-    /** Bounding box X2 coordinate */
-    boundingBoxX2: number;
-    /** Bounding box Y1 coordinate */
-    boundingBoxY1: number;
-    /** Bounding box Y2 coordinate */
-    boundingBoxY2: number;
-    /** Face ID */
-    id: string;
-    /** Image height in pixels */
-    imageHeight: number;
-    /** Image width in pixels */
-    imageWidth: number;
-    person: (PersonResponseDto) | null;
-    sourceType?: SourceType;
-};
-export type AssetFaceCreateDto = {
-    /** Asset ID */
-    assetId: string;
-    /** Face bounding box height */
-    height: number;
-    /** Image height in pixels */
-    imageHeight: number;
-    /** Image width in pixels */
-    imageWidth: number;
-    /** Person ID */
-    personId: string;
-    /** User ID */
-    userId?: string;
-    /** Face bounding box width */
-    width: number;
-    /** Face bounding box X coordinate */
-    x: number;
-    /** Face bounding box Y coordinate */
-    y: number;
-};
-export type AssetFaceDeleteDto = {
-    /** Force delete even if person has other faces */
-    force: boolean;
-};
-export type FaceDto = {
-    /** Face ID */
-    id: string;
-};
 export type QueueStatisticsDto = {
     /** Number of active jobs */
     active: number;
@@ -1789,19 +1519,14 @@ export type QueueResponseLegacyDto = {
 export type QueuesResponseLegacyDto = {
     backgroundTask: QueueResponseLegacyDto;
     backupDatabase: QueueResponseLegacyDto;
-    duplicateDetection: QueueResponseLegacyDto;
     editor: QueueResponseLegacyDto;
-    faceDetection: QueueResponseLegacyDto;
-    facialRecognition: QueueResponseLegacyDto;
     integrityCheck: QueueResponseLegacyDto;
     library: QueueResponseLegacyDto;
     metadataExtraction: QueueResponseLegacyDto;
     migration: QueueResponseLegacyDto;
     notifications: QueueResponseLegacyDto;
-    ocr: QueueResponseLegacyDto;
     search: QueueResponseLegacyDto;
     sidecar: QueueResponseLegacyDto;
-    smartSearch: QueueResponseLegacyDto;
     storageTemplateMigration: QueueResponseLegacyDto;
     thumbnailGeneration: QueueResponseLegacyDto;
     videoConversion: QueueResponseLegacyDto;
@@ -1890,10 +1615,6 @@ export type MapReverseGeocodeResponseDto = {
     state: string | null;
 };
 export type MemoryDataDto = {
-    /** Person ID (birthday memories) */
-    personId?: string;
-    /** Name of the person when the memory was created (birthday memories) */
-    personName?: string;
     /** Year of the memory */
     year: number;
 };
@@ -2051,124 +1772,6 @@ export type PasskeyRegistrationOptionsDto = {
 export type PasskeyUpdateDto = {
     /** Passkey name */
     name: string | null;
-};
-export type PeopleDeleteDto = {
-    /** IDs to process */
-    ids: string[];
-    userId?: string;
-};
-export type PeopleResponseDto = {
-    /** Whether there are more pages */
-    hasNextPage?: boolean;
-    /** Number of hidden people */
-    hidden: number;
-    people: PersonResponseDto[];
-    /** Total number of people */
-    total: number;
-};
-export type PersonCreateDto = {
-    /** Person date of birth */
-    birthDate?: string | null;
-    /** Person color (hex) */
-    color?: string | null;
-    /** Mark as favorite */
-    isFavorite?: boolean;
-    /** Person visibility (hidden) */
-    isHidden?: boolean;
-    /** Person name */
-    name?: string;
-};
-export type PeopleUpdateItem = {
-    /** Person date of birth */
-    birthDate?: string | null;
-    /** Person color (hex) */
-    color?: string | null;
-    /** Asset ID used for feature face thumbnail */
-    featureFaceAssetId?: string;
-    /** Person ID */
-    id: string;
-    /** Mark as favorite */
-    isFavorite?: boolean;
-    /** Person visibility (hidden) */
-    isHidden?: boolean;
-    /** Person name */
-    name?: string;
-    /** Restrict the update to the person record of this User ID */
-    userId?: string;
-};
-export type PeopleUpdateDto = {
-    /** People to update */
-    people: PeopleUpdateItem[];
-};
-export type MergePersonDto = {
-    /** Person IDs to merge */
-    ids: string[];
-};
-export type PersonUsersDeleteDto = {
-    /** Person ID */
-    personId: string;
-    /** User ID of the user that gave access to the person */
-    sharedById?: string;
-    /** User ID of the user that was given access to the person */
-    sharedWithId: string;
-}[];
-export type PersonUsersResponseDto = {
-    /** Person ID */
-    personId: string;
-    /** Access role */
-    role: PersonUserRole;
-    /** The user that gave access to this person */
-    sharedBy: UserResponseDto;
-    /** User ID of the user that gave access to this person */
-    sharedById: string;
-    /** The user that was given access to this person */
-    sharedWith: UserResponseDto;
-    /** User ID of the user that was given access to this person */
-    sharedWithId: string;
-}[];
-export type PeopleUsersUpsertDto = {
-    /** Person IDs, required when type is omitted */
-    personIds?: string[];
-    /** Role that should be applied */
-    role: PersonUserRole;
-    /** User IDs that should be given access to the person */
-    sharedWithIds: string[];
-    "type"?: PeopleUsersUpsertType;
-};
-export type PersonDeleteDto = {
-    userId?: string;
-};
-export type PersonUpdateDto = {
-    /** Person date of birth */
-    birthDate?: string | null;
-    /** Person color (hex) */
-    color?: string | null;
-    /** Asset ID used for feature face thumbnail */
-    featureFaceAssetId?: string;
-    /** Mark as favorite */
-    isFavorite?: boolean;
-    /** Person visibility (hidden) */
-    isHidden?: boolean;
-    /** Person name */
-    name?: string;
-    /** Restrict the update to the person record of this User ID */
-    userId?: string;
-};
-export type AssetFaceUpdateItem = {
-    /** Asset ID */
-    assetId: string;
-    /** Person ID */
-    personId: string;
-    /** User ID */
-    userId?: string;
-};
-export type AssetFaceUpdateDto = {
-    /** Face update items */
-    data: AssetFaceUpdateItem[];
-};
-export type PersonStatisticsResponseDto = {
-    /** Number of assets */
-    assets: number;
 };
 export type PluginMethodResponseDto = {
     /** Description */
@@ -2364,9 +1967,6 @@ export type IdFilterNullable = {
     eq?: string | null;
     ne?: string | null;
 };
-export type StringSimilarityFilter = {
-    matches: string;
-};
 export type NumberFilterNullable = {
     eq?: number | null;
     gt?: number;
@@ -2407,7 +2007,6 @@ export type SearchFilterBranch = {
     encodedVideoPath?: StringFilter;
     fileSizeInBytes?: NumberFilter;
     hasAlbums?: BoolFilter;
-    hasPeople?: BoolFilter;
     hasTags?: BoolFilter;
     id?: IdFilter;
     isEncoded?: BoolFilter;
@@ -2418,10 +2017,8 @@ export type SearchFilterBranch = {
     libraryId?: IdFilterNullable;
     make?: StringFilterNullable;
     model?: StringFilterNullable;
-    ocr?: StringSimilarityFilter;
     originalFileName?: StringPatternFilter;
     originalPath?: StringPatternFilter;
-    personIds?: IdsFilter;
     rating?: NumberFilterNullable;
     state?: StringFilterNullable;
     tagIds?: IdsFilter;
@@ -2441,7 +2038,6 @@ export type SearchFilter = {
     encodedVideoPath?: StringFilter;
     fileSizeInBytes?: NumberFilter;
     hasAlbums?: BoolFilter;
-    hasPeople?: BoolFilter;
     hasTags?: BoolFilter;
     id?: IdFilter;
     isEncoded?: BoolFilter;
@@ -2452,11 +2048,9 @@ export type SearchFilter = {
     libraryId?: IdFilterNullable;
     make?: StringFilterNullable;
     model?: StringFilterNullable;
-    ocr?: StringSimilarityFilter;
     or?: SearchFilterBranch[];
     originalFileName?: StringPatternFilter;
     originalPath?: StringPatternFilter;
-    personIds?: IdsFilter;
     rating?: NumberFilterNullable;
     state?: StringFilterNullable;
     tagIds?: IdsFilter;
@@ -2510,8 +2104,6 @@ export type MetadataSearchDto = {
     make?: string | null;
     /** Filter by camera model */
     model?: string | null;
-    /** Filter by OCR text content */
-    ocr?: string;
     /** Sort order */
     order?: AssetOrder;
     orderBy?: SearchOrder;
@@ -2521,8 +2113,6 @@ export type MetadataSearchDto = {
     originalPath?: string;
     /** Page number */
     page?: number;
-    /** Filter by person IDs */
-    personIds?: string[];
     /** Filter by preview file path */
     previewPath?: string;
     /** Filter by rating [1-5], or null for unrated */
@@ -2553,8 +2143,6 @@ export type MetadataSearchDto = {
     withDeleted?: boolean;
     /** Include EXIF data in response */
     withExif?: boolean;
-    /** Include people data in response */
-    withPeople?: boolean;
     /** Include stacked assets */
     withStacked?: boolean;
 };
@@ -2635,10 +2223,6 @@ export type RandomSearchDto = {
     make?: string | null;
     /** Filter by camera model */
     model?: string | null;
-    /** Filter by OCR text content */
-    ocr?: string;
-    /** Filter by person IDs */
-    personIds?: string[];
     /** Filter by rating [1-5], or null for unrated */
     rating?: number | null;
     /** Number of results to return */
@@ -2665,79 +2249,8 @@ export type RandomSearchDto = {
     withDeleted?: boolean;
     /** Include EXIF data in response */
     withExif?: boolean;
-    /** Include people data in response */
-    withPeople?: boolean;
     /** Include stacked assets */
     withStacked?: boolean;
-};
-export type SmartSearchDto = {
-    /** Filter by album IDs */
-    albumIds?: string[];
-    /** Filter by city name */
-    city?: string | null;
-    /** Filter by country name */
-    country?: string | null;
-    /** Filter by creation date (after) */
-    createdAfter?: string;
-    /** Filter by creation date (before) */
-    createdBefore?: string;
-    filter?: SearchFilter;
-    /** Filter by encoded status */
-    isEncoded?: boolean;
-    /** Filter by favorite status */
-    isFavorite?: boolean;
-    /** Filter by motion photo status */
-    isMotion?: boolean;
-    /** Filter assets not in any album */
-    isNotInAlbum?: boolean;
-    /** Filter by offline status */
-    isOffline?: boolean;
-    /** Search language code */
-    language?: string;
-    /** Filter by lens model */
-    lensModel?: string | null;
-    /** Library ID to filter by */
-    libraryId?: string | null;
-    /** Filter by camera make */
-    make?: string | null;
-    /** Filter by camera model */
-    model?: string | null;
-    /** Filter by OCR text content */
-    ocr?: string;
-    /** Page number */
-    page?: number;
-    /** Filter by person IDs */
-    personIds?: string[];
-    /** Natural language search query */
-    query?: string;
-    /** Asset ID to use as search reference */
-    queryAssetId?: string;
-    /** Filter by rating [1-5], or null for unrated */
-    rating?: number | null;
-    /** Number of results to return */
-    size?: number;
-    /** Filter by state/province name */
-    state?: string | null;
-    /** Filter by tag IDs */
-    tagIds?: string[] | null;
-    /** Filter by taken date (after) */
-    takenAfter?: string;
-    /** Filter by taken date (before) */
-    takenBefore?: string;
-    /** Filter by trash date (after) */
-    trashedAfter?: string;
-    /** Filter by trash date (before) */
-    trashedBefore?: string;
-    "type"?: AssetTypeEnum;
-    /** Filter by update date (after) */
-    updatedAfter?: string;
-    /** Filter by update date (before) */
-    updatedBefore?: string;
-    visibility?: AssetVisibility;
-    /** Include deleted assets */
-    withDeleted?: boolean;
-    /** Include EXIF data in response */
-    withExif?: boolean;
 };
 export type StatisticsSearchDto = {
     /** Filter by album IDs */
@@ -2771,10 +2284,6 @@ export type StatisticsSearchDto = {
     make?: string | null;
     /** Filter by camera model */
     model?: string | null;
-    /** Filter by OCR text content */
-    ocr?: string;
-    /** Filter by person IDs */
-    personIds?: string[];
     /** Filter by rating [1-5], or null for unrated */
     rating?: number | null;
     /** Filter by state/province name */
@@ -2869,8 +2378,6 @@ export type ServerConfigDto = {
     mapDarkStyleUrl: string;
     /** Map light style URL */
     mapLightStyleUrl: string;
-    /** People min faces server default */
-    minFaces: number;
     /** OAuth account management URL */
     oauthAccountManagementUrl?: string;
     /** OAuth button text */
@@ -2885,22 +2392,14 @@ export type ServerConfigDto = {
 export type ServerFeaturesDto = {
     /** Whether config file is available */
     configFile: boolean;
-    /** Whether duplicate detection is enabled */
-    duplicateDetection: boolean;
     /** Whether email notifications are enabled */
     email: boolean;
-    /** Whether facial recognition is enabled */
-    facialRecognition: boolean;
-    /** Whether face import is enabled */
-    importFaces: boolean;
     /** Whether map feature is enabled */
     map: boolean;
     /** Whether OAuth is enabled */
     oauth: boolean;
     /** Whether OAuth auto-launch is enabled */
     oauthAutoLaunch: boolean;
-    /** Whether OCR is enabled */
-    ocr: boolean;
     /** Whether password login is enabled */
     passwordLogin: boolean;
     /** Whether real-time transcoding is enabled */
@@ -2911,8 +2410,6 @@ export type ServerFeaturesDto = {
     search: boolean;
     /** Whether sidecar files are supported */
     sidecar: boolean;
-    /** Whether smart search is enabled */
-    smartSearch: boolean;
     /** Whether trash feature is enabled */
     trash: boolean;
 };
@@ -3537,58 +3034,6 @@ export type SyncAssetExifV1 = {
     /** Time zone */
     timeZone: string | null;
 };
-export type SyncAssetFaceDeleteV1 = {
-    /** Asset face ID */
-    assetFaceId: string;
-};
-export type SyncAssetFaceV1 = {
-    /** Asset ID */
-    assetId: string;
-    /** Bounding box X1 */
-    boundingBoxX1: number;
-    /** Bounding box X2 */
-    boundingBoxX2: number;
-    /** Bounding box Y1 */
-    boundingBoxY1: number;
-    /** Bounding box Y2 */
-    boundingBoxY2: number;
-    /** Asset face ID */
-    id: string;
-    /** Image height */
-    imageHeight: number;
-    /** Image width */
-    imageWidth: number;
-    /** Person ID */
-    personId: string | null;
-    /** Source type */
-    sourceType: string;
-};
-export type SyncAssetFaceV3 = {
-    /** Asset ID */
-    assetId: string;
-    /** Bounding box X1 */
-    boundingBoxX1: number;
-    /** Bounding box X2 */
-    boundingBoxX2: number;
-    /** Bounding box Y1 */
-    boundingBoxY1: number;
-    /** Bounding box Y2 */
-    boundingBoxY2: number;
-    /** Face deleted at */
-    deletedAt: string | null;
-    /** Asset face ID */
-    id: string;
-    /** Image height */
-    imageHeight: number;
-    /** Image width */
-    imageWidth: number;
-    /** Is the face visible in the asset */
-    isVisible: boolean;
-    /** Person ID */
-    personId: string | null;
-    /** Source type */
-    sourceType: string;
-};
 export type SyncAssetMetadataDeleteV1 = {
     /** Asset ID */
     assetId: string;
@@ -3604,44 +3049,6 @@ export type SyncAssetMetadataV1 = {
     value: {
         [key: string]: any;
     };
-};
-export type SyncAssetOcrDeleteV1 = {
-    /** Original asset ID of the deleted OCR entry */
-    assetId: string;
-    /** Timestamp when the OCR entry was deleted */
-    deletedAt: string;
-    /** Audit row ID of the deleted OCR entry */
-    id: string;
-};
-export type SyncAssetOcrV1 = {
-    /** Asset ID */
-    assetId: string;
-    /** Confidence score of the bounding box */
-    boxScore: number;
-    /** OCR entry ID */
-    id: string;
-    /** Whether the OCR entry is visible */
-    isVisible: boolean;
-    /** Recognized text content */
-    text: string;
-    /** Confidence score of the recognized text */
-    textScore: number;
-    /** Top-left X coordinate (normalized 0–1) */
-    x1: number;
-    /** Top-right X coordinate (normalized 0–1) */
-    x2: number;
-    /** Bottom-right X coordinate (normalized 0–1) */
-    x3: number;
-    /** Bottom-left X coordinate (normalized 0–1) */
-    x4: number;
-    /** Top-left Y coordinate (normalized 0–1) */
-    y1: number;
-    /** Top-right Y coordinate (normalized 0–1) */
-    y2: number;
-    /** Bottom-right Y coordinate (normalized 0–1) */
-    y3: number;
-    /** Bottom-left Y coordinate (normalized 0–1) */
-    y4: number;
 };
 export type SyncAssetV1 = {
     /** Checksum */
@@ -3861,32 +3268,6 @@ export type SyncPartnerV1 = {
     sharedById: string;
     /** Shared with ID */
     sharedWithId: string;
-};
-export type SyncPersonDeleteV1 = {
-    /** Person ID */
-    personId: string;
-};
-export type SyncPersonV1 = {
-    /** Birth date */
-    birthDate: string | null;
-    /** Color */
-    color: string | null;
-    /** Created at */
-    createdAt: string;
-    /** Face asset ID */
-    faceAssetId: string | null;
-    /** Person ID */
-    id: string;
-    /** Is favorite */
-    isFavorite: boolean;
-    /** Is hidden */
-    isHidden: boolean;
-    /** Person name */
-    name: string;
-    /** Owner ID */
-    ownerId: string;
-    /** Updated at */
-    updatedAt: string;
 };
 export type SyncResetV1 = {};
 export type SyncStackDeleteV1 = {
@@ -5060,19 +4441,6 @@ export function getAssetMetadataByKey({ id, key }: {
     }));
 }
 /**
- * Retrieve asset OCR data
- */
-export function getAssetOcr({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: AssetOcrResponseDto[];
-    }>(`/assets/${encodeURIComponent(id)}/ocr`, {
-        ...opts
-    }));
-}
-/**
  * Download original asset
  */
 export function downloadAsset({ edited, id, key, slug }: {
@@ -5354,103 +4722,6 @@ export function validateAccessToken(opts?: Oazapfts.RequestOpts) {
     }));
 }
 /**
- * Retrieve cluster group requests
- */
-export function getClusterGroupRequests(opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: ClusterGroupRequestResponseDto[];
-    }>("/cluster-groups/requests", {
-        ...opts
-    }));
-}
-/**
- * Decline a cluster group request
- */
-export function deleteClusterGroupRequest({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText(`/cluster-groups/requests/${encodeURIComponent(id)}`, {
-        ...opts,
-        method: "DELETE"
-    }));
-}
-/**
- * Accept a cluster group request
- */
-export function acceptClusterGroupRequest({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText(`/cluster-groups/requests/${encodeURIComponent(id)}/accept`, {
-        ...opts,
-        method: "POST"
-    }));
-}
-/**
- * Leave a cluster group
- */
-export function leaveClusterGroup({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText(`/cluster-groups/${encodeURIComponent(id)}/leave`, {
-        ...opts,
-        method: "POST"
-    }));
-}
-/**
- * Regenerate people of users in cluster group
- */
-export function clusterGroupRegeneratePeople({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText(`/cluster-groups/${encodeURIComponent(id)}/regenerate-people`, {
-        ...opts,
-        method: "POST"
-    }));
-}
-/**
- * Retrieve the requests sent by a cluster group
- */
-export function getClusterGroupRequestsForGroup({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: ClusterGroupRequestResponseDto[];
-    }>(`/cluster-groups/${encodeURIComponent(id)}/requests`, {
-        ...opts
-    }));
-}
-/**
- * Create a cluster group request
- */
-export function createClusterGroupRequest({ id, clusterGroupRequestCreateDto }: {
-    id: string;
-    clusterGroupRequestCreateDto: ClusterGroupRequestCreateDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: ClusterGroupRequestResponseDto;
-    }>(`/cluster-groups/${encodeURIComponent(id)}/requests`, oazapfts.json({
-        ...opts,
-        method: "PUT",
-        body: clusterGroupRequestCreateDto
-    })));
-}
-/**
- * Retrieve the users of a cluster group
- */
-export function getClusterGroupUsers({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: UserResponseDto[];
-    }>(`/cluster-groups/${encodeURIComponent(id)}/users`, {
-        ...opts
-    }));
-}
-/**
  * Get the configuration with user visibility
  */
 export function getUserConfig(opts?: Oazapfts.RequestOpts) {
@@ -5510,111 +4781,6 @@ export function getDownloadInfo({ key, slug, downloadInfoDto }: {
         ...opts,
         method: "POST",
         body: downloadInfoDto
-    })));
-}
-/**
- * Delete duplicates
- */
-export function deleteDuplicates({ bulkIdsDto }: {
-    bulkIdsDto: BulkIdsDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText("/duplicates", oazapfts.json({
-        ...opts,
-        method: "DELETE",
-        body: bulkIdsDto
-    })));
-}
-/**
- * Retrieve duplicates
- */
-export function getAssetDuplicates(opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: DuplicateResponseDto[];
-    }>("/duplicates", {
-        ...opts
-    }));
-}
-/**
- * Resolve duplicate groups
- */
-export function resolveDuplicates({ duplicateResolveDto }: {
-    duplicateResolveDto: DuplicateResolveDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: BulkIdResponseDto[];
-    }>("/duplicates/resolve", oazapfts.json({
-        ...opts,
-        method: "POST",
-        body: duplicateResolveDto
-    })));
-}
-/**
- * Dismiss a duplicate group
- */
-export function deleteDuplicate({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText(`/duplicates/${encodeURIComponent(id)}`, {
-        ...opts,
-        method: "DELETE"
-    }));
-}
-/**
- * Retrieve faces for asset
- */
-export function getFaces({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: AssetFaceResponseDto[];
-    }>(`/faces${QS.query(QS.explode({
-        id
-    }))}`, {
-        ...opts
-    }));
-}
-/**
- * Create a face
- */
-export function createFace({ assetFaceCreateDto }: {
-    assetFaceCreateDto: AssetFaceCreateDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText("/faces", oazapfts.json({
-        ...opts,
-        method: "POST",
-        body: assetFaceCreateDto
-    })));
-}
-/**
- * Delete a face
- */
-export function deleteFace({ id, assetFaceDeleteDto }: {
-    id: string;
-    assetFaceDeleteDto: AssetFaceDeleteDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText(`/faces/${encodeURIComponent(id)}`, oazapfts.json({
-        ...opts,
-        method: "DELETE",
-        body: assetFaceDeleteDto
-    })));
-}
-/**
- * Re-assign a face to another person
- */
-export function reassignFacesById({ id, faceDto }: {
-    id: string;
-    faceDto: FaceDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: PersonResponseDto;
-    }>(`/faces/${encodeURIComponent(id)}`, oazapfts.json({
-        ...opts,
-        method: "PUT",
-        body: faceDto
     })));
 }
 /**
@@ -6296,243 +5462,6 @@ export function updatePasskey({ id, passkeyUpdateDto }: {
     })));
 }
 /**
- * Delete people
- */
-export function deletePeople({ peopleDeleteDto }: {
-    peopleDeleteDto: PeopleDeleteDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText("/people", oazapfts.json({
-        ...opts,
-        method: "DELETE",
-        body: peopleDeleteDto
-    })));
-}
-/**
- * Get all people
- */
-export function getAllPeople({ closestAssetId, closestPersonId, isFavorite, isHidden, name, page, sharedById, sharedWithId, size, withHidden }: {
-    closestAssetId?: string;
-    closestPersonId?: string;
-    isFavorite?: boolean;
-    isHidden?: boolean;
-    name?: string;
-    page?: number;
-    sharedById?: string;
-    sharedWithId?: string;
-    size?: number;
-    withHidden?: boolean;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: PeopleResponseDto;
-    }>(`/people${QS.query(QS.explode({
-        closestAssetId,
-        closestPersonId,
-        isFavorite,
-        isHidden,
-        name,
-        page,
-        sharedById,
-        sharedWithId,
-        size,
-        withHidden
-    }))}`, {
-        ...opts
-    }));
-}
-/**
- * Create a person
- */
-export function createPerson({ personCreateDto }: {
-    personCreateDto: PersonCreateDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 201;
-        data: PersonResponseDto;
-    }>("/people", oazapfts.json({
-        ...opts,
-        method: "POST",
-        body: personCreateDto
-    })));
-}
-/**
- * Update people
- */
-export function updatePeople({ peopleUpdateDto }: {
-    peopleUpdateDto: PeopleUpdateDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: BulkIdResponseDto[];
-    }>("/people", oazapfts.json({
-        ...opts,
-        method: "PUT",
-        body: peopleUpdateDto
-    })));
-}
-/**
- * Merge people
- */
-export function mergePeople({ mergePersonDto }: {
-    mergePersonDto: MergePersonDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: BulkIdResponseDto[];
-    }>("/people/merge", oazapfts.json({
-        ...opts,
-        method: "POST",
-        body: mergePersonDto
-    })));
-}
-/**
- * Remove users from people
- */
-export function removeUsersFromPeople({ personUsersDeleteDto }: {
-    personUsersDeleteDto: PersonUsersDeleteDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText("/people/users", oazapfts.json({
-        ...opts,
-        method: "DELETE",
-        body: personUsersDeleteDto
-    })));
-}
-/**
- * Get people access
- */
-export function getUsersForPeople({ direction, personId, role, sharedById, sharedWithId }: {
-    direction?: SharingDirection;
-    personId?: string;
-    role?: PersonUserRole;
-    sharedById?: string;
-    sharedWithId?: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: PersonUsersResponseDto;
-    }>(`/people/users${QS.query(QS.explode({
-        direction,
-        personId,
-        role,
-        sharedById,
-        sharedWithId
-    }))}`, {
-        ...opts
-    }));
-}
-/**
- * Upsert user access
- */
-export function upsertPeopleUsers({ peopleUsersUpsertDto }: {
-    peopleUsersUpsertDto: PeopleUsersUpsertDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText("/people/users", oazapfts.json({
-        ...opts,
-        method: "PUT",
-        body: peopleUsersUpsertDto
-    })));
-}
-/**
- * Delete person
- */
-export function deletePerson({ id, personDeleteDto }: {
-    id: string;
-    personDeleteDto: PersonDeleteDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchText(`/people/${encodeURIComponent(id)}`, oazapfts.json({
-        ...opts,
-        method: "DELETE",
-        body: personDeleteDto
-    })));
-}
-/**
- * Get a person
- */
-export function getPerson({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: PersonResponseDto;
-    }>(`/people/${encodeURIComponent(id)}`, {
-        ...opts
-    }));
-}
-/**
- * Update person
- */
-export function updatePerson({ id, personUpdateDto }: {
-    id: string;
-    personUpdateDto: PersonUpdateDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: PersonResponseDto;
-    }>(`/people/${encodeURIComponent(id)}`, oazapfts.json({
-        ...opts,
-        method: "PUT",
-        body: personUpdateDto
-    })));
-}
-/**
- * Merge people
- */
-export function mergePersonLegacy({ id, mergePersonDto }: {
-    id: string;
-    mergePersonDto: MergePersonDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: BulkIdResponseDto[];
-    }>(`/people/${encodeURIComponent(id)}/merge`, oazapfts.json({
-        ...opts,
-        method: "POST",
-        body: mergePersonDto
-    })));
-}
-/**
- * Reassign faces
- */
-export function reassignFaces({ id, assetFaceUpdateDto }: {
-    id: string;
-    assetFaceUpdateDto: AssetFaceUpdateDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: PersonResponseDto[];
-    }>(`/people/${encodeURIComponent(id)}/reassign`, oazapfts.json({
-        ...opts,
-        method: "PUT",
-        body: assetFaceUpdateDto
-    })));
-}
-/**
- * Get person statistics
- */
-export function getPersonStatistics({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: PersonStatisticsResponseDto;
-    }>(`/people/${encodeURIComponent(id)}/statistics`, {
-        ...opts
-    }));
-}
-/**
- * Get person thumbnail
- */
-export function getPersonThumbnail({ id }: {
-    id: string;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchBlob<{
-        status: 200;
-        data: Blob;
-    }>(`/people/${encodeURIComponent(id)}/thumbnail`, {
-        ...opts
-    }));
-}
-/**
  * List all plugins
  */
 export function searchPlugins({ description, enabled, id, name, title, version }: {
@@ -6728,7 +5657,7 @@ export function getExploreData(opts?: Oazapfts.RequestOpts) {
 /**
  * Search large assets
  */
-export function searchLargeAssets({ albumIds, city, country, createdAfter, createdBefore, isEncoded, isFavorite, isMotion, isNotInAlbum, isOffline, lensModel, libraryId, make, minFileSize, model, ocr, personIds, rating, size, state, tagIds, takenAfter, takenBefore, trashedAfter, trashedBefore, $type, updatedAfter, updatedBefore, visibility, withDeleted, withExif }: {
+export function searchLargeAssets({ albumIds, city, country, createdAfter, createdBefore, isEncoded, isFavorite, isMotion, isNotInAlbum, isOffline, lensModel, libraryId, make, minFileSize, model, rating, size, state, tagIds, takenAfter, takenBefore, trashedAfter, trashedBefore, $type, updatedAfter, updatedBefore, visibility, withDeleted, withExif }: {
     albumIds?: string[];
     city?: string | null;
     country?: string | null;
@@ -6744,8 +5673,6 @@ export function searchLargeAssets({ albumIds, city, country, createdAfter, creat
     make?: string | null;
     minFileSize?: number;
     model?: string | null;
-    ocr?: string;
-    personIds?: string[];
     rating?: number | null;
     size?: number;
     state?: string | null;
@@ -6780,8 +5707,6 @@ export function searchLargeAssets({ albumIds, city, country, createdAfter, creat
         make,
         minFileSize,
         model,
-        ocr,
-        personIds,
         rating,
         size,
         state,
@@ -6822,23 +5747,6 @@ export function searchAssets({ key, slug, metadataSearchDto }: {
     })));
 }
 /**
- * Search people
- */
-export function searchPerson({ name, withHidden }: {
-    name: string;
-    withHidden?: boolean;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: PersonResponseDto[];
-    }>(`/search/person${QS.query(QS.explode({
-        name,
-        withHidden
-    }))}`, {
-        ...opts
-    }));
-}
-/**
  * Search places
  */
 export function searchPlaces({ name }: {
@@ -6866,21 +5774,6 @@ export function searchRandom({ randomSearchDto }: {
         ...opts,
         method: "POST",
         body: randomSearchDto
-    })));
-}
-/**
- * Smart asset search
- */
-export function searchSmart({ smartSearchDto }: {
-    smartSearchDto: SmartSearchDto;
-}, opts?: Oazapfts.RequestOpts) {
-    return oazapfts.ok(oazapfts.fetchJson<{
-        status: 200;
-        data: SearchResponseDto;
-    }>("/search/smart", oazapfts.json({
-        ...opts,
-        method: "POST",
-        body: smartSearchDto
     })));
 }
 /**
@@ -7662,7 +6555,7 @@ export function tagAssets({ id, bulkIdsDto }: {
 /**
  * Get time bucket
  */
-export function getTimeBucket({ albumId, bbox, isFavorite, isTrashed, key, order, orderBy, personId, slug, tagId, timeBucket, userId, visibility, withCoordinates, withPartners, withStacked }: {
+export function getTimeBucket({ albumId, bbox, isFavorite, isTrashed, key, order, orderBy, slug, tagId, timeBucket, userId, visibility, withCoordinates, withPartners, withStacked }: {
     albumId?: string;
     bbox?: string;
     isFavorite?: boolean;
@@ -7670,7 +6563,6 @@ export function getTimeBucket({ albumId, bbox, isFavorite, isTrashed, key, order
     key?: string;
     order?: AssetOrder;
     orderBy?: AssetOrderBy;
-    personId?: string;
     slug?: string;
     tagId?: string;
     timeBucket: string;
@@ -7691,7 +6583,6 @@ export function getTimeBucket({ albumId, bbox, isFavorite, isTrashed, key, order
         key,
         order,
         orderBy,
-        personId,
         slug,
         tagId,
         timeBucket,
@@ -7707,7 +6598,7 @@ export function getTimeBucket({ albumId, bbox, isFavorite, isTrashed, key, order
 /**
  * Get time buckets
  */
-export function getTimeBuckets({ albumId, bbox, isFavorite, isTrashed, key, order, orderBy, personId, slug, tagId, userId, visibility, withCoordinates, withPartners, withStacked }: {
+export function getTimeBuckets({ albumId, bbox, isFavorite, isTrashed, key, order, orderBy, slug, tagId, userId, visibility, withCoordinates, withPartners, withStacked }: {
     albumId?: string;
     bbox?: string;
     isFavorite?: boolean;
@@ -7715,7 +6606,6 @@ export function getTimeBuckets({ albumId, bbox, isFavorite, isTrashed, key, orde
     key?: string;
     order?: AssetOrder;
     orderBy?: AssetOrderBy;
-    personId?: string;
     slug?: string;
     tagId?: string;
     userId?: string;
@@ -7735,7 +6625,6 @@ export function getTimeBuckets({ albumId, bbox, isFavorite, isTrashed, key, orde
         key,
         order,
         orderBy,
-        personId,
         slug,
         tagId,
         userId,
@@ -8263,7 +7152,6 @@ export enum NotificationType {
     SystemMessage = "SystemMessage",
     AlbumInvite = "AlbumInvite",
     AlbumUpdate = "AlbumUpdate",
-    ClusterGroupRequest = "ClusterGroupRequest",
     Custom = "Custom"
 }
 export enum UserStatus {
@@ -8278,10 +7166,6 @@ export enum CalendarHeatmapType {
 export enum AssetOrder {
     Asc = "asc",
     Desc = "desc"
-}
-export enum PersonUpdateStrategy {
-    Self = "self",
-    Everyone = "everyone"
 }
 export enum AssetVisibility {
     Archive = "archive",
@@ -8348,20 +7232,9 @@ export enum Permission {
     BackupDownload = "backup.download",
     BackupUpload = "backup.upload",
     BackupDelete = "backup.delete",
-    ClusterGroupRead = "clusterGroup.read",
-    ClusterGroupLeave = "clusterGroup.leave",
-    ClusterGroupRequestCreate = "clusterGroupRequest.create",
-    ClusterGroupRequestRead = "clusterGroupRequest.read",
-    ClusterGroupRequestDelete = "clusterGroupRequest.delete",
     AdminConfigRead = "adminConfig.read",
     AdminConfigUpdate = "adminConfig.update",
     UserConfigRead = "userConfig.read",
-    DuplicateRead = "duplicate.read",
-    DuplicateDelete = "duplicate.delete",
-    FaceCreate = "face.create",
-    FaceRead = "face.read",
-    FaceUpdate = "face.update",
-    FaceDelete = "face.delete",
     FolderRead = "folder.read",
     JobCreate = "job.create",
     JobRead = "job.read",
@@ -8393,13 +7266,6 @@ export enum Permission {
     PasskeyRead = "passkey.read",
     PasskeyUpdate = "passkey.update",
     PasskeyDelete = "passkey.delete",
-    PersonCreate = "person.create",
-    PersonRead = "person.read",
-    PersonUpdate = "person.update",
-    PersonDelete = "person.delete",
-    PersonStatistics = "person.statistics",
-    PersonMerge = "person.merge",
-    PersonReassign = "person.reassign",
     PinCodeCreate = "pinCode.create",
     PinCodeUpdate = "pinCode.update",
     PinCodeDelete = "pinCode.delete",
@@ -8494,15 +7360,9 @@ export enum AssetRejectReason {
     UnsupportedFormat = "unsupported-format"
 }
 export enum AssetJobName {
-    RefreshFaces = "refresh-faces",
     RefreshMetadata = "refresh-metadata",
     RegenerateThumbnail = "regenerate-thumbnail",
     TranscodeVideo = "transcode-video"
-}
-export enum PersonUserRole {
-    Read = "read",
-    Write = "write",
-    Admin = "admin"
 }
 export enum AssetTypeEnum {
     Image = "IMAGE",
@@ -8525,13 +7385,7 @@ export enum AssetMediaSize {
     Preview = "preview",
     Thumbnail = "thumbnail"
 }
-export enum SourceType {
-    MachineLearning = "machine-learning",
-    Exif = "exif",
-    Manual = "manual"
-}
 export enum ManualJobName {
-    PersonCleanup = "person-cleanup",
     TagCleanup = "tag-cleanup",
     UserCleanup = "user-cleanup",
     MemoryCleanup = "memory-cleanup",
@@ -8551,10 +7405,6 @@ export enum QueueName {
     ThumbnailGeneration = "thumbnailGeneration",
     MetadataExtraction = "metadataExtraction",
     VideoConversion = "videoConversion",
-    FaceDetection = "faceDetection",
-    FacialRecognition = "facialRecognition",
-    SmartSearch = "smartSearch",
-    DuplicateDetection = "duplicateDetection",
     BackgroundTask = "backgroundTask",
     StorageTemplateMigration = "storageTemplateMigration",
     Migration = "migration",
@@ -8563,7 +7413,6 @@ export enum QueueName {
     Library = "library",
     Notifications = "notifications",
     BackupDatabase = "backupDatabase",
-    Ocr = "ocr",
     Workflow = "workflow",
     IntegrityCheck = "integrityCheck",
     Editor = "editor"
@@ -8581,19 +7430,11 @@ export enum MemorySearchOrder {
     Random = "random"
 }
 export enum MemoryType {
-    OnThisDay = "on_this_day",
-    Birthday = "birthday"
+    OnThisDay = "on_this_day"
 }
 export enum PartnerDirection {
     SharedBy = "shared-by",
     SharedWith = "shared-with"
-}
-export enum SharingDirection {
-    SharedBy = "shared-by",
-    SharedWith = "shared-with"
-}
-export enum PeopleUsersUpsertType {
-    Everyone = "everyone"
 }
 export enum WorkflowType {
     AssetV1 = "AssetV1"
@@ -8613,10 +7454,6 @@ export enum QueueJobStatus {
 export enum JobName {
     AssetDelete = "AssetDelete",
     AssetDeleteCheck = "AssetDeleteCheck",
-    AssetDetectFacesQueueAll = "AssetDetectFacesQueueAll",
-    AssetDetectFaces = "AssetDetectFaces",
-    AssetDetectDuplicatesQueueAll = "AssetDetectDuplicatesQueueAll",
-    AssetDetectDuplicates = "AssetDetectDuplicates",
     AssetEditThumbnailGeneration = "AssetEditThumbnailGeneration",
     AssetEncodeVideoQueueAll = "AssetEncodeVideoQueueAll",
     AssetEncodeVideo = "AssetEncodeVideo",
@@ -8629,8 +7466,6 @@ export enum JobName {
     AuditTableCleanup = "AuditTableCleanup",
     AuthChallengeCleanup = "AuthChallengeCleanup",
     DatabaseBackup = "DatabaseBackup",
-    FacialRecognitionQueueAll = "FacialRecognitionQueueAll",
-    FacialRecognition = "FacialRecognition",
     FileDelete = "FileDelete",
     FileMigrationQueueAll = "FileMigrationQueueAll",
     LibraryDeleteCheck = "LibraryDeleteCheck",
@@ -8651,22 +7486,15 @@ export enum JobName {
     UserDelete = "UserDelete",
     UserDeleteCheck = "UserDeleteCheck",
     UserSyncUsage = "UserSyncUsage",
-    PersonCleanup = "PersonCleanup",
-    PersonFileMigration = "PersonFileMigration",
-    PersonGenerateThumbnail = "PersonGenerateThumbnail",
     SessionCleanup = "SessionCleanup",
     SendMail = "SendMail",
     SidecarQueueAll = "SidecarQueueAll",
     SidecarCheck = "SidecarCheck",
     SidecarWrite = "SidecarWrite",
-    SmartSearchQueueAll = "SmartSearchQueueAll",
-    SmartSearch = "SmartSearch",
     StorageTemplateMigration = "StorageTemplateMigration",
     StorageTemplateMigrationSingle = "StorageTemplateMigrationSingle",
     TagCleanup = "TagCleanup",
     VersionCheck = "VersionCheck",
-    OcrQueueAll = "OcrQueueAll",
-    Ocr = "Ocr",
     WorkflowAssetTrigger = "WorkflowAssetTrigger",
     IntegrityUntrackedFilesQueueAll = "IntegrityUntrackedFilesQueueAll",
     IntegrityUntrackedFiles = "IntegrityUntrackedFiles",
@@ -8715,8 +7543,6 @@ export enum SyncEntityType {
     AssetEditDeleteV1 = "AssetEditDeleteV1",
     AssetMetadataV1 = "AssetMetadataV1",
     AssetMetadataDeleteV1 = "AssetMetadataDeleteV1",
-    AssetOcrV1 = "AssetOcrV1",
-    AssetOcrDeleteV1 = "AssetOcrDeleteV1",
     PartnerV1 = "PartnerV1",
     PartnerDeleteV1 = "PartnerDeleteV1",
     PartnerAssetV1 = "PartnerAssetV1",
@@ -8755,12 +7581,6 @@ export enum SyncEntityType {
     MemoryToAssetDeleteV1 = "MemoryToAssetDeleteV1",
     StackV1 = "StackV1",
     StackDeleteV1 = "StackDeleteV1",
-    PersonV1 = "PersonV1",
-    PersonDeleteV1 = "PersonDeleteV1",
-    AssetFaceV1 = "AssetFaceV1",
-    AssetFaceV2 = "AssetFaceV2",
-    AssetFaceV3 = "AssetFaceV3",
-    AssetFaceDeleteV1 = "AssetFaceDeleteV1",
     UserMetadataV1 = "UserMetadataV1",
     UserMetadataDeleteV1 = "UserMetadataDeleteV1",
     SyncAckV1 = "SyncAckV1",
@@ -8780,7 +7600,6 @@ export enum SyncRequestType {
     AssetExifsV1 = "AssetExifsV1",
     AssetEditsV1 = "AssetEditsV1",
     AssetMetadataV1 = "AssetMetadataV1",
-    AssetOcrV1 = "AssetOcrV1",
     AuthUsersV1 = "AuthUsersV1",
     AuthUsersV2 = "AuthUsersV2",
     MemoriesV1 = "MemoriesV1",
@@ -8794,10 +7613,6 @@ export enum SyncRequestType {
     PartnerStacksV1 = "PartnerStacksV1",
     StacksV1 = "StacksV1",
     UsersV1 = "UsersV1",
-    PeopleV1 = "PeopleV1",
-    AssetFacesV1 = "AssetFacesV1",
-    AssetFacesV2 = "AssetFacesV2",
-    AssetFacesV3 = "AssetFacesV3",
     UserMetadataV1 = "UserMetadataV1"
 }
 export enum AssetOrderBy {

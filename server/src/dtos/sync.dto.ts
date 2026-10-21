@@ -341,50 +341,6 @@ const SyncStackDeleteV1Schema = z
   .object({ stackId: z.uuidv4().describe('Stack ID') })
   .meta({ id: 'SyncStackDeleteV1' });
 
-const SyncPersonV1Schema = z
-  .object({
-    id: z.uuidv4().describe('Person ID'),
-    createdAt: isoDatetimeToDate.describe('Created at'),
-    updatedAt: isoDatetimeToDate.describe('Updated at'),
-    ownerId: z.uuidv4().describe('Owner ID'),
-    name: z.string().describe('Person name'),
-    birthDate: isoDatetimeToDate.nullable().describe('Birth date'),
-    isHidden: z.boolean().describe('Is hidden'),
-    isFavorite: z.boolean().describe('Is favorite'),
-    color: z.string().nullable().describe('Color'),
-    faceAssetId: z.string().nullable().describe('Face asset ID'),
-  })
-  .meta({ id: 'SyncPersonV1' });
-
-const SyncPersonDeleteV1Schema = z
-  .object({ personId: z.uuidv4().describe('Person ID') })
-  .meta({ id: 'SyncPersonDeleteV1' });
-
-const SyncAssetFaceV1Schema = z
-  .object({
-    id: z.uuidv4().describe('Asset face ID'),
-    assetId: z.uuidv4().describe('Asset ID'),
-    personId: z.string().nullable().describe('Person ID'),
-    imageWidth: z.int().describe('Image width'),
-    imageHeight: z.int().describe('Image height'),
-    boundingBoxX1: z.int().describe('Bounding box X1'),
-    boundingBoxY1: z.int().describe('Bounding box Y1'),
-    boundingBoxX2: z.int().describe('Bounding box X2'),
-    boundingBoxY2: z.int().describe('Bounding box Y2'),
-    sourceType: z.string().describe('Source type'),
-  })
-  .meta({ id: 'SyncAssetFaceV1' });
-
-// same shape as V2, but scoped to the whole cluster group instead of the user's own assets
-const SyncAssetFaceV3Schema = SyncAssetFaceV1Schema.extend({
-  deletedAt: isoDatetimeToDate.nullable().describe('Face deleted at'),
-  isVisible: z.boolean().describe('Is the face visible in the asset'),
-}).meta({ id: 'SyncAssetFaceV3' });
-
-const SyncAssetFaceDeleteV1Schema = z
-  .object({ assetFaceId: z.uuidv4().describe('Asset face ID') })
-  .meta({ id: 'SyncAssetFaceDeleteV1' });
-
 const SyncUserMetadataV1Schema = z
   .object({
     userId: z.uuidv4().describe('User ID'),
@@ -415,54 +371,10 @@ class SyncMemoryAssetV1 extends createZodDto(SyncMemoryAssetV1Schema) {}
 @ExtraModel()
 class SyncMemoryAssetDeleteV1 extends createZodDto(SyncMemoryAssetDeleteV1Schema) {}
 
-const SyncAssetOcrV1Schema = z
-  .object({
-    id: z.uuidv4().describe('OCR entry ID'),
-    assetId: z.uuidv4().describe('Asset ID'),
-
-    x1: z.number().meta({ format: 'double' }).describe('Top-left X coordinate (normalized 0–1)'),
-    y1: z.number().meta({ format: 'double' }).describe('Top-left Y coordinate (normalized 0–1)'),
-    x2: z.number().meta({ format: 'double' }).describe('Top-right X coordinate (normalized 0–1)'),
-    y2: z.number().meta({ format: 'double' }).describe('Top-right Y coordinate (normalized 0–1)'),
-    x3: z.number().meta({ format: 'double' }).describe('Bottom-right X coordinate (normalized 0–1)'),
-    y3: z.number().meta({ format: 'double' }).describe('Bottom-right Y coordinate (normalized 0–1)'),
-    x4: z.number().meta({ format: 'double' }).describe('Bottom-left X coordinate (normalized 0–1)'),
-    y4: z.number().meta({ format: 'double' }).describe('Bottom-left Y coordinate (normalized 0–1)'),
-
-    boxScore: z.number().meta({ format: 'double' }).describe('Confidence score of the bounding box'),
-    textScore: z.number().meta({ format: 'double' }).describe('Confidence score of the recognized text'),
-    text: z.string().describe('Recognized text content'),
-    isVisible: z.boolean().describe('Whether the OCR entry is visible'),
-  })
-  .meta({ id: 'SyncAssetOcrV1' });
-
-const SyncAssetOcrDeleteV1Schema = z
-  .object({
-    id: z.string().describe('Audit row ID of the deleted OCR entry'),
-    assetId: z.string().describe('Original asset ID of the deleted OCR entry'),
-    deletedAt: isoDatetimeToDate.describe('Timestamp when the OCR entry was deleted'),
-  })
-  .meta({ id: 'SyncAssetOcrDeleteV1' });
-
-@ExtraModel()
-class SyncAssetOcrV1 extends createZodDto(SyncAssetOcrV1Schema) {}
-
-@ExtraModel()
-class SyncAssetOcrDeleteV1 extends createZodDto(SyncAssetOcrDeleteV1Schema) {}
 @ExtraModel()
 class SyncStackV1 extends createZodDto(SyncStackV1Schema) {}
 @ExtraModel()
 class SyncStackDeleteV1 extends createZodDto(SyncStackDeleteV1Schema) {}
-@ExtraModel()
-class SyncPersonV1 extends createZodDto(SyncPersonV1Schema) {}
-@ExtraModel()
-class SyncPersonDeleteV1 extends createZodDto(SyncPersonDeleteV1Schema) {}
-@ExtraModel()
-class SyncAssetFaceV1 extends createZodDto(SyncAssetFaceV1Schema) {}
-@ExtraModel()
-class SyncAssetFaceV3 extends createZodDto(SyncAssetFaceV3Schema) {}
-@ExtraModel()
-class SyncAssetFaceDeleteV1 extends createZodDto(SyncAssetFaceDeleteV1Schema) {}
 @ExtraModel()
 class SyncUserMetadataV1 extends createZodDto(SyncUserMetadataV1Schema) {}
 @ExtraModel()
@@ -486,8 +398,6 @@ export type SyncItem = {
   [SyncEntityType.AssetMetadataV1]: SyncAssetMetadataV1;
   [SyncEntityType.AssetMetadataDeleteV1]: SyncAssetMetadataDeleteV1;
   [SyncEntityType.AssetExifV1]: SyncAssetExifV1;
-  [SyncEntityType.AssetOcrV1]: SyncAssetOcrV1;
-  [SyncEntityType.AssetOcrDeleteV1]: SyncAssetOcrDeleteV1;
   [SyncEntityType.AssetEditV1]: SyncAssetEditV1;
   [SyncEntityType.AssetEditDeleteV1]: SyncAssetEditDeleteV1;
   [SyncEntityType.PartnerAssetV2]: SyncAssetV2;
@@ -521,12 +431,6 @@ export type SyncItem = {
   [SyncEntityType.PartnerStackBackfillV1]: SyncStackV1;
   [SyncEntityType.PartnerStackDeleteV1]: SyncStackDeleteV1;
   [SyncEntityType.PartnerStackV1]: SyncStackV1;
-  [SyncEntityType.PersonV1]: SyncPersonV1;
-  [SyncEntityType.PersonDeleteV1]: SyncPersonDeleteV1;
-  [SyncEntityType.AssetFaceV1]: SyncAssetFaceV1;
-  [SyncEntityType.AssetFaceV2]: SyncAssetFaceV3;
-  [SyncEntityType.AssetFaceV3]: SyncAssetFaceV3;
-  [SyncEntityType.AssetFaceDeleteV1]: SyncAssetFaceDeleteV1;
   [SyncEntityType.UserMetadataV1]: SyncUserMetadataV1;
   [SyncEntityType.UserMetadataDeleteV1]: SyncUserMetadataDeleteV1;
   [SyncEntityType.SyncAckV1]: SyncAckV1;

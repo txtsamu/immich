@@ -36,21 +36,16 @@ import { AssetTable } from 'src/schema/tables/asset.table.js';
 import {
   anyUuid,
   asUuid,
-  hasPeople,
-  inSharedAlbum,
   removeUndefinedKeys,
   truncatedDate,
   unnest,
   withDefaultVisibility,
   withEdits,
   withExif,
-  withFaces,
-  withFacesAndPeople,
   withFilePath,
   withFiles,
   withLibrary,
   withOwner,
-  withSmartSearch,
   withTagId,
   withTags,
 } from 'src/utils/database.js';
@@ -82,10 +77,8 @@ interface LivePhotoSearchOptions {
 interface AssetBuilderOptions {
   isFavorite?: boolean;
   isTrashed?: boolean;
-  isDuplicate?: boolean;
   albumId?: string;
   tagId?: string;
-  personId?: string;
   userIds?: string[];
   withStacked?: boolean;
   exifInfo?: boolean;
@@ -125,11 +118,9 @@ interface AssetGetByChecksumOptions {
 
 interface GetByIdsRelations {
   exifInfo?: boolean;
-  faces?: { person?: boolean; withDeleted?: boolean; viewingUserId?: string };
   files?: boolean;
   library?: boolean;
   owner?: boolean;
-  smartSearch?: boolean;
   stack?: { assets?: boolean };
   tags?: boolean;
   edits?: boolean;
@@ -365,10 +356,7 @@ export class AssetRepository {
         oc.column('assetId').doUpdateSet((eb) =>
           removeUndefinedKeys(
             {
-              duplicatesDetectedAt: eb.ref('excluded.duplicatesDetectedAt'),
-              facesRecognizedAt: eb.ref('excluded.facesRecognizedAt'),
               metadataExtractedAt: eb.ref('excluded.metadataExtractedAt'),
-              ocrAt: eb.ref('excluded.ocrAt'),
             },
             values[0],
           ),
@@ -516,11 +504,10 @@ export class AssetRepository {
 
   @GenerateSql({ params: [[DummyValue.UUID]] })
   @ChunkedArray({ paramIndex: 0 })
-  getByIdsWithAllRelationsButStacks(ids: string[], viewingUserId?: string) {
+  getByIdsWithAllRelationsButStacks(ids: string[]) {
     return this.db
       .selectFrom('asset')
       .selectAll('asset')
-      .select(withFacesAndPeople({ viewingUserId }))
       .select(withTags)
       .$call(withExif)
       .where('asset.id', '=', anyUuid(ids))
@@ -570,23 +557,14 @@ export class AssetRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
-  getById(
-    id: string,
-    { exifInfo, faces, files, library, owner, smartSearch, stack, tags, edits }: GetByIdsRelations = {},
-  ) {
+  getById(id: string, { exifInfo, files, library, owner, stack, tags, edits }: GetByIdsRelations = {}) {
     return this.db
       .selectFrom('asset')
       .selectAll('asset')
       .where('asset.id', '=', asUuid(id))
       .$if(!!exifInfo, withExif)
-      .$if(!!faces, (qb) =>
-        qb
-          .select(faces?.person ? withFacesAndPeople({ viewingUserId: faces.viewingUserId! }) : withFaces)
-          .$narrowType<{ faces: NotNull }>(),
-      )
       .$if(!!library, (qb) => qb.select(withLibrary))
       .$if(!!owner, (qb) => qb.select(withOwner))
-      .$if(!!smartSearch, withSmartSearch)
       .$if(!!stack, (qb) =>
         qb
           .leftJoin('stack', 'stack.id', 'asset.stackId')
@@ -645,12 +623,11 @@ export class AssetRepository {
         .selectFrom('asset')
         .selectAll('asset')
         .$call(withExif)
-        .$call((qb) => qb.select(withFaces))
         .$call((qb) => qb.select(withEdits))
         .executeTakeFirst();
     }
 
-    return this.getById(asset.id, { exifInfo: true, faces: {}, edits: true });
+    return this.getById(asset.id, { exifInfo: true, edits: true });
   }
 
   async remove(asset: { id: string }): Promise<void> {
@@ -749,8 +726,8 @@ export class AssetRepository {
       .execute();
   }
 
-  @GenerateSql({ params: [{}, { user: { id: DummyValue.UUID } }] })
-  async getTimeBuckets(options: TimeBucketOptions, auth: AuthDto): Promise<TimeBucketItem[]> {
+  @GenerateSql({ params: [{}] })
+  async getTimeBuckets(options: TimeBucketOptions): Promise<TimeBucketItem[]> {
     return this.db
       .with('asset', (qb) =>
         qb
@@ -779,7 +756,6 @@ export class AssetRepository {
               .innerJoin('album_asset', 'asset.id', 'album_asset.assetId')
               .where('album_asset.albumId', '=', asUuid(options.albumId!)),
           )
-          .$if(!!options.personId, (qb) => hasPeople(qb, [options.personId!]))
           .$if(!!options.withStacked, (qb) =>
             qb
               .leftJoin('stack', (join) =>
@@ -791,14 +767,11 @@ export class AssetRepository {
             qb.where((eb) => {
               // TODO this should become a shared `hasAccess` style helper once implement sharing in more places
               const isOwner = eb('asset.ownerId', '=', anyUuid(options.userIds!));
-              return options.personId ? eb.or([isOwner, inSharedAlbum(auth.user.id, 'asset.id')]) : isOwner;
+              return isOwner;
             }),
           )
           .$if(options.isFavorite !== undefined, (qb) => qb.where('asset.isFavorite', '=', options.isFavorite!))
           .$if(!!options.assetType, (qb) => qb.where('asset.type', '=', options.assetType!))
-          .$if(options.isDuplicate !== undefined, (qb) =>
-            qb.where('asset.duplicateId', options.isDuplicate ? 'is not' : 'is', null),
-          )
           .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!)),
       )
       .selectFrom('asset')
@@ -876,11 +849,10 @@ export class AssetRepository {
               ),
             ),
           )
-          .$if(!!options.personId, (qb) => hasPeople(qb, [options.personId!]))
           .$if(!!options.userIds, (qb) =>
             qb.where((eb) => {
               const isOwner = eb('asset.ownerId', '=', anyUuid(options.userIds!));
-              return options.personId ? eb.or([isOwner, inSharedAlbum(auth.user.id, 'asset.id')]) : isOwner;
+              return isOwner;
             }),
           )
           .$if(options.isFavorite !== undefined, (qb) => qb.where('asset.isFavorite', '=', options.isFavorite!))
@@ -911,9 +883,6 @@ export class AssetRepository {
               .select('stack'),
           )
           .$if(!!options.assetType, (qb) => qb.where('asset.type', '=', options.assetType!))
-          .$if(options.isDuplicate !== undefined, (qb) =>
-            qb.where('asset.duplicateId', options.isDuplicate ? 'is not' : 'is', null),
-          )
           .$if(!!options.isTrashed, (qb) => qb.where('asset.status', '!=', AssetStatus.Deleted))
           .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!))
           .orderBy(
@@ -1192,17 +1161,6 @@ export class AssetRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
-  async getForOcr(id: string) {
-    return this.db
-      .selectFrom('asset')
-      .where('asset.id', '=', id)
-      .select(withEdits)
-      .innerJoin('asset_exif', (join) => join.onRef('asset_exif.assetId', '=', 'asset.id'))
-      .select(['asset_exif.exifImageWidth', 'asset_exif.exifImageHeight', 'asset_exif.orientation'])
-      .executeTakeFirst();
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID] })
   async getForEdit(id: string) {
     return this.db
       .selectFrom('asset')
@@ -1225,17 +1183,6 @@ export class AssetRepository {
       .select('asset_exif.tags')
       .where('asset_exif.assetId', '=', id)
       .executeTakeFirst();
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID] })
-  async getForFaces(id: string) {
-    return this.db
-      .selectFrom('asset')
-      .innerJoin('asset_exif', (join) => join.onRef('asset_exif.assetId', '=', 'asset.id'))
-      .select(['asset_exif.exifImageHeight', 'asset_exif.exifImageWidth', 'asset_exif.orientation'])
-      .select(withEdits)
-      .where('asset.id', '=', id)
-      .executeTakeFirstOrThrow();
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })

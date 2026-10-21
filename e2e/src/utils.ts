@@ -11,7 +11,6 @@ import {
   ManualJobName,
   MetadataSearchDto,
   Permission,
-  PersonCreateDto,
   QueueCommandDto,
   QueueName,
   QueuesResponseLegacyDto,
@@ -25,7 +24,6 @@ import {
   createJob,
   createLibrary,
   createPartner,
-  createPerson,
   createSharedLink,
   createStack,
   createUserAdmin,
@@ -183,12 +181,8 @@ export const utils = {
       'stack',
       'library',
       'shared_link',
-      'person',
-      'person_group',
-      'cluster_group',
       'album',
       'asset',
-      'asset_face',
       'activity',
       'api_key',
       'session',
@@ -429,31 +423,6 @@ export const utils = {
   deleteAssets: (accessToken: string, ids: string[]) =>
     deleteAssets({ assetBulkDeleteDto: { ids } }, { headers: asBearerAuth(accessToken) }),
 
-  createPerson: async (accessToken: string, dto?: PersonCreateDto) => {
-    const person = await createPerson({ personCreateDto: dto || {} }, { headers: asBearerAuth(accessToken) });
-    await utils.setPersonThumbnail(person.id);
-
-    return person;
-  },
-
-  createFace: async ({ assetId, personGroupId }: { assetId: string; personGroupId: string }) => {
-    if (!client) {
-      return;
-    }
-
-    await client.query('INSERT INTO asset_face ("assetId", "personGroupId") VALUES ($1, $2)', [assetId, personGroupId]);
-  },
-
-  setPersonThumbnail: async (personId: string) => {
-    if (!client) {
-      return;
-    }
-
-    await client.query(`UPDATE "person" set "thumbnailPath" = '/my/awesome/thumbnail.jpg' where "personGroupId" = $1`, [
-      personId,
-    ]);
-  },
-
   createSharedLink: (accessToken: string, dto: SharedLinkCreateDto) =>
     createSharedLink({ sharedLinkCreateDto: dto }, { headers: asBearerAuth(accessToken) }),
 
@@ -474,9 +443,6 @@ export const utils = {
 
   createStack: (accessToken: string, assetIds: string[]) =>
     createStack({ stackCreateDto: { assetIds } }, { headers: asBearerAuth(accessToken) }),
-
-  setAssetDuplicateId: (accessToken: string, assetId: string, duplicateId: string | null) =>
-    updateAssets({ assetBulkUpdateDto: { ids: [assetId], duplicateId } }, { headers: asBearerAuth(accessToken) }),
 
   upsertTags: (accessToken: string, tags: string[]) =>
     upsertTags({ tagUpsertDto: { tags } }, { headers: asBearerAuth(accessToken) }),

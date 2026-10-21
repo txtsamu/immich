@@ -12,7 +12,7 @@ import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import picomatch from 'picomatch';
-import { CLIP_MODEL_INFO, JOBS_ASSET_PAGINATION_SIZE, endpointTags, serverVersion } from 'src/constants.js';
+import { JOBS_ASSET_PAGINATION_SIZE, endpointTags, serverVersion } from 'src/constants.js';
 import { extraModels } from 'src/decorators.js';
 import { SystemConfig } from 'src/dtos/config.dto.js';
 import { ApiCustomExtension, ImmichCookie, ImmichHeader, MetadataKey } from 'src/enum.js';
@@ -93,17 +93,6 @@ export const unsetDeep = (object: unknown, key: string) => {
   return isEmpty(object) ? undefined : object;
 };
 
-const isMachineLearningEnabled = (machineLearning: SystemConfig['machineLearning']) => machineLearning.enabled;
-export const isSmartSearchEnabled = (machineLearning: SystemConfig['machineLearning']) =>
-  isMachineLearningEnabled(machineLearning) && machineLearning.clip.enabled;
-export const isOcrEnabled = (machineLearning: SystemConfig['machineLearning']) =>
-  isMachineLearningEnabled(machineLearning) && machineLearning.ocr.enabled;
-export const isFacialRecognitionEnabled = (machineLearning: SystemConfig['machineLearning']) =>
-  isMachineLearningEnabled(machineLearning) && machineLearning.facialRecognition.enabled;
-export const isDuplicateDetectionEnabled = (machineLearning: SystemConfig['machineLearning']) =>
-  isSmartSearchEnabled(machineLearning) && machineLearning.duplicateDetection.enabled;
-export const isFaceImportEnabled = (metadata: SystemConfig['metadata']) => metadata.faces.import;
-
 export const handlePromiseError = <T>(promise: Promise<T>, logger: LoggingRepository): void => {
   promise.catch((error: Error | any) => logger.error(`Promise error: ${error}`, error?.stack));
 };
@@ -142,24 +131,6 @@ export interface OpenGraphTags {
   title: string;
   description: string;
   imageUrl?: string;
-}
-
-function cleanModelName(modelName: string): string {
-  const token = modelName.split('/').at(-1);
-  if (!token) {
-    throw new Error(`Invalid model name: ${modelName}`);
-  }
-
-  return token.replaceAll(':', '_');
-}
-
-export function getCLIPModelInfo(modelName: string) {
-  const modelInfo = CLIP_MODEL_INFO[cleanModelName(modelName)];
-  if (!modelInfo) {
-    throw new Error(`Unknown CLIP model: ${modelName}`);
-  }
-
-  return modelInfo;
 }
 
 function sortKeys<T>(target: T): T {

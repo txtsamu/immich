@@ -28,10 +28,5 @@ documentation:
           - server/src/**
           - server/test/**
 
-🧠machine-learning:
-  - changed-files:
-      - any-glob-to-any-file:
-          - machine-learning/**
-
 changelog:translation:
   - head-branch: ['^chore/translations$']

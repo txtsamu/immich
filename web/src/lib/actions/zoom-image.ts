@@ -26,7 +26,7 @@ export const zoomImageAction = (node: HTMLElement, options?: { zoomTarget?: HTML
   node.addEventListener('pointerdown', () => assetViewerManager.cancelZoomAnimation(), { capture: true, signal });
 
   // Intercept events in capture phase to prevent zoom-image from seeing interactions on
-  // overlay elements (e.g. OCR text boxes), preserving browser defaults like text selection.
+  // overlay elements, preserving browser defaults like text selection.
   const isOverlayEvent = (event: Event) => !!(event.target as HTMLElement).closest('[data-overlay-interactive]');
   const isOverlayAtPoint = (x: number, y: number) =>
     !!document.elementFromPoint(x, y)?.closest('[data-overlay-interactive]');

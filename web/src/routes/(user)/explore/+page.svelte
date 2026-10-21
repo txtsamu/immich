@@ -1,13 +1,10 @@
 <script lang="ts">
-  import ImageThumbnail from '$lib/components/assets/thumbnail/ImageThumbnail.svelte';
-  import PersonIndicator from '$lib/components/faces-page/PersonIndicator.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
-  import OnEvents from '$lib/components/OnEvents.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/EmptyPlaceholder.svelte';
   import SingleGridRow from '$lib/components/shared-components/SingleGridRow.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { Route } from '$lib/route';
-  import { getAssetMediaUrl, getPeopleThumbnailUrl, memoryLaneTitle } from '$lib/utils';
+  import { getAssetMediaUrl, memoryLaneTitle } from '$lib/utils';
   import { getAssetInfo, AssetMediaSize, type SearchExploreResponseDto } from '@immich/sdk';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import MemoryCard from '$lib/components/memories/MemoryCard.svelte';
@@ -33,7 +30,6 @@
   let recents = $derived(
     getFieldItems(data.explore, 'createdAt').sort((a, b) => new Date(b.value).getTime() - new Date(a.value).getTime()),
   );
-  let people = $state(data.people.people);
   let memories = $derived(
     data.memories.map((memory) => ({
       id: memory.id,
@@ -41,19 +37,8 @@
       href: Route.viewMemory({ id: memory.id, assetId: memory.assets[0].id }),
       alt: $t('memory_lane_title', { values: { title: $getAltText(toTimelineAsset(memory.assets[0])) } }),
       src: getAssetMediaUrl({ id: memory.assets[0].id }),
-      type: memory.type,
     })),
   );
-
-  let hasPeople = $derived(data.people.total > 0);
-
-  const onPersonThumbnailReady = ({ id }: { id: string }) => {
-    for (const person of people) {
-      if (person.id === id) {
-        person.updatedAt = new Date().toISOString();
-      }
-    }
-  };
 
   const onViewAsset = async (id: string) => {
     const asset = await getAssetInfo({ ...authManager.params, id });
@@ -65,41 +50,7 @@
   });
 </script>
 
-<OnEvents {onPersonThumbnailReady} />
-
 <UserPageLayout title={data.meta.title}>
-  {#if hasPeople}
-    <div class="mt-2 mb-6">
-      <div class="flex justify-between">
-        <p class="mb-4 font-medium dark:text-immich-dark-fg">{$t('people')}</p>
-        <a
-          href={Route.people()}
-          class="pe-4 text-sm font-medium hover:text-immich-primary dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"
-          draggable="false">{$t('view_all')}</a
-        >
-      </div>
-      <SingleGridRow class="grid grid-flow-col grid-auto-fill-20 gap-x-4 md:grid-auto-fill-28">
-        {#snippet children({ itemCount })}
-          {#each people.slice(0, itemCount) as person (person.id)}
-            <a href={Route.viewPerson(person)} class="text-center">
-              <div class="@container relative">
-                <ImageThumbnail
-                  circle
-                  shadow
-                  url={getPeopleThumbnailUrl(person)}
-                  altText={person.name}
-                  widthStyle="100%"
-                />
-                <PersonIndicator {person} />
-              </div>
-              <p class="mt-2 text-sm font-medium text-ellipsis dark:text-white">{person.name}</p>
-            </a>
-          {/each}
-        {/snippet}
-      </SingleGridRow>
-    </div>
-  {/if}
-
   {#if places.length > 0}
     <div class="mt-2 mb-6">
       <div class="flex justify-between">
@@ -180,7 +131,7 @@
     </div>
   {/if}
 
-  {#if !hasPeople && places.length === 0 && recents.length === 0}
+  {#if places.length === 0 && recents.length === 0}
     <EmptyPlaceholder text={$t('no_explore_results_message')} class="mx-auto mt-10" />
   {/if}
 </UserPageLayout>

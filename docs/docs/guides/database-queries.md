@@ -128,12 +128,6 @@ SELECT * FROM "user";
 SELECT "user".* FROM "user" JOIN "asset" ON "user"."id" = "asset"."ownerId" WHERE "asset"."id" = 'fa310b01-2f26-4b7a-9042-d578226e021f';
 ```
 
-## Persons
-
-```sql title="Delete person and unset it for the faces it was associated with"
-DELETE FROM "person" WHERE "name" = 'PersonNameHere';
-```
-
 ## System
 
 ### Config

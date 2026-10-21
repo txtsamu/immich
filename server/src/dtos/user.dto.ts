@@ -2,7 +2,6 @@ import { createZodDto } from 'nestjs-zod';
 import z from 'zod';
 import type { MaybeDehydrated, UserMetadataItem } from 'src/types.js';
 import { User, UserAdmin } from 'src/database.js';
-import { HistoryBuilder } from 'src/decorators.js';
 import { pinCodeRegex } from 'src/dtos/auth.dto.js';
 import { UserAvatarColor, UserAvatarColorSchema, UserMetadataKey, UserStatusSchema } from 'src/enum.js';
 import { asDateTimeString } from 'src/utils/date.js';
@@ -117,10 +116,6 @@ const UserAdminDeleteSchema = z
 export class UserAdminDeleteDto extends createZodDto(UserAdminDeleteSchema) {}
 
 const UserAdminResponseSchema = UserResponseSchema.extend({
-  clusterGroupId: z
-    .uuidv4()
-    .describe('Cluster group the user is a member of')
-    .meta(new HistoryBuilder().added('v3.2.0').getExtensions()),
   storageLabel: z.string().nullable().describe('Storage label'),
   shouldChangePassword: z.boolean().describe('Require password change on next login'),
   isAdmin: z.boolean().describe('Is admin user'),
@@ -144,7 +139,6 @@ export function mapUserAdmin(entity: UserAdmin): UserAdminResponseDto {
 
   return {
     ...mapUser(entity),
-    clusterGroupId: entity.clusterGroupId,
     storageLabel: entity.storageLabel,
     shouldChangePassword: entity.shouldChangePassword,
     isAdmin: entity.isAdmin,

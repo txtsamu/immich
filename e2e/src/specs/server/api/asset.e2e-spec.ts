@@ -124,14 +124,6 @@ describe('/asset', () => {
         assetData: { filename: 'example.mp4' },
       }),
     ]);
-
-    const person1 = await utils.createPerson(user1.accessToken, {
-      name: 'Test Person',
-    });
-    await utils.createFace({
-      assetId: user1Assets[0].id,
-      personGroupId: person1.id,
-    });
   };
   beforeAll(setupTests, 30_000);
 
@@ -184,36 +176,6 @@ describe('/asset', () => {
       const { status, body } = await request(app).get(`/assets/${user1Assets[0].id}?key=${sharedLink.key}`);
       expect(status).toBe(200);
       expect(body).toMatchObject({ id: user1Assets[0].id });
-    });
-
-    it('should not send people data for shared links for un-authenticated users', async () => {
-      const { status, body } = await request(app)
-        .get(`/assets/${user1Assets[0].id}`)
-        .set('Authorization', `Bearer ${user1.accessToken}`);
-
-      expect(status).toEqual(200);
-      expect(body).toMatchObject({
-        id: user1Assets[0].id,
-        isFavorite: false,
-        people: [
-          {
-            birthDate: null,
-            id: expect.any(String),
-            isHidden: false,
-            name: 'Test Person',
-            thumbnailPath: '/my/awesome/thumbnail.jpg',
-          },
-        ],
-      });
-
-      const sharedLink = await utils.createSharedLink(user1.accessToken, {
-        type: SharedLinkType.Individual,
-        assetIds: [user1Assets[0].id],
-      });
-
-      const data = await request(app).get(`/assets/${user1Assets[0].id}?key=${sharedLink.key}`);
-      expect(data.status).toBe(200);
-      expect(data.body).toMatchObject({ people: [] });
     });
 
     describe('partner assets', () => {
@@ -449,27 +411,6 @@ describe('/asset', () => {
         }),
       });
       expect(status).toEqual(200);
-    });
-
-    it('should return tagged people', async () => {
-      const { status, body } = await request(app)
-        .put(`/assets/${user1Assets[0].id}`)
-        .set('Authorization', `Bearer ${user1.accessToken}`)
-        .send({ isFavorite: true });
-      expect(status).toEqual(200);
-      expect(body).toMatchObject({
-        id: user1Assets[0].id,
-        isFavorite: true,
-        people: [
-          {
-            birthDate: null,
-            id: expect.any(String),
-            isHidden: false,
-            name: 'Test Person',
-            thumbnailPath: '/my/awesome/thumbnail.jpg',
-          },
-        ],
-      });
     });
   });
 

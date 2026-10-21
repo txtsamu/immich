@@ -28,29 +28,6 @@ describe(AssetController.name, () => {
       expect(status).toBe(400);
       expect(body).toEqual(factory.responses.validationError([{ path: ['ids', 0], message: 'Invalid UUID' }]));
     });
-
-    it('should require duplicateId to be a string', async () => {
-      const id = factory.uuid();
-      const { status, body } = await request(ctx.getHttpServer())
-        .put(`/assets`)
-        .send({ ids: [id], duplicateId: true });
-
-      expect(status).toBe(400);
-      expect(body).toEqual(
-        factory.responses.validationError([
-          { path: ['duplicateId'], message: 'Invalid input: expected string, received boolean' },
-        ]),
-      );
-    });
-
-    it('should accept a null duplicateId', async () => {
-      const id = factory.uuid();
-      await request(ctx.getHttpServer())
-        .put(`/assets`)
-        .send({ ids: [id], duplicateId: null });
-
-      expect(service.updateAll).toHaveBeenCalledWith(undefined, expect.objectContaining({ duplicateId: null }));
-    });
   });
 
   describe('DELETE /assets', () => {

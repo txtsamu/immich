@@ -54,10 +54,8 @@ export enum QueryParameter {
   OPEN_SETTING = 'openSetting',
   PREVIOUS_ROUTE = 'previousRoute',
   QUERY = 'query',
-  SEARCHED_PEOPLE = 'searchedPeople',
   SHARED_BY_ID = 'sharedById',
   SHARED_WITH_ID = 'sharedWithId',
-  SMART_SEARCH = 'smartSearch',
   PAGE = 'page',
   PATH = 'path',
 }
@@ -77,8 +75,6 @@ export enum OpenQueryParam {
   SHARING = 'sharing',
 }
 
-export const maximumLengthSearchPeople = 100;
-
 // time to load the map before displaying the loading spinner
 export const timeToLoadTheMap: number = 100;
 
@@ -92,20 +88,12 @@ export const fallbackLocale = {
 };
 
 export enum QueryType {
-  SMART = 'smart',
   METADATA = 'metadata',
   DESCRIPTION = 'description',
   FULL_PATH = 'fullPath',
-  OCR = 'ocr',
 }
 
-export const validQueryTypes = new Set([
-  QueryType.SMART,
-  QueryType.METADATA,
-  QueryType.DESCRIPTION,
-  QueryType.FULL_PATH,
-  QueryType.OCR,
-]);
+export const validQueryTypes = new Set([QueryType.METADATA, QueryType.DESCRIPTION, QueryType.FULL_PATH]);
 
 export const locales = [
   { code: 'af-ZA', name: 'Afrikaans (South Africa)' },
@@ -279,13 +267,6 @@ export type AlbumPageViewMode =
   | typeof AlbumPageViewMode.SELECT_ASSETS
   | typeof AlbumPageViewMode.VIEW
   | typeof AlbumPageViewMode.OPTIONS;
-
-export enum PersonPageViewMode {
-  VIEW_ASSETS = 'view-assets',
-  SELECT_PERSON = 'select-person',
-  MERGE_PEOPLE = 'merge-people',
-  UNASSIGN_ASSETS = 'unassign-faces',
-}
 
 export enum MediaType {
   All = 'all',

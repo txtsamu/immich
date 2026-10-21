@@ -1,4 +1,4 @@
-import { getBaseUrl, IntegrityReport, QueueName, type MetadataSearchDto, type SmartSearchDto } from '@immich/sdk';
+import { getBaseUrl, IntegrityReport, QueueName, type MetadataSearchDto } from '@immich/sdk';
 import { omitBy } from 'lodash-es';
 import { OpenQueryParam, type SharedLinkTab } from '$lib/constants';
 
@@ -86,11 +86,6 @@ export const Route = {
   // partners
   viewPartner: ({ id }: { id: string }) => `/partners/${id}`,
 
-  // people
-  people: () => '/people',
-  viewPerson: ({ id }: { id: string }, params?: { previousRoute?: string; action?: 'merge' }) =>
-    `/people/${id}` + asQueryString(params),
-
   // photos
   photos: (params?: { at?: string }) => '/photos' + asQueryString(params),
   viewAsset: ({ id }: { id: string }) => `/photos/${id}`,
@@ -102,7 +97,7 @@ export const Route = {
   recentlyAdded: () => '/recently-added',
 
   // search
-  search: (dto?: MetadataSearchDto | SmartSearchDto) => {
+  search: (dto?: MetadataSearchDto) => {
     const metadata = omitBy(dto ?? {}, (value) => value === undefined);
     const query = Object.keys(metadata).length === 0 ? undefined : JSON.stringify(metadata);
     return `/search` + asQueryString({ query });
@@ -138,7 +133,6 @@ export const Route = {
 
   // utilities
   utilities: () => '/utilities',
-  duplicatesUtility: (params?: { index?: number }) => '/utilities/duplicates' + asQueryString(params),
   largeFileUtility: () => '/utilities/large-files',
   geolocationUtility: () => '/utilities/geolocation',
 

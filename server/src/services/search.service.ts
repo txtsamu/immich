@@ -1,22 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { LRUMap } from 'mnemonist';
 import { AssetMapOptions, AssetResponseDto, MapAsset, mapAsset } from 'src/dtos/asset-response.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
-import { SystemConfig } from 'src/dtos/config.dto.js';
-import { PersonResponseDto, mapPerson } from 'src/dtos/person.dto.js';
 import {
   LargeAssetSearchDto,
   MetadataSearchDto,
   PlacesResponseDto,
   RandomSearchDto,
   SearchFilter,
-  SearchPeopleDto,
   SearchPlacesDto,
   SearchResponseDto,
   SearchStatisticsResponseDto,
   SearchSuggestionRequestDto,
   SearchSuggestionType,
-  SmartSearchDto,
   StatisticsSearchDto,
   isFullyAlbumConfined,
   isNewShapeRequest,
@@ -27,19 +22,11 @@ import { AssetSearchScope } from 'src/repositories/search.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { requireElevatedPermission } from 'src/utils/access.js';
 import { getMyPartnerIds } from 'src/utils/asset.util.js';
-import { isSmartSearchEnabled } from 'src/utils/misc.js';
 import { decodeSearchCursor, encodeSearchCursor } from 'src/utils/search-cursor.js';
 import { applyLockedVisibilityPolicy, collectFilterIds } from 'src/utils/search-filter.js';
 
 @Injectable()
 export class SearchService extends BaseService {
-  private embeddingCache = new LRUMap<string, string>(100);
-
-  async searchPerson(auth: AuthDto, dto: SearchPeopleDto): Promise<PersonResponseDto[]> {
-    const people = await this.personRepository.getByName(auth.user.id, dto.name, { withHidden: dto.withHidden });
-    return people.map((person) => mapPerson(person));
-  }
-
   async searchPlaces(dto: SearchPlacesDto): Promise<PlacesResponseDto[]> {
     const places = await this.searchRepository.searchPlaces(dto.name);
     return places.map((place) => mapPlaces(place));
@@ -51,14 +38,12 @@ export class SearchService extends BaseService {
     const cities = await this.assetRepository.getAssetIdByCity(auth.user.id, options);
     const cityAssets = await this.assetRepository.getByIdsWithAllRelationsButStacks(
       cities.items.map(({ data }) => data),
-      auth.user.id,
     );
     const cityItems = cityAssets.map((asset) => ({ value: asset.exifInfo!.city!, data: mapAsset(asset, { auth }) }));
 
     const recents = await this.assetRepository.getRecentlyCreatedAssetIds(auth.user.id, options.maxFields);
     const recentAssets = await this.assetRepository.getByIdsWithAllRelationsButStacks(
       recents.items.map((item) => item.data),
-      auth.user.id,
     );
     const recentItems = recentAssets.map((asset) => ({
       value: asset.createdAt.toISOString(),
@@ -105,7 +90,6 @@ export class SearchService extends BaseService {
         checksum,
         visibility: dto.visibility ?? (auth.session?.hasElevatedPermission ? undefined : 'not-locked'),
         userIds,
-        viewingUserId: auth.user.id,
         orderDirection: dto.order ?? AssetOrder.Desc,
       },
     );
@@ -127,7 +111,6 @@ export class SearchService extends BaseService {
       ...dto,
       visibility: dto.visibility ?? (auth.session?.hasElevatedPermission ? undefined : 'not-locked'),
       userIds,
-      viewingUserId: auth.user.id,
     });
   }
 
@@ -145,7 +128,6 @@ export class SearchService extends BaseService {
       ...dto,
       visibility: dto.visibility ?? (auth.session?.hasElevatedPermission ? undefined : 'not-locked'),
       userIds,
-      viewingUserId: auth.user.id,
     });
     return items.map((item) => mapAsset(item, { auth }));
   }
@@ -160,41 +142,8 @@ export class SearchService extends BaseService {
       ...dto,
       visibility: dto.visibility ?? (auth.session?.hasElevatedPermission ? undefined : 'not-locked'),
       userIds,
-      viewingUserId: auth.user.id,
     });
     return items.map((item) => mapAsset(item, { auth }));
-  }
-
-  async searchSmart(auth: AuthDto, dto: SmartSearchDto): Promise<SearchResponseDto> {
-    if (isNewShapeRequest(dto)) {
-      return this.searchSmartV3(auth, dto);
-    }
-
-    if (dto.visibility === AssetVisibility.Locked) {
-      requireElevatedPermission(auth);
-    }
-
-    const { machineLearning } = await this.getConfig({ withCache: false });
-    if (!isSmartSearchEnabled(machineLearning)) {
-      throw new BadRequestException('Smart search is not enabled');
-    }
-
-    const userIds = this.getUserIdsToSearch(auth, dto.visibility);
-    const embedding = await this.resolveEmbedding(auth, dto, machineLearning);
-    const page = dto.page ?? 1;
-    const size = dto.size;
-    const { hasNextPage, items } = await this.searchRepository.searchSmart(
-      { page, size },
-      {
-        ...dto,
-        userIds: await userIds,
-        viewingUserId: auth.user.id,
-        embedding,
-        visibility: dto.visibility ?? (auth.session?.hasElevatedPermission ? undefined : 'not-locked'),
-      },
-    );
-
-    return this.mapResponse(items, { auth }, { nextPage: hasNextPage ? (page + 1).toString() : null });
   }
 
   async getAssetsByCity(auth: AuthDto): Promise<AssetResponseDto[]> {
@@ -248,7 +197,6 @@ export class SearchService extends BaseService {
       {
         filter,
         withExif: dto.withExif,
-        withPeople: dto.withPeople,
         withStacked: dto.withStacked,
         order: dto.orderBy,
       },
@@ -270,33 +218,11 @@ export class SearchService extends BaseService {
       {
         filter,
         withExif: dto.withExif,
-        withPeople: dto.withPeople,
         withStacked: dto.withStacked,
       },
       scope,
     );
     return items.map((item) => mapAsset(item, { auth }));
-  }
-
-  private async searchSmartV3(auth: AuthDto, dto: SmartSearchDto): Promise<SearchResponseDto> {
-    const { machineLearning } = await this.getConfig({ withCache: false });
-    if (!isSmartSearchEnabled(machineLearning)) {
-      throw new BadRequestException('Smart search is not enabled');
-    }
-
-    const [{ filter, scope }, embedding] = await Promise.all([
-      this.resolveSearchScopeV3(auth, dto),
-      this.resolveEmbedding(auth, dto, machineLearning),
-    ]);
-
-    // no cursor until a rank-aware pagination strategy for smart search is decided
-    const { items } = await this.searchRepository.searchSmartV3(
-      { take: dto.size },
-      { filter, withExif: dto.withExif, embedding },
-      scope,
-    );
-
-    return this.mapResponse(items, { auth });
   }
 
   private async resolveSearchScopeV3(
@@ -319,38 +245,7 @@ export class SearchService extends BaseService {
       albumIds.length > 0 ? this.requireAccess({ auth, ids: albumIds, permission: Permission.AlbumRead }) : undefined,
     ]);
 
-    return { filter: effectiveFilter, scope: { userIds, lockedOwnerId: auth.user.id, viewingUserId: auth.user.id } };
-  }
-
-  private async resolveEmbedding(
-    auth: AuthDto,
-    dto: SmartSearchDto,
-    machineLearning: SystemConfig['machineLearning'],
-  ): Promise<string> {
-    if (dto.query) {
-      const key = machineLearning.clip.modelName + dto.query + dto.language;
-      let embedding = this.embeddingCache.get(key);
-      if (!embedding) {
-        embedding = await this.machineLearningRepository.encodeText(dto.query, {
-          modelName: machineLearning.clip.modelName,
-          language: dto.language,
-        });
-        this.embeddingCache.set(key, embedding);
-      }
-      return embedding;
-    }
-
-    if (dto.queryAssetId) {
-      await this.requireAccess({ auth, permission: Permission.AssetRead, ids: [dto.queryAssetId] });
-      const getEmbeddingResponse = await this.searchRepository.getEmbedding(dto.queryAssetId);
-      const assetEmbedding = getEmbeddingResponse?.embedding;
-      if (!assetEmbedding) {
-        throw new BadRequestException(`Asset ${dto.queryAssetId} has no embedding`);
-      }
-      return assetEmbedding;
-    }
-
-    throw new BadRequestException('Either `query` or `queryAssetId` must be set');
+    return { filter: effectiveFilter, scope: { userIds, lockedOwnerId: auth.user.id } };
   }
 
   private async getUserIdsToSearch(auth: AuthDto, visibility?: AssetVisibility): Promise<string[]> {

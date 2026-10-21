@@ -1,7 +1,6 @@
 import { Selectable, ShallowDehydrateObject } from 'kysely';
 import type { UserMetadataItem } from 'src/types.js';
 import { MapAsset } from 'src/dtos/asset-response.dto.js';
-import { PersonUserRole } from 'src/dtos/person.dto.js';
 import {
   AlbumUserRole,
   AssetFileType,
@@ -11,7 +10,6 @@ import {
   MemoryType,
   Permission,
   SharedLinkType,
-  SourceType,
   UserAvatarColor,
   UserStatus,
 } from 'src/enum.js';
@@ -145,7 +143,6 @@ export type User = {
 };
 
 export type UserAdmin = User & {
-  clusterGroupId: string;
   storageLabel: string | null;
   shouldChangePassword: boolean;
   isAdmin: boolean;
@@ -252,47 +249,6 @@ export type Session = {
 
 export type Exif = Omit<Selectable<AssetExifTable>, 'updatedAt' | 'updateId' | 'lockedProperties'>;
 
-export type Person = {
-  createdAt: Date;
-  personGroupId: string;
-  ownerId: string;
-  updatedAt: Date;
-  updateId: string;
-  isFavorite: boolean;
-  name: string;
-  birthDate: Date | null;
-  color: string | null;
-  faceAssetId: string | null;
-  isHidden: boolean;
-  thumbnailPath: string;
-  otherPeople: { sharedById: string; name: string; birthDate: string | null; role: PersonUserRole }[];
-  sharedBy: PersonUser[];
-  sharedWith: PersonUser[];
-};
-
-export type PersonUser = User & { role: PersonUserRole };
-
-export type AssetFace = {
-  id: string;
-  deletedAt: Date | null;
-  assetId: string;
-  boundingBoxX1: number;
-  boundingBoxX2: number;
-  boundingBoxY1: number;
-  boundingBoxY2: number;
-  imageHeight: number;
-  imageWidth: number;
-  personGroupId: string | null;
-  sourceType: SourceType;
-  person?: ShallowDehydrateObject<Person> | null;
-  updatedAt: Date;
-  updateId: string;
-  isVisible: boolean;
-  ownerId: string;
-  assetVisibility: AssetVisibility;
-  assetDeletedAt: Date | null;
-};
-
 export type Plugin = Selectable<PluginTable>;
 
 const userColumns = ['id', 'name', 'email', 'avatarColor', 'profileImagePath', 'profileChangedAt'] as const;
@@ -334,7 +290,6 @@ export const columns = {
     'asset.status',
     'asset.checksum',
     'asset.checksumAlgorithm',
-    'asset.duplicateId',
     'asset.duration',
     'asset.fileCreatedAt',
     'asset.fileModifiedAt',
@@ -361,7 +316,6 @@ export const columns = {
     'asset.stackId',
     'asset.livePhotoVideoId',
     'asset.libraryId',
-    'asset.duplicateId',
     'asset.createdAt',
     'asset.updatedAt',
     'asset.deletedAt',
@@ -405,7 +359,6 @@ export const columns = {
   ],
   userAdmin: [
     ...userColumns,
-    'clusterGroupId',
     'createdAt',
     'updatedAt',
     'deletedAt',
@@ -500,20 +453,6 @@ export const columns = {
   syncStack: ['stack.id', 'stack.createdAt', 'stack.updatedAt', 'stack.primaryAssetId', 'stack.ownerId'],
   syncUser: ['id', 'name', 'email', 'avatarColor', 'deletedAt', 'updateId', 'profileImagePath', 'profileChangedAt'],
   stack: ['stack.id', 'stack.primaryAssetId', 'ownerId'],
-  syncAssetFace: [
-    'asset_face.id',
-    'asset_face.assetId',
-    'asset_face.personGroupId as personId',
-    'asset_face.imageWidth',
-    'asset_face.imageHeight',
-    'asset_face.boundingBoxX1',
-    'asset_face.boundingBoxY1',
-    'asset_face.boundingBoxX2',
-    'asset_face.boundingBoxY2',
-    'asset_face.sourceType',
-    'asset_face.isVisible',
-    'asset_face.deletedAt',
-  ],
   syncAssetExif: [
     'asset_exif.assetId',
     'asset_exif.description',
@@ -540,23 +479,6 @@ export const columns = {
     'asset_exif.profileDescription',
     'asset_exif.rating',
     'asset_exif.fps',
-  ],
-  syncAssetOcr: [
-    'asset_ocr.id',
-    'asset_ocr.assetId',
-    'asset_ocr.x1',
-    'asset_ocr.y1',
-    'asset_ocr.x2',
-    'asset_ocr.y2',
-    'asset_ocr.x3',
-    'asset_ocr.y3',
-    'asset_ocr.x4',
-    'asset_ocr.y4',
-    'asset_ocr.text',
-    'asset_ocr.boxScore',
-    'asset_ocr.textScore',
-    'asset_ocr.updateId',
-    'asset_ocr.isVisible',
   ],
   syncAssetEdit: [
     'asset_edit.id',

@@ -294,11 +294,6 @@ export class IntegrityService extends BaseService {
       }
     }
 
-    const personThumbnailPaths = await this.integrityRepository.getPersonThumbnailPathsByPaths(lookupPaths);
-    for (const { thumbnailPath } of personThumbnailPaths) {
-      trackedPaths.add(thumbnailPath.normalize('NFC'));
-    }
-
     const untrackedFiles = [...new Set(paths)].filter((path) => !trackedPaths.has(path.normalize('NFC')));
 
     if (untrackedFiles.length > 0) {

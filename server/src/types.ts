@@ -24,7 +24,6 @@ import {
   IntegrityReport,
   JobName,
   MemoryType,
-  PersonUpdateStrategy,
   QueueName,
   StorageFolder,
   SyncEntityType,
@@ -206,13 +205,7 @@ export interface VideoInterfaces {
   mali: boolean;
 }
 
-export type ConcurrentQueueName = Exclude<
-  QueueName,
-  | QueueName.StorageTemplateMigration
-  | QueueName.FacialRecognition
-  | QueueName.DuplicateDetection
-  | QueueName.BackupDatabase
->;
+export type ConcurrentQueueName = Exclude<QueueName, QueueName.StorageTemplateMigration | QueueName.BackupDatabase>;
 
 export type Jobs = { [K in JobItem['name']]: (JobItem & { name: K })['data'] };
 export type JobOf<T extends JobName> = Jobs[T];
@@ -227,11 +220,6 @@ export interface IDelayedJob extends IBaseJob {
 }
 
 export type JobSource = 'upload' | 'sidecar-write' | 'copy' | 'edit';
-export interface IPersonJob {
-  ownerId: string;
-  personGroupId: string;
-}
-
 export interface IEntityJob extends IBaseJob {
   id: string;
   source?: JobSource;
@@ -333,10 +321,6 @@ export interface IIntegrityPathWithChecksumJob {
   items: { path: string; reportId: string | null; checksum?: string | null }[];
 }
 
-export interface IFacialRecognitionQueueAll extends INightlyJob {
-  clusterGroupId?: string;
-}
-
 export interface JobCounts {
   active: number;
   completed: number;
@@ -372,7 +356,6 @@ export type JobItem =
   // Migration
   | { name: JobName.FileMigrationQueueAll; data?: IBaseJob }
   | { name: JobName.AssetFileMigration; data: IEntityJob }
-  | { name: JobName.PersonFileMigration; data: IPersonJob }
 
   // Metadata Extraction
   | { name: JobName.AssetExtractMetadataQueueAll; data: IBaseJob }
@@ -386,21 +369,8 @@ export type JobItem =
   | { name: JobName.SidecarCheck; data: IEntityJob }
   | { name: JobName.SidecarWrite; data: IEntityJob }
 
-  // Facial Recognition
-  | { name: JobName.AssetDetectFacesQueueAll; data: IBaseJob }
-  | { name: JobName.AssetDetectFaces; data: IEntityJob }
-  | { name: JobName.FacialRecognitionQueueAll; data: IFacialRecognitionQueueAll }
-  | { name: JobName.FacialRecognition; data: IDeferrableJob }
-  | { name: JobName.PersonGenerateThumbnail; data: IPersonJob }
-
-  // Smart Search
-  | { name: JobName.SmartSearchQueueAll; data: IBaseJob }
-  | { name: JobName.SmartSearch; data: IEntityJob }
+  // Trash
   | { name: JobName.AssetEmptyTrash; data?: IBaseJob }
-
-  // Duplicate Detection
-  | { name: JobName.AssetDetectDuplicatesQueueAll; data: IBaseJob }
-  | { name: JobName.AssetDetectDuplicates; data: IEntityJob }
 
   // Memories
   | { name: JobName.MemoryCleanup; data?: IBaseJob }
@@ -418,7 +388,6 @@ export type JobItem =
   | { name: JobName.TagCleanup; data?: IBaseJob }
 
   // Asset Deletion
-  | { name: JobName.PersonCleanup; data?: IBaseJob }
   | { name: JobName.AssetDelete; data: IAssetDeleteJob }
   | { name: JobName.AssetDeleteCheck; data?: IBaseJob }
 
@@ -440,10 +409,6 @@ export type JobItem =
 
   // Version check
   | { name: JobName.VersionCheck; data: IBaseJob }
-
-  // OCR
-  | { name: JobName.OcrQueueAll; data: IBaseJob }
-  | { name: JobName.Ocr; data: IEntityJob }
 
   // Workflow
   | { name: JobName.WorkflowAssetTrigger; data: { workflowId: string; assetId: string } }
@@ -533,11 +498,9 @@ export type StorageAsset = {
 };
 
 export type OnThisDayData = { year: number };
-export type BirthdayData = { personId: string; personName: string; year: number };
 
 export interface MemoryData {
   [MemoryType.OnThisDay]: OnThisDayData;
-  [MemoryType.Birthday]: BirthdayData;
 }
 
 export type VersionCheckMetadata = { checkedAt: string; releaseVersion: string };
@@ -552,7 +515,6 @@ export type MediaLocation = { location: string };
 
 export interface SystemMetadata extends Record<SystemMetadataKey, Record<string, any>> {
   [SystemMetadataKey.AdminOnboarding]: { isOnboarded: boolean };
-  [SystemMetadataKey.FacialRecognitionState]: { lastRun?: string };
   [SystemMetadataKey.License]: { licenseKey: string; activationKey: string; activatedAt: Date };
   [SystemMetadataKey.MaintenanceMode]: MaintenanceModeState;
   [SystemMetadataKey.MediaLocation]: MediaLocation;
@@ -576,12 +538,6 @@ export type UserPreferences = {
     enabled: boolean;
     duration: number;
     sidebarWeb: boolean;
-  };
-  people: {
-    enabled: boolean;
-    sidebarWeb: boolean;
-    minimumFaces: number;
-    updateStrategy: PersonUpdateStrategy;
   };
   ratings: {
     enabled: boolean;

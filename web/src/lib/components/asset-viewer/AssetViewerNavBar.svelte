@@ -13,7 +13,6 @@
   import { getAlbumAssetActions } from '$lib/services/album.service';
   import { getGlobalActions } from '$lib/services/app.service';
   import { getAssetActions } from '$lib/services/asset.service';
-  import { getPersonAssetActions } from '$lib/services/person.service';
   import { getStackActions } from '$lib/services/stack.service';
   import { getSharedLink, withoutIcons } from '$lib/utils';
   import type { OnUndoDelete } from '$lib/utils/actions';
@@ -23,7 +22,6 @@
     AssetVisibility,
     type AlbumResponseDto,
     type AssetResponseDto,
-    type PersonResponseDto,
     type StackResponseDto,
   } from '@immich/sdk';
   import { ActionButton, CommandPaletteDefaultProvider, Tooltip, type ActionItem } from '@immich/ui';
@@ -33,7 +31,6 @@
   interface Props {
     asset: AssetResponseDto;
     album?: AlbumResponseDto;
-    person?: PersonResponseDto | null;
     stack?: StackResponseDto;
     preAction: PreAction;
     onAction: OnAction;
@@ -46,7 +43,6 @@
   let {
     asset,
     album,
-    person = null,
     stack,
     preAction,
     onAction,
@@ -64,7 +60,7 @@
   const Close: ActionItem = $derived({
     title: $t('go_back'),
     icon: languageManager.rtl ? mdiArrowRight : mdiArrowLeft,
-    $if: () => !!onClose && !assetViewerManager.isFaceEditMode && !assetViewerManager.isEditFacesPanelOpen,
+    $if: () => !!onClose,
     onAction: () => onClose?.(),
     shortcuts: [{ key: 'Escape' }],
   });
@@ -145,10 +141,6 @@
           {@const { SetCover } = getAlbumAssetActions($t, album, asset)}
           <ActionMenuItem action={SetCover} />
         {/if}
-        {#if person}
-          {@const { SetFeaturedPhoto } = getPersonAssetActions($t, person, asset)}
-          <ActionMenuItem action={SetFeaturedPhoto} />
-        {/if}
 
         <ActionMenuItem action={Actions.SetProfilePicture} />
 
@@ -156,7 +148,6 @@
           <ArchiveAction {asset} {onAction} {preAction} />
         {/if}
         <ActionMenuItem action={Actions.ViewInTimeline} />
-        <ActionMenuItem action={Actions.ViewSimilar} />
 
         {#if !asset.isTrashed && isOwner}
           <SetVisibilityAction asset={toTimelineAsset(asset)} {onAction} {preAction} />
@@ -166,7 +157,6 @@
 
         {#if isOwner}
           <hr />
-          <ActionMenuItem action={Actions.RefreshFacesJob} />
           <ActionMenuItem action={Actions.RefreshMetadataJob} />
           <ActionMenuItem action={Actions.RegenerateThumbnailJob} />
           <ActionMenuItem action={Actions.TranscodeVideoJob} />

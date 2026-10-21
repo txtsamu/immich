@@ -3,7 +3,7 @@ import { coerce, eq, gt, lt, satisfies } from 'semver';
 import type { VectorExtension } from 'src/types.js';
 import { EXTENSION_NAMES, ErrorMessages, VECTOR_EXTENSIONS } from 'src/constants.js';
 import { OnEvent } from 'src/decorators.js';
-import { BootstrapEventPriority, DatabaseExtension, DatabaseLock, VectorIndex } from 'src/enum.js';
+import { BootstrapEventPriority, DatabaseExtension, DatabaseLock } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 
 type CreateFailedArgs = { name: string; extension: string };
@@ -95,15 +95,6 @@ export class DatabaseService extends BaseService {
         throw new Error(messages.invalidDowngrade({ name, extension, availableVersion, installedVersion }));
       }
 
-      try {
-        await this.databaseRepository.reindexVectorsIfNeeded([VectorIndex.Clip, VectorIndex.Face]);
-      } catch (error) {
-        this.logger.warn(
-          'Could not run vector reindexing checks. If the extension was updated, please restart the Postgres instance. If you are upgrading directly from a version below 1.107.2, please upgrade to 1.107.2 first.',
-        );
-        throw error;
-      }
-
       for (const { name: dbName, installedVersion } of extensionVersions) {
         const isDepended = dbName === DatabaseExtension.Vector && extension === DatabaseExtension.VectorChord;
         if (dbName !== extension && installedVersion && !isDepended) {
@@ -120,10 +111,6 @@ export class DatabaseService extends BaseService {
           preparation.push(this.databaseRepository.vacuum({ analyze: true }));
         }
       }
-      preparation.push(
-        this.databaseRepository.prewarm(VectorIndex.Clip),
-        this.databaseRepository.prewarm(VectorIndex.Face),
-      );
       await Promise.all(preparation);
     });
   }

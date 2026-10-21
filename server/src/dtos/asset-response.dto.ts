@@ -2,12 +2,11 @@ import { Selectable, ShallowDehydrateObject } from 'kysely';
 import { createZodDto } from 'nestjs-zod';
 import z from 'zod';
 import type { MaybeDehydrated } from 'src/types.js';
-import { AssetFace, AssetFile, Exif, Stack, Tag, User } from 'src/database.js';
+import { AssetFile, Exif, Stack, Tag, User } from 'src/database.js';
 import { HistoryBuilder } from 'src/decorators.js';
 import { AuthDto, isMetadataHidden } from 'src/dtos/auth.dto.js';
 import { AssetEditActionItem } from 'src/dtos/editing.dto.js';
 import { ExifResponseSchema, mapExif } from 'src/dtos/exif.dto.js';
-import { PersonResponseDto, PersonResponseSchema, mapPerson } from 'src/dtos/person.dto.js';
 import { TagResponseSchema, mapTag } from 'src/dtos/tag.dto.js';
 import { UserResponseSchema, mapUser } from 'src/dtos/user.dto.js';
 import {
@@ -100,10 +99,8 @@ export const AssetResponseSchema = SanitizedAssetResponseSchema.extend(
     visibility: AssetVisibilitySchema,
     exifInfo: ExifResponseSchema.optional(),
     tags: z.array(TagResponseSchema).optional(),
-    people: z.array(PersonResponseSchema).optional(),
     checksum: z.string().describe('Base64 encoded SHA1 hash'),
     stack: AssetStackResponseSchema.nullish(),
-    duplicateId: z.uuidv4().nullish().describe('Duplicate group ID'),
     resized: z
       .boolean()
       .optional()
@@ -127,11 +124,9 @@ export type MapAsset = {
   status: AssetStatus;
   checksum: Buffer<ArrayBufferLike>;
   checksumAlgorithm: ChecksumAlgorithm;
-  duplicateId: string | null;
   duration: number | null;
   edits?: ShallowDehydrateObject<AssetEditActionItem>[];
   exifInfo?: ShallowDehydrateObject<Selectable<Exif>> | null;
-  faces?: ShallowDehydrateObject<AssetFace>[];
   fileCreatedAt: Date;
   fileModifiedAt: Date;
   files?: ShallowDehydrateObject<AssetFile>[];
@@ -159,22 +154,6 @@ export type MapAsset = {
 export type AssetMapOptions = {
   withStack?: boolean;
   auth?: AuthDto;
-};
-
-const peopleFromFaces = (faces?: MaybeDehydrated<AssetFace>[]): PersonResponseDto[] => {
-  if (!faces) {
-    return [];
-  }
-
-  const peopleMap: Map<string, PersonResponseDto> = new Map();
-
-  for (const face of faces) {
-    if (face.person && !peopleMap.has(face.person.personGroupId)) {
-      peopleMap.set(face.person.personGroupId, mapPerson(face.person));
-    }
-  }
-
-  return peopleMap.values().toArray();
 };
 
 const mapStack = (entity: { stack?: Stack | null }) => {
@@ -231,12 +210,10 @@ export function mapAsset(entity: MaybeDehydrated<MapAsset>, options: AssetMapOpt
     exifInfo: entity.exifInfo ? mapExif(entity.exifInfo) : undefined,
     livePhotoVideoId: entity.livePhotoVideoId,
     tags: entity.tags?.map((tag) => mapTag(tag)),
-    people: auth?.sharedLink ? [] : peopleFromFaces(entity.faces),
     checksum: hexOrBufferToBase64(entity.checksum)!,
     stack: withStack ? mapStack(entity) : undefined,
     isOffline: entity.isOffline,
     hasMetadata: true,
-    duplicateId: entity.duplicateId,
     resized: true,
     width: entity.width,
     height: entity.height,

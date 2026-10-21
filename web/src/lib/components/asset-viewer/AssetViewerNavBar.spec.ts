@@ -12,7 +12,7 @@ vi.mock(import('$lib/managers/feature-flags-manager.svelte'), function () {
     featureFlagsManager: {
       init: vi.fn(),
       loadFeatureFlags: vi.fn(),
-      value: { smartSearch: true, trash: true },
+      value: { trash: true },
     } as never,
   };
 });

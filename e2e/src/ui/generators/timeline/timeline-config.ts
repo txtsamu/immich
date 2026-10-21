@@ -41,7 +41,6 @@ export type MockTimelineAsset = {
   livePhotoVideoId: string | null;
   city: string | null;
   country: string | null;
-  people: string[] | null;
   latitude: number | null;
   longitude: number | null;
   visibility: AssetVisibility;

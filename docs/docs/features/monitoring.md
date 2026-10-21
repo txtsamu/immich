@@ -53,7 +53,6 @@ You will also need to add `prometheus-data` to the list of volumes in the bottom
 
 ```yaml
 volumes:
-  model-cache:
   prometheus-data:
 ```
 
@@ -97,7 +96,6 @@ And add another volume for it:
 
 ```yaml
 volumes:
-  model-cache:
   prometheus-data:
   grafana-data:
 ```

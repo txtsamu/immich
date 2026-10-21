@@ -167,28 +167,6 @@ describe(SearchController.name, () => {
           ]),
         );
       });
-
-      it('should reject if withPeople is not a boolean', async () => {
-        const { status, body } = await request(ctx.getHttpServer())
-          .post('/search/random')
-          .send({ withPeople: 'immich' });
-        expect(status).toBe(400);
-        expect(body).toEqual(
-          errorDto.validationError([
-            { path: ['withPeople'], message: 'Invalid input: expected boolean, received string' },
-          ]),
-        );
-      });
-    });
-
-    describe('POST /search/person', () => {
-      it('should require a name', async () => {
-        const { status, body } = await request(ctx.getHttpServer()).get('/search/person').send({});
-        expect(status).toBe(400);
-        expect(body).toEqual(
-          errorDto.validationError([{ path: ['name'], message: 'Invalid input: expected string, received undefined' }]),
-        );
-      });
     });
 
     describe('GET /search/places', () => {

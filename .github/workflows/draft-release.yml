@@ -175,7 +175,6 @@ jobs:
             docker/docker-compose.yml \
             docker/docker-compose.rootless.yml \
             docker/example.env \
-            docker/hwaccel.ml.yml \
             docker/hwaccel.transcoding.yml \
             docker/prometheus.yml \
             *.apk

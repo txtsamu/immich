@@ -134,15 +134,10 @@ describe(ServerService.name, () => {
   describe('getFeatures', () => {
     it('should respond the server features', async () => {
       await expect(sut.getFeatures()).resolves.toEqual({
-        smartSearch: true,
-        duplicateDetection: true,
-        facialRecognition: true,
-        importFaces: false,
         map: true,
         reverseGeocoding: true,
         oauth: false,
         oauthAutoLaunch: false,
-        ocr: true,
         passwordLogin: true,
         search: true,
         sidecar: true,
@@ -170,7 +165,6 @@ describe(ServerService.name, () => {
         mapDarkStyleUrl: 'https://tiles.immich.cloud/v1/style/dark.json',
         mapLightStyleUrl: 'https://tiles.immich.cloud/v1/style/light.json',
         maintenanceMode: false,
-        minFaces: 3,
       });
       expect(mocks.systemMetadata.get).toHaveBeenCalled();
     });

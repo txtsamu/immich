@@ -19,7 +19,6 @@ describe(IntegrityService.name, () => {
 
     beforeEach(() => {
       mocks.integrityReport.getAssetPathsByPaths.mockResolvedValue([]);
-      mocks.integrityReport.getPersonThumbnailPathsByPaths.mockResolvedValue([]);
     });
 
     it.each([

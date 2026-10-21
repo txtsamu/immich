@@ -1,4 +1,4 @@
-import { AssetTypeEnum, AssetVisibility, type MetadataSearchDto, type SmartSearchDto } from '@immich/sdk';
+import { AssetTypeEnum, AssetVisibility, type MetadataSearchDto } from '@immich/sdk';
 import type { DateTime } from 'luxon';
 import { SvelteSet } from 'svelte/reactivity';
 import { goto } from '$app/navigation';
@@ -20,7 +20,7 @@ class SearchManager {
     this.#filter = this.#fromQuery({});
   }
 
-  setQuery(query: MetadataSearchDto | SmartSearchDto) {
+  setQuery(query: MetadataSearchDto) {
     this.#filter = this.#fromQuery(query);
   }
 
@@ -33,36 +33,28 @@ class SearchManager {
     await goto(Route.search(this.#toQuery()));
   }
 
-  #fromQuery(searchQuery: MetadataSearchDto | SmartSearchDto): SearchFilter {
-    let query = 'query' in searchQuery && searchQuery.query ? searchQuery.query : '';
-    let queryType = query ? QueryType.SMART : this.#defaultQueryType();
+  #fromQuery(searchQuery: MetadataSearchDto): SearchFilter {
+    let query = '';
+    let queryType = this.#defaultQueryType();
 
-    if ('originalFileName' in searchQuery && searchQuery.originalFileName) {
+    if (searchQuery.originalFileName) {
       query = searchQuery.originalFileName;
       queryType = QueryType.METADATA;
     }
 
-    if ('originalPath' in searchQuery && searchQuery.originalPath) {
+    if (searchQuery.originalPath) {
       query = searchQuery.originalPath;
       queryType = QueryType.FULL_PATH;
     }
 
-    if ('description' in searchQuery && searchQuery.description) {
+    if (searchQuery.description) {
       query = searchQuery.description;
       queryType = QueryType.DESCRIPTION;
     }
 
-    if (searchQuery.ocr) {
-      query = searchQuery.ocr;
-      queryType = QueryType.OCR;
-    }
-
     return {
       query,
-      ocr: searchQuery.ocr,
       queryType,
-      queryAssetId: 'queryAssetId' in searchQuery ? searchQuery.queryAssetId : undefined,
-      personIds: new SvelteSet('personIds' in searchQuery ? searchQuery.personIds : []),
       tagIds:
         'tagIds' in searchQuery
           ? searchQuery.tagIds === null
@@ -98,7 +90,7 @@ class SearchManager {
     };
   }
 
-  #toQuery(): MetadataSearchDto | SmartSearchDto {
+  #toQuery(): MetadataSearchDto {
     let type: AssetTypeEnum | undefined = undefined;
     if (this.filter.mediaType === MediaType.Image) {
       type = AssetTypeEnum.Image;
@@ -109,9 +101,6 @@ class SearchManager {
     const query = this.filter.query || undefined;
 
     return {
-      query: this.filter.queryType === 'smart' ? query : undefined,
-      queryAssetId: this.filter.queryAssetId || undefined,
-      ocr: this.filter.queryType === 'ocr' ? query : undefined,
       originalFileName: this.filter.queryType === 'metadata' ? query : undefined,
       description: this.filter.queryType === 'description' ? query : undefined,
       originalPath: this.filter.queryType === 'fullPath' ? this.filter.query.trim() || undefined : undefined,
@@ -130,7 +119,6 @@ class SearchManager {
       visibility: this.filter.display.isArchive ? AssetVisibility.Archive : undefined,
       isFavorite: this.filter.display.isFavorite || undefined,
       isNotInAlbum: this.filter.display.isNotInAlbum || undefined,
-      personIds: this.filter.personIds.size > 0 ? [...this.filter.personIds] : undefined,
       tagIds: this.filter.tagIds === null ? null : this.filter.tagIds.size > 0 ? [...this.filter.tagIds] : undefined,
       type,
       rating: this.filter.rating,
@@ -151,7 +139,7 @@ class SearchManager {
 
   #defaultQueryType(): QueryType {
     const storedQueryType = localStorage.getItem(QUERY_TYPE_STORAGE_KEY) as QueryType;
-    return validQueryTypes.has(storedQueryType) ? storedQueryType : QueryType.SMART;
+    return validQueryTypes.has(storedQueryType) ? storedQueryType : QueryType.METADATA;
   }
 }
 

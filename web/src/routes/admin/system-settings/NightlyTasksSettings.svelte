@@ -43,12 +43,6 @@
           {disabled}
         />
         <SettingSwitch
-          title={$t('admin.nightly_tasks_cluster_new_faces_setting')}
-          subtitle={$t('admin.nightly_tasks_cluster_faces_setting_description')}
-          bind:checked={configToEdit.nightlyTasks.clusterNewFaces}
-          {disabled}
-        />
-        <SettingSwitch
           title={$t('admin.nightly_tasks_generate_memories_setting')}
           subtitle={$t('admin.nightly_tasks_generate_memories_setting_description')}
           bind:checked={configToEdit.nightlyTasks.generateMemories}

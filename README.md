@@ -85,7 +85,7 @@ Access the demo [here](https://demo.immich.app). For the mobile app, you can use
 | Scrubbable/draggable scrollbar               | Yes    | Yes |
 | Support raw formats                          | Yes    | Yes |
 | Metadata view (EXIF, map)                    | Yes    | Yes |
-| Search by metadata, objects, faces, and CLIP | Yes    | Yes |
+| Search by metadata                           | Yes    | Yes |
 | Administrative functions (user management)   | No     | Yes |
 | Background backup                            | Yes    | N/A |
 | Virtual scroll                               | Yes    | Yes |
@@ -98,7 +98,6 @@ Access the demo [here](https://demo.immich.app). For the mobile app, you can use
 | Archive and Favorites                        | Yes    | Yes |
 | Global Map                                   | Yes    | Yes |
 | Partner Sharing                              | Yes    | Yes |
-| Facial recognition and clustering            | Yes    | Yes |
 | Memories (x years ago)                       | Yes    | Yes |
 | Offline support                              | Yes    | No  |
 | Read-only gallery                            | Yes    | Yes |

@@ -4,7 +4,6 @@
   import { fly } from 'svelte/transition';
   import { Button, Text } from '@immich/ui';
   import {
-    mdiAccount,
     mdiCalendarBlank,
     mdiChevronDown,
     mdiChevronUp,
@@ -15,22 +14,19 @@
     mdiTune,
   } from '@mdi/js';
   import SearchLocationSection from './SearchLocationSection.svelte';
-  import { getAllTags, type PersonResponseDto, type TagResponseDto } from '@immich/sdk';
+  import { getAllTags, type TagResponseDto } from '@immich/sdk';
   import SearchMediaSection from './SearchMediaSection.svelte';
   import SearchCameraSection from './SearchCameraSection.svelte';
   import SearchDateSection from './SearchDateSection.svelte';
-  import SearchPeopleSection from './SearchPeopleSection.svelte';
   import SearchTagsSection from './SearchTagsSection.svelte';
   import SearchTextSection from './SearchTextSection.svelte';
   import SearchDisplaySection from './SearchDisplaySection.svelte';
   import SearchRatingsSection from './SearchRatingsSection.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import {
-    getPeople,
     getSearchDatePreset,
     getSearchDateTitle,
     getSearchMediaTitle,
-    getSearchPeopleTitle,
     getSearchPlacesTitle,
     getSearchTagsTitle,
     getSearchTypeTitle,
@@ -63,13 +59,10 @@
 
   let activeFilter = $state('type');
   let showAdvanced = $state(false);
-  let peoplePromise = $state<Promise<PersonResponseDto[]>>();
-  let people = $state<PersonResponseDto[]>();
   let tagsPromise = $state<Promise<TagResponseDto[]>>();
   let tags = $state<TagResponseDto[]>();
 
   let typeTitle = $derived(getSearchTypeTitle(searchManager.filter.queryType));
-  let peopleTitle = $state<string>();
   let dateTitle = $derived(
     getSearchDateTitle(
       getSearchDatePreset(searchManager.filter.date.takenAfter, searchManager.filter.date.takenBefore),
@@ -93,12 +86,6 @@
       icon: mdiMagnify,
       title: $t('search_type'),
       activeTitle: () => typeTitle,
-    },
-    {
-      name: 'people',
-      icon: mdiAccount,
-      title: $t('people'),
-      activeTitle: () => peopleTitle,
     },
     {
       name: 'date',
@@ -139,24 +126,13 @@
 
   const clear = () => {
     searchManager.reset();
-    peopleTitle = tagsTitle = undefined;
+    tagsTitle = undefined;
   };
 
   onMount(() => {
-    if (searchManager.filter.personIds.size > 0 && !peoplePromise) {
-      peoplePromise = getPeople(searchManager.filter.personIds);
-      void peoplePromise.then((res) => (people = res));
-    }
-
     if (searchManager.filter.tagIds?.size && !tagsPromise) {
       tagsPromise = getAllTags();
       void tagsPromise.then((res) => (tags = res));
-    }
-  });
-
-  $effect(() => {
-    if (people) {
-      peopleTitle = getSearchPeopleTitle(people, searchManager.filter.personIds);
     }
   });
 
@@ -219,8 +195,6 @@
         <div class="px-5 pt-5">
           {#if activeFilter === 'type'}
             <SearchTextSection />
-          {:else if activeFilter === 'people'}
-            <SearchPeopleSection bind:title={peopleTitle} parentPromise={peoplePromise} />
           {:else if activeFilter === 'date'}
             <SearchDateSection />
           {:else if activeFilter === 'places'}

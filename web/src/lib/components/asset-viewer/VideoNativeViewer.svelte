@@ -1,8 +1,6 @@
 <script lang="ts">
-  import FaceEditor from '$lib/components/asset-viewer/face-editor/FaceEditor.svelte';
   import VideoRemoteViewer from '$lib/components/asset-viewer/VideoRemoteViewer.svelte';
   import { assetViewerFadeDuration } from '$lib/constants';
-  import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { castManager } from '$lib/managers/cast-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
@@ -76,7 +74,6 @@
 
   let videoPlayer: HTMLVideoElement | undefined = $state();
   let isLoading = $state(true);
-  let hasLoadedMetadata = $state(false);
   let assetFileUrl = $derived.by(() => {
     if (featureFlagsManager.value.realtimeTranscoding) {
       return getAssetHlsUrl(assetId);
@@ -242,7 +239,6 @@
 
   $effect(() => {
     // reactive on `assetFileUrl` changes
-    hasLoadedMetadata = false;
     if (videoPlayer && assetFileUrl) {
       hasFocused = false;
       rebuildCount = 0;
@@ -315,15 +311,6 @@
     }
   };
 
-  let containerWidth = $state(0);
-  let containerHeight = $state(0);
-
-  $effect(() => {
-    if (assetViewerManager.isFaceEditMode) {
-      videoPlayer?.pause();
-    }
-  });
-
   // The time is only refreshed on HLS fragment decode by default,
   // so manually emit events on seek to update it immediately.
   const onSeeking = (event: Event) => event.currentTarget?.dispatchEvent(new Event('timeupdate'));
@@ -354,8 +341,6 @@
   <div
     transition:fade={{ duration: assetViewerFadeDuration }}
     class="flex h-full place-content-center place-items-center select-none"
-    bind:clientWidth={containerWidth}
-    bind:clientHeight={containerHeight}
   >
     {#if castManager.isCasting}
       <div class="h-full place-content-center place-items-center">
@@ -387,7 +372,6 @@
             {...useSwipe(onSwipe)}
             class="h-full object-contain"
             oncanplay={(e: Event) => handleCanPlay(e.currentTarget as HTMLVideoElement)}
-            onloadedmetadata={() => (hasLoadedMetadata = true)}
             onended={onVideoEnded}
             onseeking={onSeeking}
             onplaying={(e: Event) => {
@@ -413,7 +397,6 @@
             {...useSwipe(onSwipe)}
             class="h-full object-contain"
             oncanplay={(e) => handleCanPlay(e.currentTarget)}
-            onloadedmetadata={() => (hasLoadedMetadata = true)}
             onended={onVideoEnded}
             onseeking={onSeeking}
             onplaying={(e) => {
@@ -491,15 +474,6 @@
         <div class="absolute flex place-content-center place-items-center">
           <LoadingSpinner />
         </div>
-      {/if}
-
-      {#if assetViewerManager.isFaceEditMode && videoPlayer && hasLoadedMetadata}
-        <FaceEditor
-          htmlElement={isHlsElement(videoPlayer) ? videoPlayer.nativeEl : videoPlayer}
-          {containerWidth}
-          {containerHeight}
-          {assetId}
-        />
       {/if}
     {/if}
   </div>

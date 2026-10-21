@@ -193,16 +193,6 @@ where
   "session"."userId" = $1
   and "session"."id" in ($2)
 
--- AccessRepository.duplicate.checkOwnerAccess
-select
-  "asset"."duplicateId"
-from
-  "asset"
-where
-  "asset"."duplicateId" in ($1)
-  and "asset"."ownerId" = $2
-  and "asset"."deletedAt" is null
-
 -- AccessRepository.memory.checkOwnerAccess
 select
   "memory"."id"
@@ -221,95 +211,6 @@ from
 where
   "notification"."id" in ($1)
   and "notification"."userId" = $2
-
--- AccessRepository.clusterGroup.checkInviteAccess
-select
-  "cluster_group_request"."clusterGroupId"
-from
-  "cluster_group_request"
-where
-  "cluster_group_request"."clusterGroupId" in ($1)
-  and "cluster_group_request"."userId" = $2
-
--- AccessRepository.clusterGroup.checkOwnerAccess
-select
-  "user"."clusterGroupId"
-from
-  "user"
-where
-  "user"."clusterGroupId" in ($1)
-  and "user"."id" = $2
-
--- AccessRepository.clusterGroupRequest.checkOwnerAccess
-select
-  "cluster_group_request"."id"
-from
-  "cluster_group_request"
-where
-  "cluster_group_request"."id" in ($1)
-  and "cluster_group_request"."userId" = $2
-
--- AccessRepository.clusterGroupRequest.checkGroupAccess
-select
-  "cluster_group_request"."id"
-from
-  "cluster_group_request"
-where
-  "cluster_group_request"."id" in ($1)
-  and "cluster_group_request"."clusterGroupId" = (
-    select
-      "user"."clusterGroupId"
-    from
-      "user"
-    where
-      "user"."id" = $2
-  )
-
--- AccessRepository.person.checkAccess
-select
-  "personGroupId",
-  "ownerId"
-from
-  (
-    select
-      unnest($1::uuid[]) as "personGroupId",
-      unnest($2::uuid[]) as "ownerId"
-  ) as "people"
-where
-  (
-    exists (
-      select
-        *
-      from
-        "person"
-      where
-        "people"."personGroupId" = "person"."personGroupId"
-        and "people"."ownerId" = "person"."ownerId"
-        and "person"."ownerId" = $3
-    )
-    or exists (
-      select
-        *
-      from
-        "person_user"
-      where
-        "person_user"."sharedWithId" = $4
-        and "person_user"."role" in ($5)
-        and "people"."personGroupId" = "person_user"."personGroupId"
-        and "people"."ownerId" = "person_user"."sharedById"
-    )
-  )
-
--- AccessRepository.person.checkFaceOwnerAccess
-select
-  "asset_face"."id"
-from
-  "asset_face"
-  left join "asset" on "asset"."id" = "asset_face"."assetId"
-  and "asset"."deletedAt" is null
-where
-  "asset_face"."id" in ($1)
-  and "asset"."ownerId" = $2
 
 -- AccessRepository.partner.checkUpdateAccess
 select

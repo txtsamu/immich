@@ -15,8 +15,6 @@ services:
       - /etc/localtime:/etc/localtime:ro
   immich-web:
     env_file: !reset []
-  immich-machine-learning:
-    env_file: !reset []
   database:
     env_file: !reset []
     environment: !override

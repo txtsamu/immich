@@ -128,30 +128,6 @@ services:
       immich-server:
         condition: service_started
 
-  immich-machine-learning:
-    container_name: immich_machine_learning
-    image: immich-machine-learning-dev:latest
-    # extends:
-    #   file: hwaccel.ml.yml
-    #   service: cpu # set to one of [armnn, cuda, rocm, openvino, openvino-wsl, rknn] for accelerated inference
-    build:
-      context: ../machine-learning
-      dockerfile: Dockerfile
-      args:
-        - DEVICE=cpu # set to one of [armnn, cuda, rocm, openvino, openvino-wsl, rknn] for accelerated inference
-    ports:
-      - 3003:3003
-    volumes:
-      - ../machine-learning/immich_ml:/usr/src/immich_ml
-      - model_cache:/cache
-    env_file:
-      - .env
-    depends_on:
-      - database
-    restart: unless-stopped
-    healthcheck:
-      disable: false
-
   redis:
     container_name: immich_redis
     image: docker.io/valkey/valkey:9@sha256:418652cfb58ef879d4978c33553735d7147016032d5aefaa14c828e611eb9dfd
