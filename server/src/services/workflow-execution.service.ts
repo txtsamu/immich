@@ -41,7 +41,7 @@ const dummy = () => {
   );
 };
 
-/** Run a Promise-based collaborator as an Effect; the error stays the original thrown value. */
+/** Run a call into another (Promise-based) service as an Effect; the error stays the original thrown value. */
 const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (cause) => cause });
 
 /** The original thrown value behind a wrapped repository error (`DatabaseError`, `LibraryError`, ...). */
@@ -158,13 +158,11 @@ export class WorkflowExecutionService extends BaseService {
             const label = `${name}@${version}`;
             const key = this.getPluginKey({ id, hostFunctions: false });
             yield* Effect.gen({ self: this }, function* () {
-              yield* attempt(() =>
-                this.pluginRepository.load({ key, label, wasmBytes }, { runInWorker: false, functions: stubs }),
-              );
+              yield* this.fx.plugin.load({ key, label, wasmBytes }, { runInWorker: false, functions: stubs });
               this.logger.log(`Loaded plugin: ${label}`);
             }).pipe(
               Effect.catch((error) => {
-                this.logger.error(`Unable to load plugin ${label} (${id})`, error);
+                this.logger.error(`Unable to load plugin ${label} (${id})`, unwrap(error));
                 return Effect.void;
               }),
             );
@@ -178,13 +176,11 @@ export class WorkflowExecutionService extends BaseService {
           const label = `${name}@${version}/worker`;
           const key = this.getPluginKey({ id, hostFunctions: true });
           yield* Effect.gen({ self: this }, function* () {
-            yield* attempt(() =>
-              this.pluginRepository.load({ key, label, wasmBytes }, { runInWorker: true, functions }),
-            );
+            yield* this.fx.plugin.load({ key, label, wasmBytes }, { runInWorker: true, functions });
             this.logger.log(`Loaded plugin with host functions: ${label}`);
           }).pipe(
             Effect.catch((error) => {
-              this.logger.error(`Unable to load plugin with host functions ${label} (${id})`, error);
+              this.logger.error(`Unable to load plugin with host functions ${label} (${id})`, unwrap(error));
               return Effect.void;
             }),
           );
@@ -489,15 +485,13 @@ export class WorkflowExecutionService extends BaseService {
             return 'skip' as const;
           }
 
-          const result = yield* attempt(() =>
-            this.pluginRepository.callMethod<WorkflowResponse<T>>(
-              {
-                pluginKey: this.getPluginKey({ id: step.pluginId, hostFunctions: step.hostFunctions }),
-                methodName: step.methodName,
-              },
-              payload,
-              context,
-            ),
+          const result = yield* this.fx.plugin.callMethod<WorkflowResponse<T>>(
+            {
+              pluginKey: this.getPluginKey({ id: step.pluginId, hostFunctions: step.hostFunctions }),
+              methodName: step.methodName,
+            },
+            payload,
+            context,
           );
           if (result?.changes) {
             yield* write(

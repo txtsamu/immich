@@ -17,9 +17,9 @@ import { runPromise } from 'src/effect/run.js';
 import { JobName, JobStatus, Permission, QueueName } from 'src/enum.js';
 import { TagAssetTable } from 'src/schema/tables/tag-asset.table.js';
 import { BaseService } from 'src/services/base.service.js';
-import { addAssets, removeAssets } from 'src/utils/asset.util.js';
+import { addAssetsFx, removeAssetsFx } from 'src/utils/asset.util.js';
 import { updateLockedColumns } from 'src/utils/database.js';
-import { upsertTags } from 'src/utils/tag.js';
+import { upsertTagsFx } from 'src/utils/tag.js';
 
 @Injectable()
 export class TagService extends BaseService {
@@ -97,10 +97,7 @@ export class TagService extends BaseService {
   async upsert(auth: AuthDto, dto: TagUpsertDto) {
     return runPromise(
       Effect.gen({ self: this }, function* () {
-        const tags = yield* Effect.tryPromise({
-          try: () => upsertTags(this.tagRepository, { userId: auth.user.id, tags: dto.tags }),
-          catch: (cause) => cause,
-        });
+        const tags = yield* upsertTagsFx(this.fx.tag, { userId: auth.user.id, tags: dto.tags });
         return tags.map((tag) => mapTag(tag));
       }),
     );
@@ -152,15 +149,11 @@ export class TagService extends BaseService {
       Effect.gen({ self: this }, function* () {
         yield* this.requireAccessFx({ auth, permission: Permission.TagAsset, ids: [id] });
 
-        const results = yield* Effect.tryPromise({
-          try: () =>
-            addAssets(
-              auth,
-              { access: this.accessRepository, bulk: this.tagRepository },
-              { parentId: id, assetIds: dto.ids, permission: Permission.AssetUpdate },
-            ),
-          catch: (cause) => cause,
-        });
+        const results = yield* addAssetsFx(
+          auth,
+          { access: this.fx.access, bulk: this.fx.tag },
+          { parentId: id, assetIds: dto.ids, permission: Permission.AssetUpdate },
+        );
 
         for (const { id: assetId, success } of results) {
           if (!success) {
@@ -181,15 +174,11 @@ export class TagService extends BaseService {
       Effect.gen({ self: this }, function* () {
         yield* this.requireAccessFx({ auth, permission: Permission.TagAsset, ids: [id] });
 
-        const results = yield* Effect.tryPromise({
-          try: () =>
-            removeAssets(
-              auth,
-              { access: this.accessRepository, bulk: this.tagRepository },
-              { parentId: id, assetIds: dto.ids, canAlwaysRemove: Permission.TagDelete },
-            ),
-          catch: (cause) => cause,
-        });
+        const results = yield* removeAssetsFx(
+          auth,
+          { access: this.fx.access, bulk: this.fx.tag },
+          { parentId: id, assetIds: dto.ids, canAlwaysRemove: Permission.TagDelete },
+        );
 
         for (const { id: assetId, success } of results) {
           if (!success) {

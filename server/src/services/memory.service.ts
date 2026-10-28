@@ -15,7 +15,7 @@ import {
 import { runPromise, unwrap } from 'src/effect/run.js';
 import { DatabaseLock, JobName, MemoryType, Permission, QueueName, SystemMetadataKey } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
-import { addAssets, removeAssets } from 'src/utils/asset.util.js';
+import { addAssetsFx, removeAssetsFx } from 'src/utils/asset.util.js';
 
 const DAYS = 3;
 
@@ -180,15 +180,11 @@ export class MemoryService extends BaseService {
       Effect.gen({ self: this }, function* () {
         yield* this.requireAccessFx({ auth, permission: Permission.MemoryRead, ids: [id] });
 
-        const repos = { access: this.accessRepository, bulk: this.memoryRepository };
-        const results = yield* Effect.tryPromise({
-          try: () =>
-            addAssets(auth, repos, {
-              parentId: id,
-              assetIds: dto.ids,
-              permission: Permission.AssetUpdate,
-            }),
-          catch: (cause) => cause,
+        const repos = { access: this.fx.access, bulk: this.fx.memory };
+        const results = yield* addAssetsFx(auth, repos, {
+          parentId: id,
+          assetIds: dto.ids,
+          permission: Permission.AssetUpdate,
         });
 
         const hasSuccess = results.some(({ success }) => success);
@@ -206,15 +202,11 @@ export class MemoryService extends BaseService {
       Effect.gen({ self: this }, function* () {
         yield* this.requireAccessFx({ auth, permission: Permission.MemoryUpdate, ids: [id] });
 
-        const repos = { access: this.accessRepository, bulk: this.memoryRepository };
-        const results = yield* Effect.tryPromise({
-          try: () =>
-            removeAssets(auth, repos, {
-              parentId: id,
-              assetIds: dto.ids,
-              canAlwaysRemove: Permission.MemoryDelete,
-            }),
-          catch: (cause) => cause,
+        const repos = { access: this.fx.access, bulk: this.fx.memory };
+        const results = yield* removeAssetsFx(auth, repos, {
+          parentId: id,
+          assetIds: dto.ids,
+          canAlwaysRemove: Permission.MemoryDelete,
         });
 
         const hasSuccess = results.some(({ success }) => success);

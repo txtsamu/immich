@@ -45,15 +45,15 @@ import {
   getAssetFiles,
   getDimensions,
   isPanorama,
-  onAfterUnlink,
-  onBeforeLink,
-  onBeforeUnlink,
+  onAfterUnlinkFx,
+  onBeforeLinkFx,
+  onBeforeUnlinkFx,
 } from 'src/utils/asset.util.js';
 import { updateLockedColumns } from 'src/utils/database.js';
 import { extractTimeZone } from 'src/utils/date.js';
 import { batched } from 'src/utils/misc.js';
 
-/** Run a Promise-based collaborator as an Effect; the error stays the original thrown value. */
+/** Run a Promise-based collaborator (`this.get`, iterator plumbing) as an Effect; the error stays the original thrown value. */
 const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (cause) => cause });
 
 @Injectable()
@@ -99,17 +99,17 @@ export class AssetService extends BaseService {
         yield* this.requireAccessFx({ auth, permission: Permission.AssetUpdate, ids: [id] });
 
         const { description, dateTimeOriginal, latitude, longitude, rating, ...rest } = dto;
-        const repos = { asset: this.assetRepository, event: this.eventRepository };
+        const repos = { asset: this.fx.asset, event: this.fx.event };
 
         let previousMotion: { id: string } | null = null;
         if (rest.livePhotoVideoId) {
           const { livePhotoVideoId } = rest;
-          yield* attempt(() => onBeforeLink(repos, { userId: auth.user.id, livePhotoVideoId }));
+          yield* onBeforeLinkFx(repos, { userId: auth.user.id, livePhotoVideoId });
         } else if (rest.livePhotoVideoId === null) {
           const asset = yield* this.findOrFail(id);
           if (asset.livePhotoVideoId) {
             const { livePhotoVideoId } = asset;
-            previousMotion = yield* attempt(() => onBeforeUnlink(repos, { livePhotoVideoId }));
+            previousMotion = yield* onBeforeUnlinkFx(repos, { livePhotoVideoId });
           }
         }
 
@@ -126,13 +126,11 @@ export class AssetService extends BaseService {
 
         if (previousMotion && asset) {
           const { id: livePhotoVideoId } = previousMotion;
-          yield* attempt(() =>
-            onAfterUnlink(repos, {
-              userId: auth.user.id,
-              livePhotoVideoId,
-              visibility: asset.visibility,
-            }),
-          );
+          yield* onAfterUnlinkFx(repos, {
+            userId: auth.user.id,
+            livePhotoVideoId,
+            visibility: asset.visibility,
+          });
         }
 
         if (!asset) {

@@ -4,7 +4,7 @@ import { AuthDto } from 'src/dtos/auth.dto.js';
 import { MapMarkerDto, MapMarkerResponseDto, MapReverseGeocodeDto } from 'src/dtos/map.dto.js';
 import { runPromise } from 'src/effect/run.js';
 import { BaseService } from 'src/services/base.service.js';
-import { getMyPartnerIds } from 'src/utils/asset.util.js';
+import { getMyPartnerIdsFx } from 'src/utils/asset.util.js';
 
 @Injectable()
 export class MapService extends BaseService {
@@ -13,10 +13,7 @@ export class MapService extends BaseService {
       Effect.gen({ self: this }, function* () {
         const userIds = [auth.user.id];
         if (options.withPartners) {
-          const partnerIds = yield* Effect.tryPromise({
-            try: () => getMyPartnerIds({ userId: auth.user.id, repository: this.partnerRepository }),
-            catch: (cause) => cause,
-          });
+          const partnerIds = yield* getMyPartnerIdsFx({ userId: auth.user.id, repository: this.fx.partner });
           userIds.push(...partnerIds);
         }
 
@@ -32,10 +29,7 @@ export class MapService extends BaseService {
     // eventually this should probably return an array of results
     return runPromise(
       Effect.gen({ self: this }, function* () {
-        const result = yield* Effect.tryPromise({
-          try: () => this.mapRepository.reverseGeocode({ latitude, longitude }),
-          catch: (cause) => cause,
-        });
+        const result = yield* this.fx.map.reverseGeocode({ latitude, longitude });
         return result ? [result] : [];
       }),
     );

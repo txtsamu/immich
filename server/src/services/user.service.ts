@@ -19,11 +19,11 @@ import { CacheControl, JobName, JobStatus, QueueName, StorageFolder, UserMetadat
 import { UserFindOptions } from 'src/repositories/user.repository.js';
 import { UserTable } from 'src/schema/tables/user.table.js';
 import { BaseService } from 'src/services/base.service.js';
-import { getCalendarHeatmap } from 'src/services/shared/user-methods.js';
+import { getCalendarHeatmapFx } from 'src/services/shared/user-methods.js';
 import { ImmichFileResponse } from 'src/utils/file.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { getPreferences, getPreferencesPartial, mergePreferences } from 'src/utils/preferences.js';
-import { generateProfileImage } from 'src/utils/profile-image.js';
+import { generateProfileImageFx } from 'src/utils/profile-image.js';
 
 /** The value originally thrown, for errors that wrap it in `cause` (see `src/effect/errors.ts`). */
 @Injectable()
@@ -60,7 +60,7 @@ export class UserService extends BaseService {
   }
 
   getCalendarHeatmap(auth: AuthDto, dto: CalendarHeatmapDto): Promise<CalendarHeatmapResponseDto> {
-    return getCalendarHeatmap(auth.user.id, dto, { asset: this.assetRepository });
+    return runPromise(getCalendarHeatmapFx(auth.user.id, dto, { asset: this.fx.asset }));
   }
 
   async updateMe({ user }: AuthDto, dto: UserUpdateMeDto): Promise<UserAdminResponseDto> {
@@ -134,16 +134,12 @@ export class UserService extends BaseService {
 
         const profileImagePath: string = yield* Effect.gen({ self: this }, function* () {
           const config = yield* this.getConfigFx({ withCache: true });
-          return yield* Effect.tryPromise({
-            try: () =>
-              generateProfileImage(
-                { media: this.mediaRepository, crypto: this.cryptoRepository, storageCore: this.storageCore },
-                config,
-                auth.user.id,
-                file.path,
-              ),
-            catch: (cause) => cause,
-          });
+          return yield* generateProfileImageFx(
+            { media: this.fx.media, crypto: this.fx.crypto, storageCore: this.storageCore },
+            config,
+            auth.user.id,
+            file.path,
+          );
         }).pipe(
           Effect.catch((error) =>
             Effect.gen({ self: this }, function* () {

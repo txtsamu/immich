@@ -50,10 +50,7 @@ export class TranscodingService extends BaseService {
     return runPromise(
       Effect.gen({ self: this }, function* () {
         const [videoInterfaces] = yield* Effect.all(
-          [
-            Effect.tryPromise({ try: () => this.storageCore.getVideoInterfaces(), catch: (cause) => cause }),
-            this.removeExpiredSessions(),
-          ],
+          [this.storageCore.getVideoInterfacesFx(), this.removeExpiredSessions()],
           { concurrency: 'unbounded' },
         );
         this.videoInterfaces = videoInterfaces;

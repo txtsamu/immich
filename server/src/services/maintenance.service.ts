@@ -14,7 +14,7 @@ import { MaintenanceAction, SystemMetadataKey } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import {
   createMaintenanceLoginUrl,
-  detectPriorInstall,
+  detectPriorInstallFx,
   generateMaintenanceSecret,
   signMaintenanceJwt,
 } from 'src/utils/maintenance.js';
@@ -45,7 +45,7 @@ export class MaintenanceService extends BaseService {
   }
 
   detectPriorInstall(): Promise<MaintenanceDetectInstallResponseDto> {
-    return detectPriorInstall(this.storageRepository);
+    return runPromise(detectPriorInstallFx(this.fx.storage));
   }
 
   async startMaintenance(action: SetMaintenanceModeDto, username: string): Promise<{ jwt: string }> {

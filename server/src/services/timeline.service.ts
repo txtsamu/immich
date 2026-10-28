@@ -7,7 +7,7 @@ import { AssetVisibility, Permission } from 'src/enum.js';
 import { TimeBucketOptions } from 'src/repositories/asset.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { requireElevatedPermission } from 'src/utils/access.js';
-import { getMyPartnerIds } from 'src/utils/asset.util.js';
+import { getMyPartnerIdsFx } from 'src/utils/asset.util.js';
 
 @Injectable()
 export class TimelineService extends BaseService {
@@ -35,6 +35,7 @@ export class TimelineService extends BaseService {
     );
   }
 
+  // eslint-disable-next-line unicorn/consistent-function-scoping
   private buildTimeBucketOptions = Effect.fn('TimelineService.buildTimeBucketOptions')(function* (
     this: TimelineService,
     auth: AuthDto,
@@ -46,14 +47,10 @@ export class TimelineService extends BaseService {
     if (userId) {
       userIds = [userId];
       if (dto.withPartners) {
-        const partnerIds = yield* Effect.tryPromise({
-          try: () =>
-            getMyPartnerIds({
-              userId: auth.user.id,
-              repository: this.partnerRepository,
-              timelineEnabled: true,
-            }),
-          catch: (cause) => cause,
+        const partnerIds = yield* getMyPartnerIdsFx({
+          userId: auth.user.id,
+          repository: this.fx.partner,
+          timelineEnabled: true,
         });
         userIds.push(...partnerIds);
       }

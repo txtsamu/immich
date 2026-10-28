@@ -34,7 +34,7 @@ import { isAssetChecksumConstraint } from 'src/utils/database.js';
 import { mergeTimeZone } from 'src/utils/date.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { batched } from 'src/utils/misc.js';
-import { upsertTags } from 'src/utils/tag.js';
+import { upsertTagsFx } from 'src/utils/tag.js';
 
 const POSTGRES_INT_MAX = 2_147_483_647;
 const POSTGRES_INT_MIN = -2_147_483_648;
@@ -268,10 +268,7 @@ export class MetadataService extends BaseService {
           latitude = point.latitude;
           longitude = point.longitude;
           if (reverseGeocoding.enabled) {
-            geo = yield* Effect.tryPromise({
-              try: () => this.mapRepository.reverseGeocode(point),
-              catch: (cause) => cause,
-            });
+            geo = yield* this.fx.map.reverseGeocode(point);
           }
         }
 
@@ -683,16 +680,13 @@ export class MetadataService extends BaseService {
     return tags;
   }
 
+  // eslint-disable-next-line unicorn/consistent-function-scoping
   private applyTagList = Effect.fn('MetadataService.applyTagList')(function* (
     this: MetadataService,
     { id, ownerId }: { id: string; ownerId: string },
   ) {
     const asset = yield* this.fx.asset.getForMetadataExtractionTags(id);
-    // `upsertTags` is a Promise-based util that takes the Promise adapter
-    const results = yield* Effect.tryPromise({
-      try: () => upsertTags(this.tagRepository, { userId: ownerId, tags: asset?.tags ?? [] }),
-      catch: (cause) => cause,
-    });
+    const results = yield* upsertTagsFx(this.fx.tag, { userId: ownerId, tags: asset?.tags ?? [] });
     yield* this.fx.tag.replaceAssetTags(
       id,
       results.map((tag) => tag.id),

@@ -20,7 +20,7 @@ import { runPromise } from 'src/effect/run.js';
 import { AlbumUserRole, Permission } from 'src/enum.js';
 import { AlbumAssetCount } from 'src/repositories/album.repository.js';
 import { BaseService } from 'src/services/base.service.js';
-import { addAssets, removeAssets } from 'src/utils/asset.util.js';
+import { addAssetsFx, removeAssetsFx } from 'src/utils/asset.util.js';
 import { asDateTimeString } from 'src/utils/date.js';
 import { getPreferences } from 'src/utils/preferences.js';
 
@@ -209,15 +209,11 @@ export class AlbumService extends BaseService {
         const album = yield* this.findOrFail(id, auth.user.id);
         yield* this.requireAccessFx({ auth, permission: Permission.AlbumAssetCreate, ids: [id] });
 
-        const results = yield* Effect.tryPromise({
-          try: () =>
-            addAssets(
-              auth,
-              { access: this.accessRepository, bulk: this.albumRepository },
-              { parentId: id, assetIds: dto.ids, permission: Permission.AssetShare },
-            ),
-          catch: (cause) => cause,
-        });
+        const results = yield* addAssetsFx(
+          auth,
+          { access: this.fx.access, bulk: this.fx.album },
+          { parentId: id, assetIds: dto.ids, permission: Permission.AssetShare },
+        );
 
         const { id: firstNewAssetId } = results.find(({ success }) => success) || {};
         if (firstNewAssetId) {
@@ -314,15 +310,11 @@ export class AlbumService extends BaseService {
         yield* this.requireAccessFx({ auth, permission: Permission.AlbumAssetDelete, ids: [id] });
 
         const album = yield* this.findOrFail(id, auth.user.id);
-        const results = yield* Effect.tryPromise({
-          try: () =>
-            removeAssets(
-              auth,
-              { access: this.accessRepository, bulk: this.albumRepository },
-              { parentId: id, assetIds: dto.ids, canAlwaysRemove: Permission.AlbumDelete },
-            ),
-          catch: (cause) => cause,
-        });
+        const results = yield* removeAssetsFx(
+          auth,
+          { access: this.fx.access, bulk: this.fx.album },
+          { parentId: id, assetIds: dto.ids, canAlwaysRemove: Permission.AlbumDelete },
+        );
 
         const removedIds = results.filter(({ success }) => success).map(({ id }) => id);
         if (removedIds.length > 0) {

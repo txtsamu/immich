@@ -33,7 +33,7 @@ import {
 import { AuthRequest } from 'src/middleware/auth.guard.js';
 import { BaseService } from 'src/services/base.service.js';
 import { requireUploadAccess } from 'src/utils/access.js';
-import { asUploadRequest, onBeforeLink } from 'src/utils/asset.util.js';
+import { asUploadRequest, onBeforeLinkFx } from 'src/utils/asset.util.js';
 import { isAssetChecksumConstraint } from 'src/utils/database.js';
 import { ImmichFileResponse, getFileNameWithoutExtension, getFilenameExtension } from 'src/utils/file.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
@@ -156,14 +156,10 @@ export class AssetMediaService extends BaseService {
 
           const livePhotoVideoId = dto.livePhotoVideoId;
           if (livePhotoVideoId) {
-            yield* Effect.tryPromise({
-              try: () =>
-                onBeforeLink(
-                  { asset: this.assetRepository, event: this.eventRepository },
-                  { userId: auth.user.id, livePhotoVideoId },
-                ),
-              catch: (cause) => cause,
-            });
+            yield* onBeforeLinkFx(
+              { asset: this.fx.asset, event: this.fx.event },
+              { userId: auth.user.id, livePhotoVideoId },
+            );
           }
 
           asset = yield* this.fx.asset.create({

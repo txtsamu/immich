@@ -29,7 +29,7 @@ import { OAuthProfile } from 'src/repositories/oauth.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { isGranted } from 'src/utils/access.js';
 import { HumanReadableSize } from 'src/utils/bytes.js';
-import { generateProfileImage } from 'src/utils/profile-image.js';
+import { generateProfileImageFx } from 'src/utils/profile-image.js';
 import { getUserAgentDetails } from 'src/utils/request.js';
 
 export interface LoginDetails {
@@ -446,16 +446,12 @@ export class AuthService extends BaseService {
       const data = yield* this.fx.oauth.getProfilePicture(url);
 
       const config = yield* this.getConfigFx({ withCache: true });
-      const profileImagePath = yield* Effect.tryPromise({
-        try: () =>
-          generateProfileImage(
-            { media: this.mediaRepository, crypto: this.cryptoRepository, storageCore: this.storageCore },
-            config,
-            user.id,
-            Buffer.from(data),
-          ),
-        catch: (cause) => cause,
-      });
+      const profileImagePath = yield* generateProfileImageFx(
+        { media: this.fx.media, crypto: this.fx.crypto, storageCore: this.storageCore },
+        config,
+        user.id,
+        Buffer.from(data),
+      );
 
       yield* this.fx.user.update(user.id, { profileImagePath, profileChangedAt: new Date() });
 

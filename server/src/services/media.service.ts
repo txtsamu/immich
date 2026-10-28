@@ -52,7 +52,7 @@ interface UpsertFileOptions {
 
 type ThumbnailAsset = NonNullable<Awaited<ReturnType<AssetJobRepository['getForGenerateThumbnailJob']>>>;
 
-/** Runs a Promise-based collaborator (storage core, ...); the error stays the original thrown value. */
+/** Runs the async iterator plumbing as an Effect; the error stays the original thrown value. */
 const attempt = <A>(run: () => A | PromiseLike<A>) =>
   Effect.tryPromise({ try: async () => await run(), catch: (cause) => cause });
 
@@ -81,7 +81,7 @@ export class MediaService extends BaseService {
   async onBootstrap() {
     return runPromise(
       Effect.gen({ self: this }, function* () {
-        this.videoInterfaces = yield* attempt(() => this.storageCore.getVideoInterfaces());
+        this.videoInterfaces = yield* this.storageCore.getVideoInterfacesFx();
       }),
     );
   }
@@ -122,8 +122,8 @@ export class MediaService extends BaseService {
       Effect.gen({ self: this }, function* () {
         const { active, waiting } = yield* this.fx.job.getJobCounts(QueueName.Migration);
         if (active === 1 && waiting === 0) {
-          yield* attempt(() => this.storageCore.removeEmptyDirs(StorageFolder.Thumbnails));
-          yield* attempt(() => this.storageCore.removeEmptyDirs(StorageFolder.EncodedVideo));
+          yield* this.storageCore.removeEmptyDirsFx(StorageFolder.Thumbnails);
+          yield* this.storageCore.removeEmptyDirsFx(StorageFolder.EncodedVideo);
         }
 
         const batches = batched(yield* this.fx.assetJob.streamForMigrationJob());
@@ -146,10 +146,10 @@ export class MediaService extends BaseService {
           return JobStatus.Failed;
         }
 
-        yield* attempt(() => this.storageCore.moveAssetImage(asset, AssetFileType.FullSize, image.fullsize.format));
-        yield* attempt(() => this.storageCore.moveAssetImage(asset, AssetFileType.Preview, image.preview.format));
-        yield* attempt(() => this.storageCore.moveAssetImage(asset, AssetFileType.Thumbnail, image.thumbnail.format));
-        yield* attempt(() => this.storageCore.moveAssetVideo(asset));
+        yield* this.storageCore.moveAssetImageFx(asset, AssetFileType.FullSize, image.fullsize.format);
+        yield* this.storageCore.moveAssetImageFx(asset, AssetFileType.Preview, image.preview.format);
+        yield* this.storageCore.moveAssetImageFx(asset, AssetFileType.Thumbnail, image.thumbnail.format);
+        yield* this.storageCore.moveAssetVideoFx(asset);
 
         return JobStatus.Success;
       }),

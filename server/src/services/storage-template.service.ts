@@ -75,7 +75,7 @@ interface RenderMetadata {
   lensModel: string | null;
 }
 
-/** Run a Promise-based collaborator as an Effect; the error stays the original thrown value. */
+/** Run the async iterator plumbing as an Effect; the error stays the original thrown value. */
 const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (cause) => cause });
 
 /** The original thrown value behind a wrapped repository error (`DatabaseError`, `LibraryError`, ...). */
@@ -288,29 +288,26 @@ export class StorageTemplateService extends BaseService {
             }
 
             yield* Effect.gen({ self: this }, function* () {
-              yield* attempt(() =>
-                this.storageCore.moveFile({
-                  entityId: id,
-                  pathType: AssetPathType.Original,
-                  oldPath,
-                  newPath,
-                  assetInfo: { sizeInBytes: fileSizeInByte, checksum },
-                }),
-              );
+              yield* this.storageCore.moveFileFx({
+                entityId: id,
+                pathType: AssetPathType.Original,
+                oldPath,
+                newPath,
+                assetInfo: { sizeInBytes: fileSizeInByte, checksum },
+              });
 
               const sidecarPath = getAssetFile(asset.files, AssetFileType.Sidecar, { isEdited: false })?.path;
               if (sidecarPath) {
-                yield* attempt(() =>
-                  this.storageCore.moveFile({
-                    entityId: id,
-                    pathType: AssetFileType.Sidecar,
-                    oldPath: sidecarPath,
-                    newPath: `${newPath}.xmp`,
-                  }),
-                );
+                yield* this.storageCore.moveFileFx({
+                  entityId: id,
+                  pathType: AssetFileType.Sidecar,
+                  oldPath: sidecarPath,
+                  newPath: `${newPath}.xmp`,
+                });
               }
             }).pipe(
-              Effect.catch((error: any) => {
+              Effect.catchCause((cause) => {
+                const error: any = unwrap(Cause.squash(cause));
                 this.logger.error(`Problem applying storage template`, error?.stack, { id, oldPath, newPath });
                 return Effect.void;
               }),

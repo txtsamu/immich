@@ -18,7 +18,7 @@ import { runPromise } from 'src/effect/run.js';
 import { JobName, UserMetadataKey, UserStatus } from 'src/enum.js';
 import { UserFindOptions } from 'src/repositories/user.repository.js';
 import { BaseService } from 'src/services/base.service.js';
-import { getCalendarHeatmap } from 'src/services/shared/user-methods.js';
+import { getCalendarHeatmapFx } from 'src/services/shared/user-methods.js';
 import { getPreferences, getPreferencesPartial, mergePreferences } from 'src/utils/preferences.js';
 
 @Injectable()
@@ -154,10 +154,7 @@ export class UserAdminService extends BaseService {
     return runPromise(
       Effect.gen({ self: this }, function* () {
         yield* this.findOrFail(id, { withDeleted: false });
-        return yield* Effect.tryPromise({
-          try: () => getCalendarHeatmap(id, dto, { asset: this.assetRepository }),
-          catch: (cause) => cause,
-        });
+        return yield* getCalendarHeatmapFx(id, dto, { asset: this.fx.asset });
       }),
     );
   }

@@ -23,7 +23,7 @@ import { AssetOrder, AssetVisibility, Permission } from 'src/enum.js';
 import { AssetSearchScope } from 'src/repositories/search.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { requireElevatedPermission } from 'src/utils/access.js';
-import { getMyPartnerIds } from 'src/utils/asset.util.js';
+import { getMyPartnerIdsFx } from 'src/utils/asset.util.js';
 import { decodeSearchCursor, encodeSearchCursor } from 'src/utils/search-cursor.js';
 import { applyLockedVisibilityPolicy, collectFilterIds } from 'src/utils/search-filter.js';
 
@@ -321,6 +321,7 @@ export class SearchService extends BaseService {
     return { filter: effectiveFilter, scope: { userIds, lockedOwnerId: auth.user.id } satisfies AssetSearchScope };
   });
 
+  // eslint-disable-next-line unicorn/consistent-function-scoping
   private readonly getUserIdsToSearch = Effect.fn('Search.getUserIdsToSearch')(function* (
     this: SearchService,
     auth: AuthDto,
@@ -330,14 +331,10 @@ export class SearchService extends BaseService {
     if (visibility === AssetVisibility.Locked) {
       return [auth.user.id];
     }
-    const partnerIds = yield* Effect.tryPromise({
-      try: () =>
-        getMyPartnerIds({
-          userId: auth.user.id,
-          repository: this.partnerRepository,
-          timelineEnabled: true,
-        }),
-      catch: (cause) => cause,
+    const partnerIds = yield* getMyPartnerIdsFx({
+      userId: auth.user.id,
+      repository: this.fx.partner,
+      timelineEnabled: true,
     });
     return [auth.user.id, ...partnerIds];
   });
