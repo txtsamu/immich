@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { join } from 'node:path';
 import type { JobOf, SystemFlags } from 'src/types.js';
 import { ErrorMessages } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   BootstrapEventPriority,
   DatabaseLock,
@@ -18,10 +20,12 @@ import { ImmichStartupError } from 'src/utils/misc.js';
 
 const docsMessage = `Please see https://docs.immich.app/administration/system-integrity#folder-checks for more information.`;
 
+/** The original thrown value behind a wrapped repository error (see `runPromise`). */
 @Injectable()
 export class StorageService extends BaseService {
-  private detectMediaLocation(): string {
-    const envData = this.configRepository.getEnv();
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly detectMediaLocation = Effect.fn('Storage.detectMediaLocation')(function* (this: StorageService) {
+    const envData = yield* this.fx.config.getEnv();
     if (envData.storage.mediaLocation) {
       return envData.storage.mediaLocation;
     }
@@ -30,7 +34,7 @@ export class StorageService extends BaseService {
     const candidates = ['/data', '/usr/src/app/upload'];
 
     for (const candidate of candidates) {
-      const isExists = this.storageRepository.existsSync(candidate);
+      const isExists = yield* this.fx.storage.existsSync(candidate);
       if (isExists) {
         targets.push(candidate);
       }
@@ -41,153 +45,191 @@ export class StorageService extends BaseService {
     }
 
     return '/usr/src/app/upload';
-  }
+  });
 
   @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.StorageService })
   async onBootstrap() {
-    StorageCore.setMediaLocation(this.detectMediaLocation());
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        StorageCore.setMediaLocation(yield* this.detectMediaLocation());
 
-    await this.databaseRepository.withLock(DatabaseLock.SystemFileMounts, async () => {
-      const flags =
-        (await this.systemMetadataRepository.get(SystemMetadataKey.SystemFlags)) ||
-        ({ mountChecks: {} } as SystemFlags);
+        yield* this.fx.database.withLock(DatabaseLock.SystemFileMounts, () =>
+          runPromise(
+            Effect.gen({ self: this }, function* () {
+              const flags =
+                (yield* this.fx.systemMetadata.get(SystemMetadataKey.SystemFlags)) ||
+                ({ mountChecks: {} } as SystemFlags);
 
-      if (!flags.mountChecks) {
-        flags.mountChecks = {};
-      }
+              if (!flags.mountChecks) {
+                flags.mountChecks = {};
+              }
+              const { mountChecks } = flags;
 
-      let isUpdated = false;
+              let isUpdated = false;
 
-      this.logger.log(`Verifying system mount folder checks, current state: ${JSON.stringify(flags)}`);
+              this.logger.log(`Verifying system mount folder checks, current state: ${JSON.stringify(flags)}`);
 
-      try {
-        // check each folder exists and is writable
-        for (const folder of Object.values(StorageFolder)) {
-          if (!flags.mountChecks[folder]) {
-            this.logger.log(`Writing initial mount file for the ${folder} folder`);
-            await this.createMountFile(folder);
-          }
+              yield* Effect.gen({ self: this }, function* () {
+                // check each folder exists and is writable
+                for (const folder of Object.values(StorageFolder)) {
+                  if (!mountChecks[folder]) {
+                    this.logger.log(`Writing initial mount file for the ${folder} folder`);
+                    yield* this.createMountFile(folder);
+                  }
 
-          await this.verifyReadAccess(folder);
-          await this.verifyWriteAccess(folder);
+                  yield* this.verifyReadAccess(folder);
+                  yield* this.verifyWriteAccess(folder);
 
-          if (flags.mountChecks[folder]) {
-            continue;
-          }
+                  if (mountChecks[folder]) {
+                    continue;
+                  }
 
-          flags.mountChecks[folder] = true;
-          isUpdated = true;
-        }
+                  mountChecks[folder] = true;
+                  isUpdated = true;
+                }
 
-        if (isUpdated) {
-          await this.systemMetadataRepository.set(SystemMetadataKey.SystemFlags, flags);
-          this.logger.log('Successfully enabled system mount folders checks');
-        }
+                if (isUpdated) {
+                  yield* this.fx.systemMetadata.set(SystemMetadataKey.SystemFlags, flags);
+                  this.logger.log('Successfully enabled system mount folders checks');
+                }
 
-        this.logger.log('Successfully verified system mount folder checks');
-      } catch (error) {
-        const envData = this.configRepository.getEnv();
-        if (envData.storage.ignoreMountCheckErrors) {
-          this.logger.error(error as Error);
-          this.logger.warn('Ignoring mount folder errors');
-        } else {
-          throw error;
-        }
-      }
-    });
+                this.logger.log('Successfully verified system mount folder checks');
+              }).pipe(
+                Effect.catch((error) =>
+                  Effect.gen({ self: this }, function* () {
+                    const original = unwrap(error);
+                    const envData = yield* this.fx.config.getEnv();
+                    if (envData.storage.ignoreMountCheckErrors) {
+                      this.logger.error(original as Error);
+                      this.logger.warn('Ignoring mount folder errors');
+                    } else {
+                      return yield* Effect.fail(original);
+                    }
+                  }),
+                ),
+              );
+            }),
+          ),
+        );
 
-    await this.databaseRepository.withLock(DatabaseLock.MediaLocation, async () => {
-      const current = StorageCore.getMediaLocation();
-      const samples = await this.assetRepository.getFileSamples();
-      const savedValue = await this.systemMetadataRepository.get(SystemMetadataKey.MediaLocation);
-      if (samples.length > 0) {
-        const path = samples[0].path;
+        yield* this.fx.database.withLock(DatabaseLock.MediaLocation, () =>
+          runPromise(
+            Effect.gen({ self: this }, function* () {
+              const current = StorageCore.getMediaLocation();
+              const samples = yield* this.fx.asset.getFileSamples();
+              const savedValue = yield* this.fx.systemMetadata.get(SystemMetadataKey.MediaLocation);
+              if (samples.length > 0) {
+                const path = samples[0].path;
 
-        let previous = savedValue?.location || '';
+                let previous = savedValue?.location || '';
 
-        if (!previous && this.configRepository.getEnv().storage.mediaLocation) {
-          previous = current;
-        }
+                if (!previous && (yield* this.fx.config.getEnv()).storage.mediaLocation) {
+                  previous = current;
+                }
 
-        if (!previous) {
-          previous = path.startsWith('upload/') ? 'upload' : '/usr/src/app/upload';
-        }
+                if (!previous) {
+                  previous = path.startsWith('upload/') ? 'upload' : '/usr/src/app/upload';
+                }
 
-        if (previous !== current) {
-          this.logger.log(`Media location changed (from=${previous}, to=${current})`);
+                if (previous !== current) {
+                  this.logger.log(`Media location changed (from=${previous}, to=${current})`);
 
-          if (!path.startsWith(previous)) {
-            throw new Error(ErrorMessages.InconsistentMediaLocation);
-          }
+                  if (!path.startsWith(previous)) {
+                    return yield* Effect.fail(new Error(ErrorMessages.InconsistentMediaLocation));
+                  }
 
-          this.logger.warn(
-            `Detected a change to media location, performing an automatic migration of file paths from ${previous} to ${current}, this may take awhile`,
-          );
-          await this.databaseRepository.migrateFilePaths(previous, current);
-        }
-      }
+                  this.logger.warn(
+                    `Detected a change to media location, performing an automatic migration of file paths from ${previous} to ${current}, this may take awhile`,
+                  );
+                  yield* this.fx.database.migrateFilePaths(previous, current);
+                }
+              }
 
-      // Only set MediaLocation in systemMetadataRepository if needed
-      if (savedValue?.location !== current) {
-        await this.systemMetadataRepository.set(SystemMetadataKey.MediaLocation, { location: current });
-      }
-    });
+              // Only set MediaLocation in systemMetadataRepository if needed
+              if (savedValue?.location !== current) {
+                yield* this.fx.systemMetadata.set(SystemMetadataKey.MediaLocation, { location: current });
+              }
+            }),
+          ),
+        );
+      }),
+    );
   }
 
   @OnJob({ name: JobName.FileDelete, queue: QueueName.BackgroundTask })
   async handleDeleteFiles(job: JobOf<JobName.FileDelete>): Promise<JobStatus> {
-    const { files } = job;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { files } = job;
 
-    // TODO: one job per file
-    for (const file of files) {
-      if (!file) {
-        continue;
-      }
+        // TODO: one job per file
+        for (const file of files) {
+          if (!file) {
+            continue;
+          }
 
-      try {
-        await this.storageRepository.unlink(file);
-      } catch (error: any) {
-        this.logger.warn('Unable to remove file from disk', error);
-      }
-    }
+          yield* this.fx.storage.unlink(file).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                this.logger.warn('Unable to remove file from disk', unwrap(error) as any);
+              }),
+            ),
+          );
+        }
 
-    return JobStatus.Success;
+        return JobStatus.Success;
+      }),
+    );
   }
 
-  private async verifyReadAccess(folder: StorageFolder) {
+  private readonly verifyReadAccess = Effect.fn('Storage.verifyReadAccess')(function* (
+    this: StorageService,
+    folder: StorageFolder,
+  ) {
     const { internalPath, externalPath } = this.getMountFilePaths(folder);
-    try {
-      await this.storageRepository.readFile(internalPath);
-    } catch (error) {
-      this.logger.error(`Failed to read (${internalPath}): ${error}`);
-      throw new ImmichStartupError(`Failed to read: "${externalPath} (${internalPath}) - ${docsMessage}"`);
-    }
-  }
+    yield* this.fx.storage.readFile(internalPath).pipe(
+      Effect.catch((error) => {
+        this.logger.error(`Failed to read (${internalPath}): ${unwrap(error)}`);
+        return Effect.fail(
+          new ImmichStartupError(`Failed to read: "${externalPath} (${internalPath}) - ${docsMessage}"`),
+        );
+      }),
+    );
+  });
 
-  private async createMountFile(folder: StorageFolder) {
+  private readonly createMountFile = Effect.fn('Storage.createMountFile')(function* (
+    this: StorageService,
+    folder: StorageFolder,
+  ) {
     const { folderPath, internalPath, externalPath } = this.getMountFilePaths(folder);
-    try {
-      this.storageRepository.mkdirSync(folderPath);
-      await this.storageRepository.createFile(internalPath, Buffer.from(Date.now().toString()));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-        this.logger.warn('Found existing mount file, skipping creation');
-        return;
-      }
-      this.logger.error(`Failed to create ${internalPath}: ${error}`);
-      throw new ImmichStartupError(`Failed to create "${externalPath} - ${docsMessage}"`);
-    }
-  }
+    yield* Effect.gen({ self: this }, function* () {
+      yield* this.fx.storage.mkdirSync(folderPath);
+      yield* this.fx.storage.createFile(internalPath, Buffer.from(Date.now().toString()));
+    }).pipe(
+      Effect.catch((error) => {
+        const original = unwrap(error);
+        if ((original as NodeJS.ErrnoException).code === 'EEXIST') {
+          this.logger.warn('Found existing mount file, skipping creation');
+          return Effect.void;
+        }
+        this.logger.error(`Failed to create ${internalPath}: ${original}`);
+        return Effect.fail(new ImmichStartupError(`Failed to create "${externalPath} - ${docsMessage}"`));
+      }),
+    );
+  });
 
-  private async verifyWriteAccess(folder: StorageFolder) {
+  private readonly verifyWriteAccess = Effect.fn('Storage.verifyWriteAccess')(function* (
+    this: StorageService,
+    folder: StorageFolder,
+  ) {
     const { internalPath, externalPath } = this.getMountFilePaths(folder);
-    try {
-      await this.storageRepository.overwriteFile(internalPath, Buffer.from(Date.now().toString()));
-    } catch (error) {
-      this.logger.error(`Failed to write ${internalPath}: ${error}`);
-      throw new ImmichStartupError(`Failed to write "${externalPath} - ${docsMessage}"`);
-    }
-  }
+    yield* this.fx.storage.overwriteFile(internalPath, Buffer.from(Date.now().toString())).pipe(
+      Effect.catch((error) => {
+        this.logger.error(`Failed to write ${internalPath}: ${unwrap(error)}`);
+        return Effect.fail(new ImmichStartupError(`Failed to write "${externalPath} - ${docsMessage}"`));
+      }),
+    );
+  });
 
   private getMountFilePaths(folder: StorageFolder) {
     const folderPath = StorageCore.getBaseFolder(folder);

@@ -112,5 +112,10 @@ export default defineConfig([
       ],
     },
   },
+  {
+    // Effect.gen({ self: this }, function* () { ... }) uses `this` inside the generator
+    files: ['src/services/**/*.ts', 'src/cores/**/*.ts'],
+    rules: { 'unicorn/no-this-outside-of-class': 'off' },
+  },
   eslintPluginPrettierRecommended,
 ]);

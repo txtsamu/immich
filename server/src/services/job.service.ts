@@ -1,13 +1,16 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import type { JobItem } from 'src/types.js';
 import { OnEvent } from 'src/decorators.js';
 import { mapAsset } from 'src/dtos/asset-response.dto.js';
 import { JobCreateDto } from 'src/dtos/job.dto.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { AssetType, AssetVisibility, IntegrityReport, JobName, JobStatus, ManualJobName } from 'src/enum.js';
 import { ArgsOf } from 'src/repositories/event.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { hexOrBufferToBase64 } from 'src/utils/bytes.js';
 
+/** The original thrown value behind a wrapped repository error (see `runPromise`). */
 const asJobItem = (dto: JobCreateDto): JobItem => {
   switch (dto.name) {
     case ManualJobName.TagCleanup: {
@@ -75,37 +78,50 @@ const asJobItem = (dto: JobCreateDto): JobItem => {
 @Injectable()
 export class JobService extends BaseService {
   async create(dto: JobCreateDto): Promise<void> {
-    await this.jobRepository.queue(asJobItem(dto));
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const item = yield* Effect.try({ try: () => asJobItem(dto), catch: (cause) => cause });
+        yield* this.fx.job.queue(item);
+      }),
+    );
   }
 
   @OnEvent({ name: 'JobRun' })
   async onJobRun(...[queueName, job]: ArgsOf<'JobRun'>) {
-    try {
-      await this.eventRepository.emit('JobStart', queueName, job);
-      const response = await this.jobRepository.run(job);
-      await this.eventRepository.emit('JobSuccess', { job, response });
-      if (response && typeof response === 'string' && [JobStatus.Success, JobStatus.Skipped].includes(response)) {
-        await this.onDone(job);
-      }
-    } catch (error: Error | any) {
-      await this.eventRepository.emit('JobError', { job, error });
-    } finally {
-      await this.eventRepository.emit('JobComplete', queueName, job);
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        // try / catch / finally: `JobError` is emitted for any failure of the run, `JobComplete` always follows
+        const exit = yield* Effect.exit(
+          Effect.gen({ self: this }, function* () {
+            yield* this.fx.event.emit('JobStart', queueName, job);
+            const response = yield* this.fx.job.run(job);
+            yield* this.fx.event.emit('JobSuccess', { job, response });
+            if (response && typeof response === 'string' && [JobStatus.Success, JobStatus.Skipped].includes(response)) {
+              yield* this.onDone(job);
+            }
+          }).pipe(
+            Effect.catch((error) => this.fx.event.emit('JobError', { job, error: unwrap(error) as Error | any })),
+          ),
+        );
+        yield* this.fx.event.emit('JobComplete', queueName, job);
+        return yield* exit;
+      }),
+    );
   }
 
   /**
    * Queue follow up jobs
    */
-  private async onDone(item: JobItem) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly onDone = Effect.fn('Job.onDone')(function* (this: JobService, item: JobItem) {
     switch (item.name) {
       case JobName.SidecarCheck: {
-        await this.jobRepository.queue({ name: JobName.AssetExtractMetadata, data: item.data });
+        yield* this.fx.job.queue({ name: JobName.AssetExtractMetadata, data: item.data });
         break;
       }
 
       case JobName.SidecarWrite: {
-        await this.jobRepository.queue({
+        yield* this.fx.job.queue({
           name: JobName.AssetExtractMetadata,
           data: { id: item.data.id, source: 'sidecar-write' },
         });
@@ -114,17 +130,17 @@ export class JobService extends BaseService {
 
       case JobName.StorageTemplateMigrationSingle: {
         if (item.data.source === 'upload' || item.data.source === 'copy') {
-          await this.jobRepository.queue({ name: JobName.AssetGenerateThumbnails, data: item.data });
+          yield* this.fx.job.queue({ name: JobName.AssetGenerateThumbnails, data: item.data });
         }
         break;
       }
 
       case JobName.AssetEditThumbnailGeneration: {
-        const asset = await this.assetRepository.getById(item.data.id);
-        const edits = await this.assetEditRepository.getWithSyncInfo(item.data.id);
+        const asset = yield* this.fx.asset.getById(item.data.id);
+        const edits = yield* this.fx.assetEdit.getWithSyncInfo(item.data.id);
 
         if (asset) {
-          this.websocketRepository.clientSend('AssetEditReadyV2', asset.ownerId, {
+          yield* this.fx.websocket.clientSend('AssetEditReadyV2', asset.ownerId, {
             asset: {
               id: asset.id,
               ownerId: asset.ownerId,
@@ -159,21 +175,21 @@ export class JobService extends BaseService {
           break;
         }
 
-        const [asset] = await this.assetRepository.getByIdsWithAllRelationsButStacks([item.data.id]);
+        const [asset] = yield* this.fx.asset.getByIdsWithAllRelationsButStacks([item.data.id]);
         if (!asset) {
           this.logger.warn(`Could not find asset ${item.data.id} after generating thumbnails`);
           break;
         }
 
         if (asset.type === AssetType.Video) {
-          await this.jobRepository.queue({ name: JobName.AssetEncodeVideo, data: item.data });
+          yield* this.fx.job.queue({ name: JobName.AssetEncodeVideo, data: item.data });
         }
 
         if (asset.visibility === AssetVisibility.Timeline || asset.visibility === AssetVisibility.Archive) {
-          this.websocketRepository.clientSend('on_upload_success', asset.ownerId, mapAsset(asset));
+          yield* this.fx.websocket.clientSend('on_upload_success', asset.ownerId, mapAsset(asset));
           if (asset.exifInfo) {
             const exif = asset.exifInfo;
-            this.websocketRepository.clientSend('AssetUploadReadyV2', asset.ownerId, {
+            yield* this.fx.websocket.clientSend('AssetUploadReadyV2', asset.ownerId, {
               // TODO remove `on_upload_success` and then modify the query to select only the required fields)
               asset: {
                 id: asset.id,
@@ -233,5 +249,5 @@ export class JobService extends BaseService {
 
       // no default
     }
-  }
+  });
 }

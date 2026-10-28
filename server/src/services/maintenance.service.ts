@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import type { ArgOf } from 'src/repositories/event.repository.js';
 import type { MaintenanceModeState } from 'src/types.js';
 import { OnEvent } from 'src/decorators.js';
@@ -8,11 +9,12 @@ import {
   MaintenanceStatusResponseDto,
   SetMaintenanceModeDto,
 } from 'src/dtos/maintenance.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import { MaintenanceAction, SystemMetadataKey } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import {
   createMaintenanceLoginUrl,
-  detectPriorInstall,
+  detectPriorInstallFx,
   generateMaintenanceSecret,
   signMaintenanceJwt,
 } from 'src/utils/maintenance.js';
@@ -23,11 +25,16 @@ import { getExternalDomain } from 'src/utils/misc.js';
  */
 @Injectable()
 export class MaintenanceService extends BaseService {
-  getMaintenanceMode(): Promise<MaintenanceModeState> {
-    return this.systemMetadataRepository
-      .get(SystemMetadataKey.MaintenanceMode)
+  private getMaintenanceModeFx() {
+    const { fx } = this;
+    return Effect.gen(function* () {
+      const state = yield* fx.systemMetadata.get(SystemMetadataKey.MaintenanceMode);
+      return state ?? ({ isMaintenanceMode: false } as MaintenanceModeState);
+    });
+  }
 
-      .then((state) => state ?? { isMaintenanceMode: false });
+  getMaintenanceMode(): Promise<MaintenanceModeState> {
+    return runPromise(this.getMaintenanceModeFx());
   }
 
   getMaintenanceStatus(): MaintenanceStatusResponseDto {
@@ -38,24 +45,32 @@ export class MaintenanceService extends BaseService {
   }
 
   detectPriorInstall(): Promise<MaintenanceDetectInstallResponseDto> {
-    return detectPriorInstall(this.storageRepository);
+    return runPromise(detectPriorInstallFx(this.fx.storage));
   }
 
   async startMaintenance(action: SetMaintenanceModeDto, username: string): Promise<{ jwt: string }> {
-    const secret = generateMaintenanceSecret();
-    await this.systemMetadataRepository.set(SystemMetadataKey.MaintenanceMode, {
-      isMaintenanceMode: true,
-      secret,
-      action,
-    });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const secret = generateMaintenanceSecret();
+        yield* this.fx.systemMetadata.set(SystemMetadataKey.MaintenanceMode, {
+          isMaintenanceMode: true,
+          secret,
+          action,
+        });
 
-    await this.eventRepository.emit('AppRestart', { isMaintenanceMode: true });
+        yield* this.fx.event.emit('AppRestart', { isMaintenanceMode: true });
 
-    return {
-      jwt: await signMaintenanceJwt(secret, {
-        username,
+        return {
+          jwt: yield* Effect.tryPromise({
+            try: () =>
+              signMaintenanceJwt(secret, {
+                username,
+              }),
+            catch: (cause) => cause,
+          }),
+        };
       }),
-    };
+    );
   }
 
   async startRestoreFlow(): Promise<{ jwt: string }> {
@@ -76,18 +91,26 @@ export class MaintenanceService extends BaseService {
   }
 
   async createLoginUrl(auth: MaintenanceAuthDto, secret?: string): Promise<string> {
-    const { server } = await this.getConfig({ withCache: true });
-    const baseUrl = getExternalDomain(server);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { server } = yield* this.getConfigFx({ withCache: true });
+        const baseUrl = getExternalDomain(server);
 
-    if (!secret) {
-      const state = await this.getMaintenanceMode();
-      if (!state.isMaintenanceMode) {
-        throw new Error('Not in maintenance mode');
-      }
+        if (!secret) {
+          const state = yield* this.getMaintenanceModeFx();
+          if (!state.isMaintenanceMode) {
+            return yield* Effect.fail(new Error('Not in maintenance mode'));
+          }
 
-      secret = state.secret;
-    }
+          secret = state.secret;
+        }
 
-    return await createMaintenanceLoginUrl(baseUrl, auth, secret);
+        const loginSecret = secret;
+        return yield* Effect.tryPromise({
+          try: () => createMaintenanceLoginUrl(baseUrl, auth, loginSecret),
+          catch: (cause) => cause,
+        });
+      }),
+    );
   }
 }

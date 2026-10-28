@@ -13,6 +13,7 @@ export default defineConfig({
     name: 'server:medium',
     root: serverRoot,
     globals: true,
+    setupFiles: ['test/setup.ts'],
     include: ['test/medium/**/*.spec.ts'],
     globalSetup: ['test/medium/globalSetup.ts'],
   },

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import type { ArgOf } from 'src/repositories/event.repository.js';
 import type { ConcurrentQueueName, JobItem } from 'src/types.js';
 import { OnEvent } from 'src/decorators.js';
@@ -18,6 +19,7 @@ import {
   QueueResponseDto,
   QueueUpdateDto,
 } from 'src/dtos/queue.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import {
   BootstrapEventPriority,
   CronJob,
@@ -43,24 +45,28 @@ export class QueueService extends BaseService {
 
   @OnEvent({ name: 'ConfigInit' })
   async onConfigInit({ newConfig: config }: ArgOf<'ConfigInit'>) {
-    if (this.worker === ImmichWorker.Microservices) {
-      this.updateConcurrency(config);
-      return;
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        if ((yield* this.fx.config.getWorker()) === ImmichWorker.Microservices) {
+          this.updateConcurrency(config);
+          return;
+        }
 
-    this.nightlyJobsLock = await this.databaseRepository.tryLock(DatabaseLock.NightlyJobs);
-    if (!this.nightlyJobsLock) {
-      return;
-    }
+        this.nightlyJobsLock = yield* this.fx.database.tryLock(DatabaseLock.NightlyJobs);
+        if (!this.nightlyJobsLock) {
+          return;
+        }
 
-    const cronExpression = asNightlyTasksCron(config);
-    this.logger.debug(`Scheduling nightly jobs for ${cronExpression}`);
-    this.cronRepository.create({
-      name: CronJob.NightlyJobs,
-      expression: cronExpression,
-      start: true,
-      onTick: () => handlePromiseError(this.handleNightlyJobs(), this.logger),
-    });
+        const cronExpression = asNightlyTasksCron(config);
+        this.logger.debug(`Scheduling nightly jobs for ${cronExpression}`);
+        yield* this.fx.cron.create({
+          name: CronJob.NightlyJobs,
+          expression: cronExpression,
+          start: true,
+          onTick: () => handlePromiseError(this.handleNightlyJobs(), this.logger),
+        });
+      }),
+    );
   }
 
   @OnEvent({ name: 'ConfigUpdate', server: true })
@@ -108,165 +114,201 @@ export class QueueService extends BaseService {
   }
 
   async runCommandLegacy(name: QueueName, dto: QueueCommandDto): Promise<QueueResponseLegacyDto> {
-    this.logger.debug(`Handling command: queue=${name},command=${dto.command},force=${dto.force}`);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        this.logger.debug(`Handling command: queue=${name},command=${dto.command},force=${dto.force}`);
 
-    switch (dto.command) {
-      case QueueCommand.Start: {
-        await this.start(name, dto);
-        break;
-      }
+        switch (dto.command) {
+          case QueueCommand.Start: {
+            yield* this.start(name, dto);
+            break;
+          }
 
-      case QueueCommand.Pause: {
-        await this.jobRepository.pause(name);
-        break;
-      }
+          case QueueCommand.Pause: {
+            yield* this.fx.job.pause(name);
+            break;
+          }
 
-      case QueueCommand.Resume: {
-        await this.jobRepository.resume(name);
-        break;
-      }
+          case QueueCommand.Resume: {
+            yield* this.fx.job.resume(name);
+            break;
+          }
 
-      case QueueCommand.Empty: {
-        await this.jobRepository.empty(name);
-        break;
-      }
+          case QueueCommand.Empty: {
+            yield* this.fx.job.empty(name);
+            break;
+          }
 
-      case QueueCommand.ClearFailed: {
-        const failedJobs = await this.jobRepository.clear(name, QueueCleanType.Failed);
-        this.logger.debug(`Cleared failed jobs: ${failedJobs}`);
-        break;
-      }
-    }
+          case QueueCommand.ClearFailed: {
+            const failedJobs = yield* this.fx.job.clear(name, QueueCleanType.Failed);
+            this.logger.debug(`Cleared failed jobs: ${failedJobs}`);
+            break;
+          }
+        }
 
-    const response = await this.getByName(name);
+        const response = yield* this.getByName(name);
 
-    return mapQueueLegacy(response);
+        return mapQueueLegacy(response);
+      }),
+    );
   }
 
   async getAll(_auth: AuthDto): Promise<QueueResponseDto[]> {
-    return Promise.all(Object.values(QueueName).map((name) => this.getByName(name)));
+    return runPromise(
+      Effect.all(
+        Object.values(QueueName).map((name) => this.getByName(name)),
+        { concurrency: 'unbounded' },
+      ),
+    );
   }
 
   async getAllLegacy(auth: AuthDto): Promise<QueuesResponseLegacyDto> {
-    const responses = await this.getAll(auth);
-    return mapQueuesLegacy(responses);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const responses = yield* Effect.tryPromise({ try: () => this.getAll(auth), catch: (cause) => cause });
+        return mapQueuesLegacy(responses);
+      }),
+    );
   }
 
   get(auth: AuthDto, name: QueueName): Promise<QueueResponseDto> {
-    return this.getByName(name);
+    return runPromise(this.getByName(name));
   }
 
   async update(auth: AuthDto, name: QueueName, dto: QueueUpdateDto): Promise<QueueResponseDto> {
-    if (dto.isPaused === true) {
-      if (name === QueueName.BackgroundTask) {
-        throw new BadRequestException(`The BackgroundTask queue cannot be paused`);
-      }
-      await this.jobRepository.pause(name);
-    } else if (dto.isPaused === false) {
-      await this.jobRepository.resume(name);
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        if (dto.isPaused === true) {
+          if (name === QueueName.BackgroundTask) {
+            return yield* Effect.fail(new BadRequestException(`The BackgroundTask queue cannot be paused`));
+          }
+          yield* this.fx.job.pause(name);
+        } else if (dto.isPaused === false) {
+          yield* this.fx.job.resume(name);
+        }
 
-    return this.getByName(name);
+        return yield* this.getByName(name);
+      }),
+    );
   }
 
   searchJobs(auth: AuthDto, name: QueueName, dto: QueueJobSearchDto): Promise<QueueJobResponseDto[]> {
-    return this.jobRepository.searchJobs(name, dto);
+    return runPromise(this.fx.job.searchJobs(name, dto));
   }
 
   async emptyQueue(auth: AuthDto, name: QueueName, dto: QueueDeleteDto) {
-    await this.jobRepository.empty(name);
-    if (dto.failed) {
-      await this.jobRepository.clear(name, QueueCleanType.Failed);
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.fx.job.empty(name);
+        if (dto.failed) {
+          yield* this.fx.job.clear(name, QueueCleanType.Failed);
+        }
+      }),
+    );
   }
 
-  private async getByName(name: QueueName): Promise<QueueResponseDto> {
-    const [statistics, isPaused] = await Promise.all([
-      this.jobRepository.getJobCounts(name),
-      this.jobRepository.isPaused(name),
-    ]);
-    return { name, isPaused, statistics: { ...statistics, paused: 0 } };
-  }
+  private readonly getByName = Effect.fn('Queue.getByName')(function* (this: QueueService, name: QueueName) {
+    const [statistics, isPaused] = yield* Effect.all([this.fx.job.getJobCounts(name), this.fx.job.isPaused(name)], {
+      concurrency: 'unbounded',
+    });
+    return { name, isPaused, statistics: { ...statistics, paused: 0 } } satisfies QueueResponseDto;
+  });
 
-  private async start(name: QueueName, { force }: QueueCommandDto): Promise<void> {
-    const isActive = await this.jobRepository.isActive(name);
+  private readonly start = Effect.fn('Queue.start')(function* (
+    this: QueueService,
+    name: QueueName,
+    { force }: QueueCommandDto,
+  ) {
+    const isActive = yield* this.fx.job.isActive(name);
     if (isActive) {
-      throw new BadRequestException(`Job is already running`);
+      return yield* Effect.fail(new BadRequestException(`Job is already running`));
     }
 
-    await this.eventRepository.emit('QueueStart', { name });
+    yield* this.fx.event.emit('QueueStart', { name });
 
     switch (name) {
       case QueueName.VideoConversion: {
-        return this.jobRepository.queue({ name: JobName.AssetEncodeVideoQueueAll, data: { force } });
+        yield* this.fx.job.queue({ name: JobName.AssetEncodeVideoQueueAll, data: { force } });
+        return;
       }
 
       case QueueName.StorageTemplateMigration: {
-        return this.jobRepository.queue({ name: JobName.StorageTemplateMigration });
+        yield* this.fx.job.queue({ name: JobName.StorageTemplateMigration });
+        return;
       }
 
       case QueueName.Migration: {
-        return this.jobRepository.queue({ name: JobName.FileMigrationQueueAll });
+        yield* this.fx.job.queue({ name: JobName.FileMigrationQueueAll });
+        return;
       }
 
       case QueueName.MetadataExtraction: {
-        return this.jobRepository.queue({ name: JobName.AssetExtractMetadataQueueAll, data: { force } });
+        yield* this.fx.job.queue({ name: JobName.AssetExtractMetadataQueueAll, data: { force } });
+        return;
       }
 
       case QueueName.Sidecar: {
-        return this.jobRepository.queue({ name: JobName.SidecarQueueAll, data: { force } });
+        yield* this.fx.job.queue({ name: JobName.SidecarQueueAll, data: { force } });
+        return;
       }
 
       case QueueName.ThumbnailGeneration: {
-        return this.jobRepository.queue({ name: JobName.AssetGenerateThumbnailsQueueAll, data: { force } });
+        yield* this.fx.job.queue({ name: JobName.AssetGenerateThumbnailsQueueAll, data: { force } });
+        return;
       }
 
       case QueueName.Library: {
-        return this.jobRepository.queue({ name: JobName.LibraryScanQueueAll, data: { force } });
+        yield* this.fx.job.queue({ name: JobName.LibraryScanQueueAll, data: { force } });
+        return;
       }
 
       case QueueName.BackupDatabase: {
-        return this.jobRepository.queue({ name: JobName.DatabaseBackup, data: { force } });
+        yield* this.fx.job.queue({ name: JobName.DatabaseBackup, data: { force } });
+        return;
       }
 
       default: {
-        throw new BadRequestException(`Invalid job name: ${name}`);
+        return yield* Effect.fail(new BadRequestException(`Invalid job name: ${name}`));
       }
     }
-  }
+  });
 
   private isConcurrentQueue(name: QueueName): name is ConcurrentQueueName {
     return ![QueueName.StorageTemplateMigration, QueueName.BackupDatabase].includes(name);
   }
 
   async handleNightlyJobs() {
-    const config = await this.getConfig({ withCache: false });
-    const jobs: JobItem[] = [];
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        const jobs: JobItem[] = [];
 
-    if (config.nightlyTasks.databaseCleanup) {
-      jobs.push(
-        { name: JobName.AssetDeleteCheck },
-        { name: JobName.UserDeleteCheck },
-        { name: JobName.MemoryCleanup },
-        { name: JobName.SessionCleanup },
-        { name: JobName.AuthChallengeCleanup },
-        { name: JobName.HlsSessionCleanup },
-        { name: JobName.AuditTableCleanup },
-      );
-    }
+        if (config.nightlyTasks.databaseCleanup) {
+          jobs.push(
+            { name: JobName.AssetDeleteCheck },
+            { name: JobName.UserDeleteCheck },
+            { name: JobName.MemoryCleanup },
+            { name: JobName.SessionCleanup },
+            { name: JobName.AuthChallengeCleanup },
+            { name: JobName.HlsSessionCleanup },
+            { name: JobName.AuditTableCleanup },
+          );
+        }
 
-    if (config.nightlyTasks.generateMemories) {
-      jobs.push({ name: JobName.MemoryGenerate });
-    }
+        if (config.nightlyTasks.generateMemories) {
+          jobs.push({ name: JobName.MemoryGenerate });
+        }
 
-    if (config.nightlyTasks.syncQuotaUsage) {
-      jobs.push({ name: JobName.UserSyncUsage });
-    }
+        if (config.nightlyTasks.syncQuotaUsage) {
+          jobs.push({ name: JobName.UserSyncUsage });
+        }
 
-    if (config.nightlyTasks.missingThumbnails) {
-      jobs.push({ name: JobName.AssetGenerateThumbnailsQueueAll, data: { force: false } });
-    }
+        if (config.nightlyTasks.missingThumbnails) {
+          jobs.push({ name: JobName.AssetGenerateThumbnailsQueueAll, data: { force: false } });
+        }
 
-    await this.jobRepository.queueAll(jobs);
+        yield* this.fx.job.queueAll(jobs);
+      }),
+    );
   }
 }

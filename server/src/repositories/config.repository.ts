@@ -2,6 +2,7 @@ import { DatabaseConnectionParams } from '@immich/sql-tools';
 import { RegisterQueueOptions } from '@nestjs/bullmq';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { QueueOptions } from 'bullmq';
+import { Context, Effect, Layer } from 'effect';
 import { Request, Response } from 'express';
 import { HelmetOptions } from 'helmet';
 import { RedisOptions } from 'ioredis';
@@ -13,6 +14,9 @@ import type { VectorExtension } from 'src/types.js';
 import { IWorker, citiesFile } from 'src/constants.js';
 import { Telemetry } from 'src/decorators.js';
 import { EnvSchema } from 'src/dtos/env.dto.js';
+import { registerEffect } from 'src/effect/bridge.js';
+import { ConfigError } from 'src/effect/errors.js';
+import { runSync } from 'src/effect/run.js';
 import {
   DatabaseExtension,
   ImmichEnvironment,
@@ -378,29 +382,68 @@ const getEnv = (): EnvData => {
 
 let cached: EnvData | undefined;
 
+export class ConfigRepo extends Context.Service<
+  ConfigRepo,
+  {
+    getEnv(): Effect.Effect<EnvData, ConfigError>;
+    isDev(): Effect.Effect<boolean, ConfigError>;
+    isProduction(): Effect.Effect<boolean, ConfigError>;
+    getWorker(): Effect.Effect<ImmichWorker | undefined>;
+  }
+>()('immich/repositories/ConfigRepo') {
+  static readonly make = (worker?: ImmichWorker) => {
+    // untraced: called synchronously from nearly every class, so avoid span overhead
+    const getEnvEffect = Effect.suspend(() =>
+      cached
+        ? Effect.succeed(cached)
+        : Effect.try({
+            try: () => (cached = getEnv()),
+            catch: (cause) => new ConfigError({ cause }),
+          }),
+    );
+
+    return ConfigRepo.of({
+      getEnv: () => getEnvEffect,
+      isDev: Effect.fnUntraced(function* () {
+        return (yield* getEnvEffect).environment === ImmichEnvironment.Development;
+      }),
+      isProduction: Effect.fnUntraced(function* () {
+        return (yield* getEnvEffect).environment === ImmichEnvironment.Production;
+      }),
+      getWorker: () => Effect.succeed(worker),
+    });
+  };
+
+  static readonly layer = Layer.sync(ConfigRepo, () => ConfigRepo.make());
+}
+
+const configEffect = ConfigRepo.make();
+
+/**
+ * Promise-facing (here: synchronous) adapter for the Nest services. Delegates to `ConfigRepo`.
+ * All methods stay synchronous because they are called at module load and across the codebase.
+ */
 @Injectable()
 @Telemetry({ enabled: false })
 export class ConfigRepository {
-  constructor(@Inject(IWorker) @Optional() private worker?: ImmichWorker) {}
+  constructor(@Inject(IWorker) @Optional() private worker?: ImmichWorker) {
+    registerEffect(this, worker === undefined ? configEffect : ConfigRepo.make(worker));
+  }
 
   getEnv() {
-    if (!cached) {
-      cached = getEnv();
-    }
-
-    return cached;
+    return runSync(configEffect.getEnv());
   }
 
   isDev() {
-    return this.getEnv().environment === ImmichEnvironment.Development;
+    return runSync(configEffect.isDev());
   }
 
   isProduction() {
-    return this.getEnv().environment === ImmichEnvironment.Production;
+    return runSync(configEffect.isProduction());
   }
 
   getWorker() {
-    return this.worker;
+    return runSync(ConfigRepo.make(this.worker).getWorker());
   }
 }
 

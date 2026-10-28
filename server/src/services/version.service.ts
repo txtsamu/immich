@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { DateTime } from 'luxon';
 import { SemVer, diff, intersects, lt } from 'semver';
 import type { ArgOf } from 'src/repositories/event.repository.js';
@@ -6,6 +7,7 @@ import type { VersionCheckMetadata } from 'src/types.js';
 import { serverVersion } from 'src/constants.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
 import { ReleaseEventV1, ReleaseType, ServerVersionResponseDto } from 'src/dtos/server.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import {
   CronJob,
   DatabaseLock,
@@ -39,43 +41,51 @@ const asNotification = (
 export class VersionService extends BaseService {
   @OnEvent({ name: 'AppBootstrap', workers: [ImmichWorker.Microservices] })
   async onBootstrap(): Promise<void> {
-    const hasLock = await this.databaseRepository.tryLock(DatabaseLock.VersionCheck);
-    if (hasLock) {
-      await this.handleVersionCheck();
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const hasLock = yield* this.fx.database.tryLock(DatabaseLock.VersionCheck);
+        if (hasLock) {
+          yield* Effect.tryPromise({ try: () => this.handleVersionCheck(), catch: (cause) => cause });
 
-      const randomMinute = Math.floor(Math.random() * 60);
-      const expression = `${randomMinute} * * * *`;
-      this.logger.debug(`Scheduling version check for cron ${expression}`);
-      this.cronRepository.create({
-        name: CronJob.VersionCheck,
-        expression,
-        onTick: () => handlePromiseError(this.handleQueueVersionCheck(), this.logger),
-      });
-    }
+          const randomMinute = Math.floor(Math.random() * 60);
+          const expression = `${randomMinute} * * * *`;
+          this.logger.debug(`Scheduling version check for cron ${expression}`);
+          yield* this.fx.cron.create({
+            name: CronJob.VersionCheck,
+            expression,
+            onTick: () => handlePromiseError(this.handleQueueVersionCheck(), this.logger),
+          });
+        }
 
-    await this.databaseRepository.withLock(DatabaseLock.VersionHistory, async () => {
-      const previous = await this.versionRepository.getLatest();
-      const current = serverVersion.toString();
+        yield* this.fx.database.withLock(DatabaseLock.VersionHistory, () =>
+          runPromise(
+            Effect.gen({ self: this }, function* () {
+              const previous = yield* this.fx.version.getLatest();
+              const current = serverVersion.toString();
 
-      if (!previous) {
-        await this.versionRepository.create({ version: current });
-        return;
-      }
+              if (!previous) {
+                yield* this.fx.version.create({ version: current });
+                return;
+              }
 
-      if (previous.version === current) {
-        return;
-      }
+              if (previous.version === current) {
+                return;
+              }
 
-      const previousVersion = new SemVer(previous.version);
+              const previousVersion = new SemVer(previous.version);
 
-      this.logger.log(`Adding ${current} to upgrade history`);
-      await this.versionRepository.create({ version: current });
+              this.logger.log(`Adding ${current} to upgrade history`);
+              yield* this.fx.version.create({ version: current });
 
-      const isNeedsNewMemories = lt(previousVersion, '1.129.0');
-      if (isNeedsNewMemories) {
-        await this.jobRepository.queue({ name: JobName.MemoryGenerate });
-      }
-    });
+              const isNeedsNewMemories = lt(previousVersion, '1.129.0');
+              if (isNeedsNewMemories) {
+                yield* this.fx.job.queue({ name: JobName.MemoryGenerate });
+              }
+            }),
+          ),
+        );
+      }),
+    );
   }
 
   getVersion() {
@@ -83,7 +93,7 @@ export class VersionService extends BaseService {
   }
 
   getVersionHistory() {
-    return this.versionRepository.getAll();
+    return runPromise(this.fx.version.getAll());
   }
 
   @OnEvent({ name: 'ConfigUpdate' })
@@ -94,72 +104,87 @@ export class VersionService extends BaseService {
   }
 
   async handleQueueVersionCheck() {
-    await this.jobRepository.queue({ name: JobName.VersionCheck, data: {} });
+    return runPromise(this.fx.job.queue({ name: JobName.VersionCheck, data: {} }).pipe(Effect.asVoid));
   }
 
   @OnJob({ name: JobName.VersionCheck, queue: QueueName.BackgroundTask })
   async handleVersionCheck(): Promise<JobStatus> {
     try {
-      if (!this.configRepository.isProduction()) {
-        return JobStatus.Skipped;
-      }
+      return await runPromise(
+        Effect.gen({ self: this }, function* () {
+          if (!(yield* this.fx.config.isProduction())) {
+            return JobStatus.Skipped;
+          }
 
-      this.logger.debug('Running version check');
+          this.logger.debug('Running version check');
 
-      const { newVersionCheck } = await this.getConfig({ withCache: true });
-      if (!newVersionCheck.enabled) {
-        return JobStatus.Skipped;
-      }
+          const { newVersionCheck } = yield* this.getConfigFx({ withCache: true });
+          if (!newVersionCheck.enabled) {
+            return JobStatus.Skipped;
+          }
 
-      const versionCheck = await this.systemMetadataRepository.get(SystemMetadataKey.VersionCheckState);
-      if (versionCheck?.checkedAt) {
-        const lastUpdate = DateTime.fromISO(versionCheck.checkedAt);
-        const elapsedTime = DateTime.now().diff(lastUpdate).as('seconds');
-        if (elapsedTime < 50) {
-          return JobStatus.Skipped;
-        }
-      }
+          const versionCheck = yield* this.fx.systemMetadata.get(SystemMetadataKey.VersionCheckState);
+          if (versionCheck?.checkedAt) {
+            const lastUpdate = DateTime.fromISO(versionCheck.checkedAt);
+            const elapsedTime = DateTime.now().diff(lastUpdate).as('seconds');
+            if (elapsedTime < 50) {
+              return JobStatus.Skipped;
+            }
+          }
 
-      const { version: releaseVersion, published_at: publishedAt } = await this.serverInfoRepository.getLatestRelease(
-        newVersionCheck.channel,
+          const { version: releaseVersion, published_at: publishedAt } = yield* this.fx.serverInfo.getLatestRelease(
+            newVersionCheck.channel,
+          );
+          const metadata: VersionCheckMetadata = { checkedAt: DateTime.utc().toISO(), releaseVersion };
+
+          yield* this.fx.systemMetadata.set(SystemMetadataKey.VersionCheckState, metadata);
+
+          // can't use gt because it's broken for release candidates F https://github.com/npm/node-semver/issues/483
+          if (
+            intersects(`>${serverVersion}`, releaseVersion, {
+              includePrerelease: newVersionCheck.channel === ReleaseChannel.ReleaseCandidate,
+            })
+          ) {
+            this.logger.log(`Found ${releaseVersion}, released at ${new Date(publishedAt).toLocaleString()}`);
+            yield* this.fx.websocket.clientBroadcast(
+              'on_new_release',
+              asNotification(newVersionCheck.channel, metadata),
+            );
+          }
+
+          return JobStatus.Success;
+        }),
       );
-      const metadata: VersionCheckMetadata = { checkedAt: DateTime.utc().toISO(), releaseVersion };
-
-      await this.systemMetadataRepository.set(SystemMetadataKey.VersionCheckState, metadata);
-
-      // can't use gt because it's broken for release candidates F https://github.com/npm/node-semver/issues/483
-      if (
-        intersects(`>${serverVersion}`, releaseVersion, {
-          includePrerelease: newVersionCheck.channel === ReleaseChannel.ReleaseCandidate,
-        })
-      ) {
-        this.logger.log(`Found ${releaseVersion}, released at ${new Date(publishedAt).toLocaleString()}`);
-        this.websocketRepository.clientBroadcast('on_new_release', asNotification(newVersionCheck.channel, metadata));
-      }
     } catch (error: Error | any) {
       this.logger.warn(`Unable to run version check: ${error}\n${error?.stack}`);
       return JobStatus.Failed;
     }
-
-    return JobStatus.Success;
   }
 
   @OnEvent({ name: 'WebsocketConnect' })
   async onWebsocketConnection({ userId }: ArgOf<'WebsocketConnect'>) {
-    this.websocketRepository.clientSend(
-      'on_server_version',
-      userId,
-      ServerVersionResponseDto.fromSemVer(serverVersion),
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.fx.websocket.clientSend(
+          'on_server_version',
+          userId,
+          ServerVersionResponseDto.fromSemVer(serverVersion),
+        );
+
+        const { newVersionCheck } = yield* this.getConfigFx({ withCache: true });
+        if (!newVersionCheck.enabled) {
+          return;
+        }
+
+        const metadata = yield* this.fx.systemMetadata.get(SystemMetadataKey.VersionCheckState);
+        if (metadata) {
+          yield* this.fx.websocket.clientSend(
+            'on_new_release',
+            userId,
+            asNotification(newVersionCheck.channel, metadata),
+          );
+        }
+      }),
     );
-
-    const { newVersionCheck } = await this.getConfig({ withCache: true });
-    if (!newVersionCheck.enabled) {
-      return;
-    }
-
-    const metadata = await this.systemMetadataRepository.get(SystemMetadataKey.VersionCheckState);
-    if (metadata) {
-      this.websocketRepository.clientSend('on_new_release', userId, asNotification(newVersionCheck.channel, metadata));
-    }
   }
 }

@@ -46,6 +46,9 @@
     { "changeProcessCWD": true, "directory": "server" },
     { "changeProcessCWD": true, "directory": "web" }
   ],
+  "files.exclude": {
+    "repos/**": true
+  },
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
     "*.dart": "${capture}.g.dart,${capture}.gr.dart,${capture}.drift.dart",
@@ -59,8 +62,11 @@
     "**/.svelte-kit/**": true,
     "**/build/**": true,
     "**/dist/**": true,
-    "**/node_modules/**": true
+    "**/node_modules/**": true,
+    "repos/**": true
   },
+  "javascript.preferences.autoImportFileExcludePatterns": ["repos/**"],
+  "typescript.preferences.autoImportFileExcludePatterns": ["repos/**"],
   // TODO remove once the ts7 extension is stable
   "js/ts.experimental.useTsgo": true,
   "js/ts.preferences.importModuleSpecifier": "non-relative",
@@ -69,7 +75,8 @@
     "**/build": true,
     "**/dist": true,
     "**/node_modules": true,
-    "**/open-api/typescript-sdk/src": true
+    "**/open-api/typescript-sdk/src": true,
+    "repos/**": true
   },
   "svelte.enable-ts-plugin": true,
   "svelte.plugin.svelte.compilerWarnings": {

@@ -1,14 +1,20 @@
+import { Effect } from 'effect';
 import { snakeCase } from 'lodash-es';
 import type { ArgOf, ArgsOf } from 'src/repositories/event.repository.js';
 import { OnEvent } from 'src/decorators.js';
+import { runPromise } from 'src/effect/run.js';
 import { ImmichWorker, JobStatus } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 
 export class TelemetryService extends BaseService {
   @OnEvent({ name: 'AppBootstrap', workers: [ImmichWorker.Api] })
   async onBootstrap(): Promise<void> {
-    const userCount = await this.userRepository.getCount();
-    this.telemetryRepository.api.addToGauge('immich.users.total', userCount);
+    await runPromise(
+      Effect.gen({ self: this }, function* () {
+        const userCount = yield* this.fx.user.getCount();
+        this.telemetryRepository.api.addToGauge('immich.users.total', userCount);
+      }),
+    );
   }
 
   @OnEvent({ name: 'UserCreate' })

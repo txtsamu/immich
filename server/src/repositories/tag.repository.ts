@@ -1,257 +1,378 @@
 import { Injectable } from '@nestjs/common';
+import { Context, Effect, Layer } from 'effect';
 import { InjectKysely } from 'nestjs-kysely';
 import type { InsertQueryBuilder, Insertable, Kysely, QueryCreator, Selectable, Updateable } from 'kysely';
 import { columns } from 'src/database.js';
 import { Chunked, ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
+import { registerEffect } from 'src/effect/bridge.js';
+import { Db, query } from 'src/effect/db.js';
+import { runPromise } from 'src/effect/run.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { DB } from 'src/schema/index.js';
 import { TagAssetTable } from 'src/schema/tables/tag-asset.table.js';
 import { TagTable } from 'src/schema/tables/tag.table.js';
 
+const insertTagWithClosures = (
+  db: Kysely<DB>,
+  insertTag: (db: QueryCreator<DB>) => InsertQueryBuilder<DB, 'tag', Selectable<TagTable>>,
+) =>
+  db
+    .with('created_tag', insertTag)
+    .with('created_tag_closures', (db) =>
+      db
+        .insertInto('tag_closure')
+        .columns(['id_ancestor', 'id_descendant'])
+        .expression((eb) =>
+          eb
+            .selectFrom('created_tag')
+            .select(['created_tag.id as id_ancestor', 'created_tag.id as id_descendant'])
+            .unionAll(
+              eb
+                .selectFrom('created_tag')
+                .innerJoin('tag_closure', 'tag_closure.id_descendant', 'created_tag.parentId')
+                .select(['tag_closure.id_ancestor', 'created_tag.id as id_descendant']),
+            ),
+        )
+        .onConflict((oc) => oc.doNothing()),
+    )
+    .selectFrom('created_tag')
+    .selectAll()
+    .executeTakeFirstOrThrow();
+
+const makeTag = (db: Kysely<DB>) => ({
+  get: Effect.fn('Tag.get')(function* (id: string) {
+    return yield* query(db, (db) => db.selectFrom('tag').select(columns.tag).where('id', '=', id).executeTakeFirst());
+  }),
+
+  getByValue: Effect.fn('Tag.getByValue')(function* (userId: string, value: string) {
+    return yield* query(db, (db) =>
+      db
+        .selectFrom('tag')
+        .select(columns.tag)
+        .where('userId', '=', userId)
+        .where('value', '=', value)
+        .executeTakeFirst(),
+    );
+  }),
+
+  getAssetIdsByTagId: Effect.fn('Tag.getAssetIdsByTagId')(function* (tagId: string) {
+    const rows = yield* query(db, (db) =>
+      db
+        .selectFrom('tag_closure')
+        .innerJoin('tag_asset', 'tag_asset.tagId', 'tag_closure.id_descendant')
+        .select('tag_asset.assetId')
+        .distinct()
+        .where('tag_closure.id_ancestor', '=', tagId)
+        .execute(),
+    );
+
+    return rows.map(({ assetId }) => assetId);
+  }),
+
+  upsertValue: Effect.fn('Tag.upsertValue')(function* ({
+    userId,
+    value,
+    parentId: _parentId,
+  }: {
+    userId: string;
+    value: string;
+    parentId?: string;
+  }) {
+    const parentId = _parentId ?? null;
+    return yield* query(db, (db) =>
+      insertTagWithClosures(db, (db) =>
+        db
+          .insertInto('tag')
+          .values({ userId, value, parentId })
+          .onConflict((oc) => oc.columns(['userId', 'value']).doUpdateSet({ parentId }))
+          .returningAll(),
+      ),
+    );
+  }),
+
+  getAll: Effect.fn('Tag.getAll')(function* (userId: string) {
+    return yield* query(db, (db) =>
+      db.selectFrom('tag').select(columns.tag).where('userId', '=', userId).orderBy('value').execute(),
+    );
+  }),
+
+  create: Effect.fn('Tag.create')(function* (tag: Insertable<TagTable>) {
+    return yield* query(db, (db) => insertTagWithClosures(db, (db) => db.insertInto('tag').values(tag).returningAll()));
+  }),
+
+  update: Effect.fn('Tag.update')(function* (id: string, dto: Updateable<TagTable>) {
+    return yield* query(db, (db) =>
+      db.transaction().execute(async (tx) => {
+        // Get previous tag value for reference if the current update contains a new value
+        const previousTag =
+          dto.value === undefined
+            ? undefined
+            : await tx.selectFrom('tag').select('value').where('id', '=', id).executeTakeFirst();
+
+        // Perform main tag update
+        const updated = await tx
+          .updateTable('tag')
+          .set(dto)
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+
+        // Check if value has changed, trigger value updates on all children if so
+        if (previousTag && dto.value !== previousTag.value) {
+          await tx
+            // Use a recursive cte to get all levels of nested child tags that need to be updated
+            .withRecursive('descendants(id, value)', (qb) => {
+              const directChildren = qb
+                .selectFrom('tag as child')
+                .select((eb) => [
+                  'child.id as id',
+                  eb
+                    .fn<string>('concat', [
+                      eb.cast<string>(eb.val(updated.value), 'text'),
+                      eb.cast<string>(eb.val('/'), 'text'),
+                      eb.fn<string>('regexp_replace', ['child.value', eb.val('^.*/'), eb.val('')]),
+                    ])
+                    .as('value'),
+                ])
+                .where('child.parentId', '=', id);
+
+              const nestedChildren = qb
+                .selectFrom('tag as child')
+                .innerJoin('descendants as parent', 'parent.id', 'child.parentId')
+                .select((eb) => [
+                  'child.id as id',
+                  eb
+                    .fn<string>('concat', [
+                      'parent.value',
+                      eb.cast<string>(eb.val('/'), 'text'),
+                      eb.fn<string>('regexp_replace', ['child.value', eb.val('^.*/'), eb.val('')]),
+                    ])
+                    .as('value'),
+                ]);
+
+              return directChildren.unionAll(nestedChildren);
+            })
+            .updateTable('tag')
+            .from('descendants')
+            .set((eb) => ({
+              value: eb.ref('descendants.value'),
+            }))
+            .whereRef('tag.id', '=', 'descendants.id')
+            .execute();
+        }
+        return updated;
+      }),
+    );
+  }),
+
+  delete: Effect.fn('Tag.delete')(function* (id: string) {
+    yield* query(db, (db) => db.deleteFrom('tag').where('id', '=', id).execute());
+  }),
+
+  getAssetIds: Effect.fn('Tag.getAssetIds')(function* (tagId: string, assetIds: string[]) {
+    if (assetIds.length === 0) {
+      return new Set<string>();
+    }
+
+    const results = yield* query(db, (db) =>
+      db
+        .selectFrom('tag_asset')
+        .select(['assetId as assetId'])
+        .where('tagId', '=', tagId)
+        .where('assetId', 'in', assetIds)
+        .execute(),
+    );
+
+    return new Set(results.map(({ assetId }) => assetId));
+  }),
+
+  addAssetIds: Effect.fn('Tag.addAssetIds')(function* (tagId: string, assetIds: string[]) {
+    if (assetIds.length === 0) {
+      return;
+    }
+
+    yield* query(db, (db) =>
+      db
+        .insertInto('tag_asset')
+        .values(assetIds.map((assetId) => ({ tagId, assetId })))
+        .execute(),
+    );
+  }),
+
+  removeAssetIds: Effect.fn('Tag.removeAssetIds')(function* (tagId: string, assetIds: string[]) {
+    if (assetIds.length === 0) {
+      return;
+    }
+
+    yield* query(db, (db) =>
+      db.deleteFrom('tag_asset').where('tagId', '=', tagId).where('assetId', 'in', assetIds).execute(),
+    );
+  }),
+
+  upsertAssetIds: Effect.fn('Tag.upsertAssetIds')(function* (items: Insertable<TagAssetTable>[]) {
+    if (items.length === 0) {
+      return [];
+    }
+
+    return yield* query(db, (db) =>
+      db
+        .insertInto('tag_asset')
+        .values(items)
+        .onConflict((oc) => oc.doNothing())
+        .returningAll()
+        .execute(),
+    );
+  }),
+
+  replaceAssetTags: Effect.fn('Tag.replaceAssetTags')(function* (assetId: string, tagIds: string[]) {
+    return yield* query(db, (db) =>
+      db.transaction().execute(async (tx) => {
+        await tx.deleteFrom('tag_asset').where('assetId', '=', assetId).execute();
+
+        if (tagIds.length === 0) {
+          return;
+        }
+
+        return tx
+          .insertInto('tag_asset')
+          .values(tagIds.map((tagId) => ({ tagId, assetId })))
+          .onConflict((oc) => oc.doNothing())
+          .returningAll()
+          .execute();
+      }),
+    );
+  }),
+
+  /** Deletes tags without assets and resolves with the number of deleted rows. */
+  deleteEmptyTags: Effect.fn('Tag.deleteEmptyTags')(function* () {
+    const result = yield* query(db, (db) =>
+      db
+        .deleteFrom('tag')
+        .where(({ not, exists, selectFrom }) =>
+          not(
+            exists(
+              selectFrom('tag_closure')
+                .whereRef('tag.id', '=', 'tag_closure.id_ancestor')
+                .innerJoin('tag_asset', 'tag_closure.id_descendant', 'tag_asset.tagId'),
+            ),
+          ),
+        )
+        .executeTakeFirst(),
+    );
+
+    return Number(result.numDeletedRows);
+  }),
+
+  insertTagWithClosures: Effect.fn('Tag.insertTagWithClosures')(function* (
+    insertTag: (db: QueryCreator<DB>) => InsertQueryBuilder<DB, 'tag', Selectable<TagTable>>,
+  ) {
+    return yield* query(db, (db) => insertTagWithClosures(db, insertTag));
+  }),
+});
+
+export class TagRepo extends Context.Service<TagRepo, ReturnType<typeof makeTag>>()('immich/repositories/TagRepo') {
+  static readonly make = (db: Kysely<DB>) => TagRepo.of(makeTag(db));
+
+  static readonly layer = Layer.effect(
+    TagRepo,
+    Effect.gen(function* () {
+      return TagRepo.make(yield* Db);
+    }),
+  );
+}
+
+/** Promise-facing adapter for the Nest services. Delegates to `TagRepo`. */
 @Injectable()
 export class TagRepository {
+  private readonly effect: Context.Service.Shape<typeof TagRepo>;
+
   constructor(
-    @InjectKysely() private db: Kysely<DB>,
+    @InjectKysely() db: Kysely<DB>,
     private logger: LoggingRepository,
   ) {
+    this.effect = TagRepo.make(db);
     this.logger.setContext(TagRepository.name);
+    registerEffect(this, this.effect);
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
   get(id: string) {
-    return this.db.selectFrom('tag').select(columns.tag).where('id', '=', id).executeTakeFirst();
+    return runPromise(this.effect.get(id));
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
   getByValue(userId: string, value: string) {
-    return this.db
-      .selectFrom('tag')
-      .select(columns.tag)
-      .where('userId', '=', userId)
-      .where('value', '=', value)
-      .executeTakeFirst();
+    return runPromise(this.effect.getByValue(userId, value));
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
-  async getAssetIdsByTagId(tagId: string): Promise<string[]> {
-    const rows = await this.db
-      .selectFrom('tag_closure')
-      .innerJoin('tag_asset', 'tag_asset.tagId', 'tag_closure.id_descendant')
-      .select('tag_asset.assetId')
-      .distinct()
-      .where('tag_closure.id_ancestor', '=', tagId)
-      .execute();
-
-    return rows.map(({ assetId }) => assetId);
+  getAssetIdsByTagId(tagId: string): Promise<string[]> {
+    return runPromise(this.effect.getAssetIdsByTagId(tagId));
   }
 
   @GenerateSql({ params: [{ userId: DummyValue.UUID, value: DummyValue.STRING, parentId: DummyValue.UUID }] })
-  async upsertValue({ userId, value, parentId: _parentId }: { userId: string; value: string; parentId?: string }) {
-    const parentId = _parentId ?? null;
-    return this.insertTagWithClosures((db) =>
-      db
-        .insertInto('tag')
-        .values({ userId, value, parentId })
-        .onConflict((oc) => oc.columns(['userId', 'value']).doUpdateSet({ parentId }))
-        .returningAll(),
-    );
+  upsertValue({ userId, value, parentId }: { userId: string; value: string; parentId?: string }) {
+    return runPromise(this.effect.upsertValue({ userId, value, parentId }));
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
   getAll(userId: string) {
-    return this.db.selectFrom('tag').select(columns.tag).where('userId', '=', userId).orderBy('value').execute();
+    return runPromise(this.effect.getAll(userId));
   }
 
   @GenerateSql({ params: [{ userId: DummyValue.UUID, color: DummyValue.STRING, value: DummyValue.STRING }] })
   create(tag: Insertable<TagTable>) {
-    return this.insertTagWithClosures((db) => db.insertInto('tag').values(tag).returningAll());
+    return runPromise(this.effect.create(tag));
   }
 
   @GenerateSql({ params: [DummyValue.UUID, { value: DummyValue.STRING, color: DummyValue.STRING }] })
-  async update(id: string, dto: Updateable<TagTable>) {
-    return this.db.transaction().execute(async (tx) => {
-      // Get previous tag value for reference if the current update contains a new value
-      const previousTag =
-        dto.value === undefined
-          ? undefined
-          : await tx.selectFrom('tag').select('value').where('id', '=', id).executeTakeFirst();
-
-      // Perform main tag update
-      const updated = await tx
-        .updateTable('tag')
-        .set(dto)
-        .where('id', '=', id)
-        .returningAll()
-        .executeTakeFirstOrThrow();
-
-      // Check if value has changed, trigger value updates on all children if so
-      if (previousTag && dto.value !== previousTag.value) {
-        await tx
-          // Use a recursive cte to get all levels of nested child tags that need to be updated
-          .withRecursive('descendants(id, value)', (qb) => {
-            const directChildren = qb
-              .selectFrom('tag as child')
-              .select((eb) => [
-                'child.id as id',
-                eb
-                  .fn<string>('concat', [
-                    eb.cast<string>(eb.val(updated.value), 'text'),
-                    eb.cast<string>(eb.val('/'), 'text'),
-                    eb.fn<string>('regexp_replace', ['child.value', eb.val('^.*/'), eb.val('')]),
-                  ])
-                  .as('value'),
-              ])
-              .where('child.parentId', '=', id);
-
-            const nestedChildren = qb
-              .selectFrom('tag as child')
-              .innerJoin('descendants as parent', 'parent.id', 'child.parentId')
-              .select((eb) => [
-                'child.id as id',
-                eb
-                  .fn<string>('concat', [
-                    'parent.value',
-                    eb.cast<string>(eb.val('/'), 'text'),
-                    eb.fn<string>('regexp_replace', ['child.value', eb.val('^.*/'), eb.val('')]),
-                  ])
-                  .as('value'),
-              ]);
-
-            return directChildren.unionAll(nestedChildren);
-          })
-          .updateTable('tag')
-          .from('descendants')
-          .set((eb) => ({
-            value: eb.ref('descendants.value'),
-          }))
-          .whereRef('tag.id', '=', 'descendants.id')
-          .execute();
-      }
-      return updated;
-    });
+  update(id: string, dto: Updateable<TagTable>) {
+    return runPromise(this.effect.update(id, dto));
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
-  async delete(id: string) {
-    await this.db.deleteFrom('tag').where('id', '=', id).execute();
+  delete(id: string) {
+    return runPromise(this.effect.delete(id));
   }
 
   @ChunkedSet({ paramIndex: 1 })
   @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
-  async getAssetIds(tagId: string, assetIds: string[]): Promise<Set<string>> {
-    if (assetIds.length === 0) {
-      return new Set();
-    }
-
-    const results = await this.db
-      .selectFrom('tag_asset')
-      .select(['assetId as assetId'])
-      .where('tagId', '=', tagId)
-      .where('assetId', 'in', assetIds)
-      .execute();
-
-    return new Set(results.map(({ assetId }) => assetId));
+  getAssetIds(tagId: string, assetIds: string[]): Promise<Set<string>> {
+    return runPromise(this.effect.getAssetIds(tagId, assetIds));
   }
 
   @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
   @Chunked({ paramIndex: 1 })
-  async addAssetIds(tagId: string, assetIds: string[]): Promise<void> {
-    if (assetIds.length === 0) {
-      return;
-    }
-
-    await this.db
-      .insertInto('tag_asset')
-      .values(assetIds.map((assetId) => ({ tagId, assetId })))
-      .execute();
+  addAssetIds(tagId: string, assetIds: string[]): Promise<void> {
+    return runPromise(this.effect.addAssetIds(tagId, assetIds));
   }
 
   @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
   @Chunked({ paramIndex: 1 })
-  async removeAssetIds(tagId: string, assetIds: string[]): Promise<void> {
-    if (assetIds.length === 0) {
-      return;
-    }
-
-    await this.db.deleteFrom('tag_asset').where('tagId', '=', tagId).where('assetId', 'in', assetIds).execute();
+  removeAssetIds(tagId: string, assetIds: string[]): Promise<void> {
+    return runPromise(this.effect.removeAssetIds(tagId, assetIds));
   }
 
   @GenerateSql({ params: [[{ assetId: DummyValue.UUID, tagIds: DummyValue.UUID }]] })
   @Chunked()
   upsertAssetIds(items: Insertable<TagAssetTable>[]) {
-    if (items.length === 0) {
-      return Promise.resolve([]);
-    }
-
-    return this.db
-      .insertInto('tag_asset')
-      .values(items)
-      .onConflict((oc) => oc.doNothing())
-      .returningAll()
-      .execute();
+    return runPromise(this.effect.upsertAssetIds(items));
   }
 
   @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
   @Chunked({ paramIndex: 1 })
   replaceAssetTags(assetId: string, tagIds: string[]) {
-    return this.db.transaction().execute(async (tx) => {
-      await tx.deleteFrom('tag_asset').where('assetId', '=', assetId).execute();
-
-      if (tagIds.length === 0) {
-        return;
-      }
-
-      return tx
-        .insertInto('tag_asset')
-        .values(tagIds.map((tagId) => ({ tagId, assetId })))
-        .onConflict((oc) => oc.doNothing())
-        .returningAll()
-        .execute();
-    });
+    return runPromise(this.effect.replaceAssetTags(assetId, tagIds));
   }
 
   async deleteEmptyTags() {
-    const result = await this.db
-      .deleteFrom('tag')
-      .where(({ not, exists, selectFrom }) =>
-        not(
-          exists(
-            selectFrom('tag_closure')
-              .whereRef('tag.id', '=', 'tag_closure.id_ancestor')
-              .innerJoin('tag_asset', 'tag_closure.id_descendant', 'tag_asset.tagId'),
-          ),
-        ),
-      )
-      .executeTakeFirst();
-
-    const deletedRows = Number(result.numDeletedRows);
+    const deletedRows = await runPromise(this.effect.deleteEmptyTags());
     if (deletedRows > 0) {
       this.logger.log(`Deleted ${deletedRows} empty tags`);
     }
   }
 
   insertTagWithClosures(insertTag: (db: QueryCreator<DB>) => InsertQueryBuilder<DB, 'tag', Selectable<TagTable>>) {
-    return this.db
-      .with('created_tag', insertTag)
-      .with('created_tag_closures', (db) =>
-        db
-          .insertInto('tag_closure')
-          .columns(['id_ancestor', 'id_descendant'])
-          .expression((eb) =>
-            eb
-              .selectFrom('created_tag')
-              .select(['created_tag.id as id_ancestor', 'created_tag.id as id_descendant'])
-              .unionAll(
-                eb
-                  .selectFrom('created_tag')
-                  .innerJoin('tag_closure', 'tag_closure.id_descendant', 'created_tag.parentId')
-                  .select(['tag_closure.id_ancestor', 'created_tag.id as id_descendant']),
-              ),
-          )
-          .onConflict((oc) => oc.doNothing()),
-      )
-      .selectFrom('created_tag')
-      .selectAll()
-      .executeTakeFirstOrThrow();
+    return runPromise(this.effect.insertTagWithClosures(insertTag));
   }
 }

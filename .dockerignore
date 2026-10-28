@@ -28,6 +28,7 @@ e2e/
 fastlane/
 misc/
 mobile/
+repos/
 
 packages/sdk/build/
 

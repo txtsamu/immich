@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { parse } from 'cookie';
+import { Cause, Effect } from 'effect';
 import { DateTime } from 'luxon';
 import { IncomingHttpHeaders } from 'node:http';
 import sanitize from 'sanitize-filename';
@@ -22,12 +23,13 @@ import {
 } from 'src/dtos/auth.dto.js';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
 import { UserAdminResponseDto, mapUserAdmin } from 'src/dtos/user.dto.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import { AuthType, ImmichCookie, ImmichHeader, ImmichQuery, JobName, Permission } from 'src/enum.js';
 import { OAuthProfile } from 'src/repositories/oauth.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { isGranted } from 'src/utils/access.js';
 import { HumanReadableSize } from 'src/utils/bytes.js';
-import { generateProfileImage } from 'src/utils/profile-image.js';
+import { generateProfileImageFx } from 'src/utils/profile-image.js';
 import { getUserAgentDetails } from 'src/utils/request.js';
 
 export interface LoginDetails {
@@ -51,6 +53,7 @@ interface ParsedOAuthClaims {
   quotaSizeInBytes?: number | null;
 }
 
+/** The original thrown value behind an Effect error that wraps it in `cause` (see `src/effect/errors.ts`). */
 export type ValidateRequest = {
   headers: IncomingHttpHeaders;
   queryParams: Record<string, string>;
@@ -66,187 +69,232 @@ export type ValidateRequest = {
 @Injectable()
 export class AuthService extends BaseService {
   async login(dto: LoginCredentialDto, details: LoginDetails) {
-    const config = await this.getConfig({ withCache: false });
-    if (!config.passwordLogin.enabled) {
-      throw new UnauthorizedException('Password login has been disabled');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        if (!config.passwordLogin.enabled) {
+          return yield* Effect.fail(new UnauthorizedException('Password login has been disabled'));
+        }
 
-    const user = await this.userRepository.getByEmail(dto.email, { withPassword: true });
-    // Always run bcrypt so response time is constant regardless of whether the email
-    // is registered, preventing timing-based user enumeration.
-    const isAuthenticated = this.cryptoRepository.compareBcrypt(dto.password, user?.password ?? LOGIN_DUMMY_HASH);
+        const user = yield* this.fx.user.getByEmail(dto.email, { withPassword: true });
+        // Always run bcrypt so response time is constant regardless of whether the email
+        // is registered, preventing timing-based user enumeration.
+        const isAuthenticated = yield* this.fx.crypto.compareBcrypt(dto.password, user?.password ?? LOGIN_DUMMY_HASH);
 
-    if (!user || !user.password || !isAuthenticated) {
-      this.logger.warn(`Failed login attempt for user ${dto.email} from ip address ${details.clientIp}`);
-      throw new UnauthorizedException('Incorrect email or password');
-    }
+        if (!user || !user.password || !isAuthenticated) {
+          this.logger.warn(`Failed login attempt for user ${dto.email} from ip address ${details.clientIp}`);
+          return yield* Effect.fail(new UnauthorizedException('Incorrect email or password'));
+        }
 
-    return this.createLoginResponse(user, details);
+        return yield* this.createLoginResponseFx(user, details);
+      }),
+    );
   }
 
   async logout(auth: AuthDto, authType: AuthType): Promise<LogoutResponseDto> {
-    let oauthBearerToken: string | undefined;
-    if (auth.session) {
-      const session = await this.sessionRepository.get(auth.session.id);
-      oauthBearerToken = session?.oauthBearerToken ?? undefined;
-      await this.sessionRepository.delete(auth.session.id);
-      await this.eventRepository.emit('SessionDelete', { sessionId: auth.session.id });
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        let oauthBearerToken: string | undefined;
+        if (auth.session) {
+          const session = yield* this.fx.session.get(auth.session.id);
+          oauthBearerToken = session?.oauthBearerToken ?? undefined;
+          yield* this.fx.session.delete(auth.session.id);
+          yield* this.fx.event.emit('SessionDelete', { sessionId: auth.session.id });
+        }
 
-    return {
-      successful: true,
-      redirectUri: await this.getLogoutEndpoint(authType, oauthBearerToken),
-    };
+        return {
+          successful: true,
+          redirectUri: yield* this.getLogoutEndpoint(authType, oauthBearerToken),
+        };
+      }),
+    );
   }
 
   async backchannelLogout(dto: OAuthBackchannelLogoutDto): Promise<void> {
-    const { oauth } = await this.getConfig({ withCache: false });
-    if (!oauth.enabled) {
-      throw new BadRequestException('Received backchannel logout request but OAuth is not enabled');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { oauth } = yield* this.getConfigFx({ withCache: false });
+        if (!oauth.enabled) {
+          return yield* Effect.fail(
+            new BadRequestException('Received backchannel logout request but OAuth is not enabled'),
+          );
+        }
 
-    let claims;
-    try {
-      claims = await this.oauthRepository.validateLogoutToken(oauth, dto.logout_token);
-    } catch (error: Error | any) {
-      this.logger.error(`Error backchannel logout: ${error.message}`);
-      this.logger.error(error);
+        const claims = yield* this.fx.oauth.validateLogoutToken(oauth, dto.logout_token).pipe(
+          // eslint-disable-next-line unicorn/catch-error-name
+          Effect.catch((wrapped) => {
+            const error: Error | any = unwrap(wrapped);
+            this.logger.error(`Error backchannel logout: ${error.message}`);
+            this.logger.error(error);
 
-      throw new BadRequestException('Error backchannel logout: token validation failed');
-    }
+            return Effect.fail(new BadRequestException('Error backchannel logout: token validation failed'));
+          }),
+        );
 
-    if (!claims) {
-      throw new BadRequestException('Invalid logout token: no claims found');
-    }
+        if (!claims) {
+          return yield* Effect.fail(new BadRequestException('Invalid logout token: no claims found'));
+        }
 
-    if (!claims.sub && !claims.sid) {
-      throw new BadRequestException('Invalid logout token: it must contain either a sub or a sid claim');
-    }
+        if (!claims.sub && !claims.sid) {
+          return yield* Effect.fail(
+            new BadRequestException('Invalid logout token: it must contain either a sub or a sid claim'),
+          );
+        }
 
-    const deletedSessionIds = await this.sessionRepository.invalidateOAuth({
-      oauthSid: claims.sid,
-      oauthId: claims.sub,
-    });
+        const deletedSessionIds = yield* this.fx.session.invalidateOAuth({
+          oauthSid: claims.sid,
+          oauthId: claims.sub,
+        });
 
-    for (const sessionId of deletedSessionIds) {
-      await this.eventRepository.emit('SessionDelete', { sessionId });
-    }
+        for (const sessionId of deletedSessionIds) {
+          yield* this.fx.event.emit('SessionDelete', { sessionId });
+        }
+      }),
+    );
   }
 
   async changePassword(auth: AuthDto, dto: ChangePasswordDto): Promise<UserAdminResponseDto> {
-    const { password, newPassword } = dto;
-    const user = await this.userRepository.getForChangePassword(auth.user.id);
-    const isValid = this.validateSecret(password, user.password);
-    if (!isValid) {
-      throw new BadRequestException('Wrong password');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { password, newPassword } = dto;
+        const user = yield* this.fx.user.getForChangePassword(auth.user.id);
+        const isValid = yield* this.validateSecret(password, user.password);
+        if (!isValid) {
+          return yield* Effect.fail(new BadRequestException('Wrong password'));
+        }
 
-    const hashedPassword = await this.cryptoRepository.hashBcrypt(newPassword, SALT_ROUNDS);
+        const hashedPassword = yield* this.fx.crypto.hashBcrypt(newPassword, SALT_ROUNDS);
 
-    const updatedUser = await this.userRepository.update(user.id, {
-      password: hashedPassword,
-      shouldChangePassword: false,
-    });
+        const updatedUser = yield* this.fx.user.update(user.id, {
+          password: hashedPassword,
+          shouldChangePassword: false,
+        });
 
-    await this.eventRepository.emit('AuthChangePassword', {
-      userId: user.id,
-      currentSessionId: auth.session?.id,
-      invalidateSessions: dto.invalidateSessions,
-    });
+        yield* this.fx.event.emit('AuthChangePassword', {
+          userId: user.id,
+          currentSessionId: auth.session?.id,
+          invalidateSessions: dto.invalidateSessions,
+        });
 
-    return mapUserAdmin(updatedUser);
+        return mapUserAdmin(updatedUser);
+      }),
+    );
   }
 
   async setupPinCode(auth: AuthDto, { pinCode }: PinCodeSetupDto) {
-    const user = await this.userRepository.getForPinCode(auth.user.id);
-    if (!user) {
-      throw new UnauthorizedException();
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const user = yield* this.fx.user.getForPinCode(auth.user.id);
+        if (!user) {
+          return yield* Effect.fail(new UnauthorizedException());
+        }
 
-    if (user.pinCode) {
-      throw new BadRequestException('User already has a PIN code');
-    }
+        if (user.pinCode) {
+          return yield* Effect.fail(new BadRequestException('User already has a PIN code'));
+        }
 
-    const hashed = await this.cryptoRepository.hashBcrypt(pinCode, SALT_ROUNDS);
-    await this.userRepository.update(auth.user.id, { pinCode: hashed });
+        const hashed = yield* this.fx.crypto.hashBcrypt(pinCode, SALT_ROUNDS);
+        yield* this.fx.user.update(auth.user.id, { pinCode: hashed });
+      }),
+    );
   }
 
   async resetPinCode(auth: AuthDto, dto: PinCodeResetDto) {
-    const user = await this.userRepository.getForPinCode(auth.user.id);
-    this.validatePinCode(user, dto);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const user = yield* this.fx.user.getForPinCode(auth.user.id);
+        yield* this.validatePinCode(user, dto);
 
-    await this.userRepository.update(auth.user.id, { pinCode: null });
-    await this.sessionRepository.lockAll(auth.user.id);
+        yield* this.fx.user.update(auth.user.id, { pinCode: null });
+        yield* this.fx.session.lockAll(auth.user.id);
+      }),
+    );
   }
 
   async changePinCode(auth: AuthDto, dto: PinCodeChangeDto) {
-    const user = await this.userRepository.getForPinCode(auth.user.id);
-    this.validatePinCode(user, dto);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const user = yield* this.fx.user.getForPinCode(auth.user.id);
+        yield* this.validatePinCode(user, dto);
 
-    const hashed = await this.cryptoRepository.hashBcrypt(dto.newPinCode, SALT_ROUNDS);
-    await this.userRepository.update(auth.user.id, { pinCode: hashed });
+        const hashed = yield* this.fx.crypto.hashBcrypt(dto.newPinCode, SALT_ROUNDS);
+        yield* this.fx.user.update(auth.user.id, { pinCode: hashed });
+      }),
+    );
   }
 
-  private validatePinCode(
+  private readonly validatePinCode = Effect.fn('AuthService.validatePinCode')(function* (
+    this: AuthService,
     user: { pinCode: string | null; password: string | null },
     dto: { pinCode?: string; password?: string },
   ) {
     if (!user.pinCode) {
-      throw new BadRequestException('User does not have a PIN code');
+      return yield* Effect.fail(new BadRequestException('User does not have a PIN code'));
     }
 
     if (dto.password) {
-      if (!this.validateSecret(dto.password, user.password)) {
-        throw new BadRequestException('Wrong password');
+      if (!(yield* this.validateSecret(dto.password, user.password))) {
+        return yield* Effect.fail(new BadRequestException('Wrong password'));
       }
     } else if (dto.pinCode) {
-      if (!this.validateSecret(dto.pinCode, user.pinCode)) {
-        throw new BadRequestException('Wrong PIN code');
+      if (!(yield* this.validateSecret(dto.pinCode, user.pinCode))) {
+        return yield* Effect.fail(new BadRequestException('Wrong PIN code'));
       }
     } else {
-      throw new BadRequestException('Either password or pinCode is required');
+      return yield* Effect.fail(new BadRequestException('Either password or pinCode is required'));
     }
-  }
+  });
 
   async adminSignUp(dto: SignUpDto): Promise<UserAdminResponseDto> {
-    const admin = await this.createUser({
-      isAdmin: true,
-      email: dto.email,
-      name: dto.name,
-      password: dto.password,
-      storageLabel: 'admin',
-    });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const admin = yield* this.createUserFx({
+          isAdmin: true,
+          email: dto.email,
+          name: dto.name,
+          password: dto.password,
+          storageLabel: 'admin',
+        });
 
-    return mapUserAdmin(admin);
+        return mapUserAdmin(admin);
+      }),
+    );
   }
 
   async authenticate({ headers, queryParams, metadata }: ValidateRequest): Promise<AuthDto> {
-    const authDto = await this.validate({ headers, queryParams });
-    const { adminRoute, sharedLinkRoute, uri } = metadata;
-    const requestedPermission = metadata.permission ?? Permission.All;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const authDto: AuthDto = yield* this.validate({ headers, queryParams });
+        const { adminRoute, sharedLinkRoute, uri } = metadata;
+        const requestedPermission = metadata.permission ?? Permission.All;
 
-    if (!authDto.user.isAdmin && adminRoute) {
-      this.logger.warn(`Denied access to admin only route: ${uri}`);
-      throw new ForbiddenException('Forbidden');
-    }
+        if (!authDto.user.isAdmin && adminRoute) {
+          this.logger.warn(`Denied access to admin only route: ${uri}`);
+          return yield* Effect.fail(new ForbiddenException('Forbidden'));
+        }
 
-    if (authDto.sharedLink && !sharedLinkRoute) {
-      this.logger.warn(`Denied access to non-shared route: ${uri}`);
-      throw new ForbiddenException('Forbidden');
-    }
+        if (authDto.sharedLink && !sharedLinkRoute) {
+          this.logger.warn(`Denied access to non-shared route: ${uri}`);
+          return yield* Effect.fail(new ForbiddenException('Forbidden'));
+        }
 
-    if (
-      authDto.apiKey &&
-      requestedPermission !== false &&
-      !isGranted({ requested: [requestedPermission], current: authDto.apiKey.permissions })
-    ) {
-      throw new ForbiddenException(`Missing required permission: ${requestedPermission}`);
-    }
+        if (
+          authDto.apiKey &&
+          requestedPermission !== false &&
+          !isGranted({ requested: [requestedPermission], current: authDto.apiKey.permissions })
+        ) {
+          return yield* Effect.fail(new ForbiddenException(`Missing required permission: ${requestedPermission}`));
+        }
 
-    return authDto;
+        return authDto;
+      }),
+    );
   }
 
-  private async validate({ headers, queryParams }: Omit<ValidateRequest, 'metadata'>): Promise<AuthDto> {
+  private readonly validate = Effect.fn('AuthService.validate')(function* (
+    this: AuthService,
+    { headers, queryParams }: Omit<ValidateRequest, 'metadata'>,
+  ) {
     const shareKey = (headers[ImmichHeader.SharedLinkKey] || queryParams[ImmichQuery.SharedLinkKey]) as string;
     const shareSlug = (headers[ImmichHeader.SharedLinkSlug] || queryParams[ImmichQuery.SharedLinkSlug]) as string;
     const session = (headers[ImmichHeader.UserToken] ||
@@ -257,207 +305,238 @@ export class AuthService extends BaseService {
     const apiKey = (headers[ImmichHeader.ApiKey] || queryParams[ImmichQuery.ApiKey]) as string;
 
     if (shareKey) {
-      return this.validateSharedLinkKey(shareKey);
+      return yield* this.validateSharedLinkKeyFx(shareKey);
     }
 
     if (shareSlug) {
-      return this.validateSharedLinkSlug(shareSlug);
+      return yield* this.validateSharedLinkSlugFx(shareSlug);
     }
 
     if (session) {
-      return this.validateSession(session, headers);
+      return yield* this.validateSession(session, headers);
     }
 
     if (apiKey) {
-      return this.validateApiKey(apiKey);
+      return yield* this.validateApiKey(apiKey);
     }
 
-    throw new UnauthorizedException('Authentication required');
-  }
+    return yield* Effect.fail(new UnauthorizedException('Authentication required'));
+  });
 
   getMobileRedirect(url: string) {
     return `${MOBILE_REDIRECT}?${url.split('?', 2)[1] || ''}`;
   }
 
   async authorize(dto: OAuthConfigDto) {
-    const { oauth } = await this.getConfig({ withCache: false });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { oauth } = yield* this.getConfigFx({ withCache: false });
 
-    if (!oauth.enabled) {
-      throw new BadRequestException('OAuth is not enabled');
-    }
+        if (!oauth.enabled) {
+          return yield* Effect.fail(new BadRequestException('OAuth is not enabled'));
+        }
 
-    return await this.oauthRepository.authorize(
-      oauth,
-      this.resolveRedirectUri(oauth, dto.redirectUri),
-      dto.state,
-      dto.codeChallenge,
+        return yield* this.fx.oauth.authorize(
+          oauth,
+          this.resolveRedirectUri(oauth, dto.redirectUri),
+          dto.state,
+          dto.codeChallenge,
+        );
+      }),
     );
   }
 
   async callback(dto: OAuthCallbackDto, headers: IncomingHttpHeaders, loginDetails: LoginDetails) {
-    const { oauth } = await this.getConfig({ withCache: false });
-    if (!oauth.enabled) {
-      throw new BadRequestException('OAuth is not enabled');
-    }
-
-    const expectedState = dto.state ?? this.getCookieOauthState(headers);
-    if (!expectedState?.length) {
-      throw new BadRequestException('OAuth state is missing');
-    }
-
-    const codeVerifier = dto.codeVerifier ?? this.getCookieCodeVerifier(headers);
-    if (!codeVerifier?.length) {
-      throw new BadRequestException('OAuth code verifier is missing');
-    }
-
-    const url = this.resolveRedirectUri(oauth, dto.url);
-    const {
-      profile,
-      sid: oauthSid,
-      idToken: oauthBearerToken,
-    } = await this.oauthRepository.getProfileAndOAuthSid(oauth, url, expectedState, codeVerifier);
-    const normalizedEmail = profile.email ? profile.email.trim().toLowerCase() : undefined;
-    const { autoRegister, roleClaim } = oauth;
-    this.logger.debug(`Logging in with OAuth: ${JSON.stringify(profile)}`);
-    let user: UserAdmin | undefined = await this.userRepository.getByOAuthId(profile.sub);
-
-    // link by email
-    if (!user && normalizedEmail) {
-      const emailUser = await this.userRepository.getByEmail(normalizedEmail);
-      if (emailUser) {
-        if (emailUser.oauthId) {
-          this.logger.debug('OAuth login conflict: email already linked to different account');
-          throw new BadRequestException('OAuth authentication failed');
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { oauth } = yield* this.getConfigFx({ withCache: false });
+        if (!oauth.enabled) {
+          return yield* Effect.fail(new BadRequestException('OAuth is not enabled'));
         }
-        user = await this.userRepository.update(emailUser.id, { oauthId: profile.sub });
-      }
-    }
 
-    const role = this.getRoleClaim(profile, roleClaim);
-    const isAdmin = role === 'admin';
+        const expectedState = dto.state ?? this.getCookieOauthState(headers);
+        if (!expectedState?.length) {
+          return yield* Effect.fail(new BadRequestException('OAuth state is missing'));
+        }
 
-    if (user && role && isAdmin !== user.isAdmin) {
-      user = await this.userRepository.update(user.id, { isAdmin });
-    }
+        const codeVerifier = dto.codeVerifier ?? this.getCookieCodeVerifier(headers);
+        if (!codeVerifier?.length) {
+          return yield* Effect.fail(new BadRequestException('OAuth code verifier is missing'));
+        }
 
-    // register new user
-    if (user) {
-      user = await this.syncOAuthClaims(user, profile, oauth);
-    } else {
-      if (!autoRegister) {
-        this.logger.warn(
-          `Unable to register ${profile.sub}/${normalizedEmail || '(no email)'}. User does not exist and auto registering is disabled. To enable set OAuth Auto Register to true in admin settings.`,
-        );
-        throw new BadRequestException('OAuth authentication failed');
-      }
+        const url = this.resolveRedirectUri(oauth, dto.url);
+        const {
+          profile,
+          sid: oauthSid,
+          idToken: oauthBearerToken,
+        } = yield* this.fx.oauth.getProfileAndOAuthSid(oauth, url, expectedState, codeVerifier);
+        const normalizedEmail = profile.email ? profile.email.trim().toLowerCase() : undefined;
+        const { autoRegister, roleClaim } = oauth;
+        this.logger.debug(`Logging in with OAuth: ${JSON.stringify(profile)}`);
+        let user: UserAdmin | undefined = yield* this.fx.user.getByOAuthId(profile.sub);
 
-      if (!normalizedEmail) {
-        throw new BadRequestException('OAuth profile does not have an email address');
-      }
+        // link by email
+        if (!user && normalizedEmail) {
+          const emailUser = yield* this.fx.user.getByEmail(normalizedEmail);
+          if (emailUser) {
+            if (emailUser.oauthId) {
+              this.logger.debug('OAuth login conflict: email already linked to different account');
+              return yield* Effect.fail(new BadRequestException('OAuth authentication failed'));
+            }
+            user = yield* this.fx.user.update(emailUser.id, { oauthId: profile.sub });
+          }
+        }
 
-      this.logger.log(`Registering new user: ${profile.sub}/${normalizedEmail}`);
+        const role = this.getRoleClaim(profile, roleClaim);
+        const isAdmin = role === 'admin';
 
-      const claims = this.parseOAuthClaims(profile, oauth, true);
+        if (user && role && isAdmin !== user.isAdmin) {
+          user = yield* this.fx.user.update(user.id, { isAdmin });
+        }
 
-      user = await this.createUser({
-        name:
-          profile.name ||
-          `${profile.given_name || ''} ${profile.family_name || ''}`.trim() ||
-          profile.preferred_username ||
-          normalizedEmail,
-        email: normalizedEmail,
-        oauthId: profile.sub,
-        quotaSizeInBytes: claims.quotaSizeInBytes ?? null,
-        storageLabel: claims.storageLabel ?? null,
-        isAdmin,
-      });
-    }
+        // register new user
+        if (user) {
+          user = yield* this.syncOAuthClaims(user, profile, oauth);
+        } else {
+          if (!autoRegister) {
+            this.logger.warn(
+              `Unable to register ${profile.sub}/${normalizedEmail || '(no email)'}. User does not exist and auto registering is disabled. To enable set OAuth Auto Register to true in admin settings.`,
+            );
+            return yield* Effect.fail(new BadRequestException('OAuth authentication failed'));
+          }
 
-    if (!user.profileImagePath && profile.picture) {
-      await this.syncProfilePicture(user, profile.picture);
-    }
+          if (!normalizedEmail) {
+            return yield* Effect.fail(new BadRequestException('OAuth profile does not have an email address'));
+          }
 
-    return this.createLoginResponse(user, loginDetails, oauthSid, oauthBearerToken);
+          this.logger.log(`Registering new user: ${profile.sub}/${normalizedEmail}`);
+
+          const claims = this.parseOAuthClaims(profile, oauth, true);
+
+          user = yield* this.createUserFx({
+            name:
+              profile.name ||
+              `${profile.given_name || ''} ${profile.family_name || ''}`.trim() ||
+              profile.preferred_username ||
+              normalizedEmail,
+            email: normalizedEmail,
+            oauthId: profile.sub,
+            quotaSizeInBytes: claims.quotaSizeInBytes ?? null,
+            storageLabel: claims.storageLabel ?? null,
+            isAdmin,
+          });
+        }
+
+        if (!user.profileImagePath && profile.picture) {
+          yield* this.syncProfilePicture(user, profile.picture);
+        }
+
+        return yield* this.createLoginResponseFx(user, loginDetails, oauthSid, oauthBearerToken);
+      }),
+    );
   }
 
-  private async syncProfilePicture(user: UserAdmin, url: string) {
-    try {
+  private readonly syncProfilePicture = Effect.fn('AuthService.syncProfilePicture')(function* (
+    this: AuthService,
+    user: UserAdmin,
+    url: string,
+  ) {
+    yield* Effect.gen({ self: this }, function* () {
       const oldPath = user.profileImagePath;
-      const data = await this.oauthRepository.getProfilePicture(url);
+      const data = yield* this.fx.oauth.getProfilePicture(url);
 
-      const config = await this.getConfig({ withCache: true });
-      const profileImagePath = await generateProfileImage(
-        { media: this.mediaRepository, crypto: this.cryptoRepository, storageCore: this.storageCore },
+      const config = yield* this.getConfigFx({ withCache: true });
+      const profileImagePath = yield* generateProfileImageFx(
+        { media: this.fx.media, crypto: this.fx.crypto, storageCore: this.storageCore },
         config,
         user.id,
         Buffer.from(data),
       );
 
-      await this.userRepository.update(user.id, { profileImagePath, profileChangedAt: new Date() });
+      yield* this.fx.user.update(user.id, { profileImagePath, profileChangedAt: new Date() });
 
       if (oldPath) {
-        await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [oldPath] } });
+        yield* this.fx.job.queue({ name: JobName.FileDelete, data: { files: [oldPath] } });
       }
-    } catch (error: Error | any) {
-      this.logger.warn(`Unable to sync oauth profile picture: ${error}\n${error?.stack}`);
-    }
-  }
+    }).pipe(
+      Effect.catchCause((cause) => {
+        const error: Error | any = unwrap(Cause.squash(cause));
+        this.logger.warn(`Unable to sync oauth profile picture: ${error}\n${error?.stack}`);
+        return Effect.void;
+      }),
+    );
+  });
 
   async link(auth: AuthDto, dto: OAuthCallbackDto, headers: IncomingHttpHeaders): Promise<UserAdminResponseDto> {
-    const expectedState = dto.state ?? this.getCookieOauthState(headers);
-    if (!expectedState?.length) {
-      throw new BadRequestException('OAuth state is missing');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const expectedState = dto.state ?? this.getCookieOauthState(headers);
+        if (!expectedState?.length) {
+          return yield* Effect.fail(new BadRequestException('OAuth state is missing'));
+        }
 
-    const codeVerifier = dto.codeVerifier ?? this.getCookieCodeVerifier(headers);
-    if (!codeVerifier?.length) {
-      throw new BadRequestException('OAuth code verifier is missing');
-    }
+        const codeVerifier = dto.codeVerifier ?? this.getCookieCodeVerifier(headers);
+        if (!codeVerifier?.length) {
+          return yield* Effect.fail(new BadRequestException('OAuth code verifier is missing'));
+        }
 
-    const { oauth } = await this.getConfig({ withCache: false });
-    const {
-      profile: { sub: oauthId },
-      sid,
-      idToken,
-    } = await this.oauthRepository.getProfileAndOAuthSid(oauth, dto.url, expectedState, codeVerifier);
-    const duplicate = await this.userRepository.getByOAuthId(oauthId);
-    if (duplicate && duplicate.id !== auth.user.id) {
-      this.logger.warn(`OAuth link account failed: sub is already linked to another user (${duplicate.email}).`);
-      throw new BadRequestException('This OAuth account has already been linked to another user.');
-    }
+        const { oauth } = yield* this.getConfigFx({ withCache: false });
+        const {
+          profile: { sub: oauthId },
+          sid,
+          idToken,
+        } = yield* this.fx.oauth.getProfileAndOAuthSid(oauth, dto.url, expectedState, codeVerifier);
+        const duplicate = yield* this.fx.user.getByOAuthId(oauthId);
+        if (duplicate && duplicate.id !== auth.user.id) {
+          this.logger.warn(`OAuth link account failed: sub is already linked to another user (${duplicate.email}).`);
+          return yield* Effect.fail(
+            new BadRequestException('This OAuth account has already been linked to another user.'),
+          );
+        }
 
-    if (auth.session && (sid || idToken)) {
-      await this.sessionRepository.update(auth.session.id, {
-        oauthSid: sid,
-        oauthBearerToken: idToken,
-      });
-    }
+        if (auth.session && (sid || idToken)) {
+          yield* this.fx.session.update(auth.session.id, {
+            oauthSid: sid,
+            oauthBearerToken: idToken,
+          });
+        }
 
-    const user = await this.userRepository.update(auth.user.id, { oauthId });
-    return mapUserAdmin(user);
+        const user = yield* this.fx.user.update(auth.user.id, { oauthId });
+        return mapUserAdmin(user);
+      }),
+    );
   }
 
   async unlink(auth: AuthDto): Promise<UserAdminResponseDto> {
-    if (auth.session) {
-      await this.sessionRepository.update(auth.session.id, { oauthSid: null, oauthBearerToken: null });
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        if (auth.session) {
+          yield* this.fx.session.update(auth.session.id, { oauthSid: null, oauthBearerToken: null });
+        }
 
-    const user = await this.userRepository.update(auth.user.id, { oauthId: null });
-    return mapUserAdmin(user);
+        const user = yield* this.fx.user.update(auth.user.id, { oauthId: null });
+        return mapUserAdmin(user);
+      }),
+    );
   }
 
-  private async getLogoutEndpoint(authType: AuthType, oauthBearerToken?: string | null): Promise<string> {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly getLogoutEndpoint = Effect.fn('AuthService.getLogoutEndpoint')(function* (
+    this: AuthService,
+    authType: AuthType,
+    oauthBearerToken?: string | null,
+  ) {
     if (authType !== AuthType.OAuth) {
       return LOGIN_URL;
     }
 
-    const config = await this.getConfig({ withCache: false });
+    const config = yield* this.getConfigFx({ withCache: false });
     if (!config.oauth.enabled) {
       return LOGIN_URL;
     }
 
     const endSessionEndpoint =
-      config.oauth.endSessionEndpoint || (await this.oauthRepository.getLogoutEndpoint(config.oauth));
+      config.oauth.endSessionEndpoint || (yield* this.fx.oauth.getLogoutEndpoint(config.oauth));
 
     if (!endSessionEndpoint) {
       return LOGIN_URL;
@@ -470,7 +549,7 @@ export class AuthService extends BaseService {
     }
 
     return url.href;
-  }
+  });
 
   private getBearerToken(headers: IncomingHttpHeaders): string | null {
     const [type, token] = (headers.authorization || '').split(' ', 2);
@@ -497,27 +576,41 @@ export class AuthService extends BaseService {
   }
 
   async validateSharedLinkKey(key: string | string[]): Promise<AuthDto> {
+    return runPromise(this.validateSharedLinkKeyFx(key));
+  }
+
+  private readonly validateSharedLinkKeyFx = Effect.fn('AuthService.validateSharedLinkKey')(function* (
+    this: AuthService,
+    key: string | string[],
+  ) {
     key = Array.isArray(key) ? key[0] : key;
 
     const bytes = Buffer.from(key, key.length === 100 ? 'hex' : 'base64url');
-    const sharedLink = await this.sharedLinkRepository.getByKey(bytes);
+    const sharedLink = yield* this.fx.sharedLink.getByKey(bytes);
     if (!this.isValidSharedLink(sharedLink)) {
-      throw new UnauthorizedException('Invalid share key');
+      return yield* Effect.fail(new UnauthorizedException('Invalid share key'));
     }
 
-    return { user: sharedLink.user, sharedLink };
-  }
+    return { user: sharedLink.user, sharedLink } satisfies AuthDto;
+  });
 
   async validateSharedLinkSlug(slug: string | string[]): Promise<AuthDto> {
+    return runPromise(this.validateSharedLinkSlugFx(slug));
+  }
+
+  private readonly validateSharedLinkSlugFx = Effect.fn('AuthService.validateSharedLinkSlug')(function* (
+    this: AuthService,
+    slug: string | string[],
+  ) {
     slug = Array.isArray(slug) ? slug[0] : slug;
 
-    const sharedLink = await this.sharedLinkRepository.getBySlug(slug);
+    const sharedLink = yield* this.fx.sharedLink.getBySlug(slug);
     if (!this.isValidSharedLink(sharedLink)) {
-      throw new UnauthorizedException('Invalid share slug');
+      return yield* Effect.fail(new UnauthorizedException('Invalid share slug'));
     }
 
-    return { user: sharedLink.user, sharedLink };
-  }
+    return { user: sharedLink.user, sharedLink } satisfies AuthDto;
+  });
 
   private isValidSharedLink(
     sharedLink?: AuthSharedLink & { user: AuthUser | null },
@@ -525,37 +618,46 @@ export class AuthService extends BaseService {
     return !!sharedLink?.user && (!sharedLink.expiresAt || new Date(sharedLink.expiresAt) > new Date());
   }
 
-  private async validateApiKey(key: string): Promise<AuthDto> {
-    const hashed = this.cryptoRepository.hashSha256(key);
-    const apiKey = await this.apiKeyRepository.getKey(hashed);
+  private readonly validateApiKey = Effect.fn('AuthService.validateApiKey')(function* (this: AuthService, key: string) {
+    const hashed = yield* this.fx.crypto.hashSha256(key);
+    const apiKey = yield* this.fx.apiKey.getKey(hashed);
     if (apiKey?.user) {
       return {
         user: apiKey.user,
         apiKey,
-      };
+      } satisfies AuthDto;
     }
 
-    throw new UnauthorizedException('Invalid API key');
-  }
+    return yield* Effect.fail(new UnauthorizedException('Invalid API key'));
+  });
 
-  private validateSecret(inputSecret: string, existingHash?: string | null): boolean {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly validateSecret = Effect.fn('AuthService.validateSecret')(function* (
+    this: AuthService,
+    inputSecret: string,
+    existingHash?: string | null,
+  ) {
     if (!existingHash) {
       return false;
     }
 
-    return this.cryptoRepository.compareBcrypt(inputSecret, existingHash);
-  }
+    return yield* this.fx.crypto.compareBcrypt(inputSecret, existingHash);
+  });
 
-  private async validateSession(token: string, headers: IncomingHttpHeaders): Promise<AuthDto> {
-    const hashed = this.cryptoRepository.hashSha256(token);
-    const session = await this.sessionRepository.getByToken(hashed);
+  private readonly validateSession = Effect.fn('AuthService.validateSession')(function* (
+    this: AuthService,
+    token: string,
+    headers: IncomingHttpHeaders,
+  ) {
+    const hashed = yield* this.fx.crypto.hashSha256(token);
+    const session = yield* this.fx.session.getByToken(hashed);
     if (session?.user) {
       const { appVersion, deviceOS, deviceType } = getUserAgentDetails(headers);
       const now = DateTime.now();
       const updatedAt = DateTime.fromJSDate(session.updatedAt);
       const diff = now.diff(updatedAt, ['hours']);
       if (diff.hours > 1 || appVersion !== session.appVersion) {
-        await this.sessionRepository.update(session.id, {
+        yield* this.fx.session.update(session.id, {
           id: session.id,
           updatedAt: new Date(),
           appVersion,
@@ -572,7 +674,7 @@ export class AuthService extends BaseService {
         hasElevatedPermission = pinExpiresAt > now;
 
         if (hasElevatedPermission && now.plus({ minutes: 5 }) > pinExpiresAt) {
-          await this.sessionRepository.update(session.id, {
+          yield* this.fx.session.update(session.id, {
             pinExpiresAt: DateTime.now().plus({ minutes: 5 }).toJSDate(),
           });
         }
@@ -584,31 +686,39 @@ export class AuthService extends BaseService {
           id: session.id,
           hasElevatedPermission,
         },
-      };
+      } satisfies AuthDto;
     }
 
-    throw new UnauthorizedException('Invalid user token');
-  }
+    return yield* Effect.fail(new UnauthorizedException('Invalid user token'));
+  });
 
   async unlockSession(auth: AuthDto, dto: SessionUnlockDto): Promise<void> {
-    if (!auth.session) {
-      throw new BadRequestException('This endpoint can only be used with a session token');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        if (!auth.session) {
+          return yield* Effect.fail(new BadRequestException('This endpoint can only be used with a session token'));
+        }
 
-    const user = await this.userRepository.getForPinCode(auth.user.id);
-    this.validatePinCode(user, { pinCode: dto.pinCode });
+        const user = yield* this.fx.user.getForPinCode(auth.user.id);
+        yield* this.validatePinCode(user, { pinCode: dto.pinCode });
 
-    await this.sessionRepository.update(auth.session.id, {
-      pinExpiresAt: DateTime.now().plus({ minutes: 15 }).toJSDate(),
-    });
+        yield* this.fx.session.update(auth.session.id, {
+          pinExpiresAt: DateTime.now().plus({ minutes: 15 }).toJSDate(),
+        });
+      }),
+    );
   }
 
   async lockSession(auth: AuthDto): Promise<void> {
-    if (!auth.session) {
-      throw new BadRequestException('This endpoint can only be used with a session token');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        if (!auth.session) {
+          return yield* Effect.fail(new BadRequestException('This endpoint can only be used with a session token'));
+        }
 
-    await this.sessionRepository.update(auth.session.id, { pinExpiresAt: null });
+        yield* this.fx.session.update(auth.session.id, { pinExpiresAt: null });
+      }),
+    );
   }
 
   private getClaim<T>(profile: OAuthProfile, options: ClaimOptions<T>): T | undefined {
@@ -659,7 +769,13 @@ export class AuthService extends BaseService {
     return sanitize(label);
   }
 
-  private async syncOAuthClaims(user: UserAdmin, profile: OAuthProfile, oauth: OAuthClaimsConfig): Promise<UserAdmin> {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly syncOAuthClaims = Effect.fn('AuthService.syncOAuthClaims')(function* (
+    this: AuthService,
+    user: UserAdmin,
+    profile: OAuthProfile,
+    oauth: OAuthClaimsConfig,
+  ) {
     const claims = this.parseOAuthClaims(profile, oauth, false);
     const updates: {
       storageLabel?: string | null;
@@ -667,7 +783,7 @@ export class AuthService extends BaseService {
     } = {};
 
     if (claims.storageLabel && claims.storageLabel !== user.storageLabel) {
-      const duplicate = await this.userRepository.getByStorageLabel(claims.storageLabel);
+      const duplicate = yield* this.fx.user.getByStorageLabel(claims.storageLabel);
 
       if (duplicate && duplicate.id !== user.id) {
         this.logger.warn(`Unable to sync OAuth storage label for user ${user.id}: label already in use`);
@@ -685,11 +801,11 @@ export class AuthService extends BaseService {
     }
 
     if (updates.quotaSizeInBytes) {
-      await this.userRepository.syncUsage(user.id);
+      yield* this.fx.user.syncUsage(user.id);
     }
 
-    return this.userRepository.update(user.id, { ...updates, updatedAt: new Date() });
-  }
+    return yield* this.fx.user.update(user.id, { ...updates, updatedAt: new Date() });
+  });
 
   private getRoleClaim(profile: OAuthProfile, roleClaim: string): 'admin' | 'user' | undefined {
     const value = profile[roleClaim as keyof OAuthProfile];
@@ -715,19 +831,23 @@ export class AuthService extends BaseService {
   }
 
   async getAuthStatus(auth: AuthDto): Promise<AuthStatusResponseDto> {
-    const user = await this.userRepository.getForPinCode(auth.user.id);
-    if (!user) {
-      throw new UnauthorizedException();
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const user = yield* this.fx.user.getForPinCode(auth.user.id);
+        if (!user) {
+          return yield* Effect.fail(new UnauthorizedException());
+        }
 
-    const session = auth.session ? await this.sessionRepository.get(auth.session.id) : undefined;
+        const session = auth.session ? yield* this.fx.session.get(auth.session.id) : undefined;
 
-    return {
-      pinCode: !!user.pinCode,
-      password: !!user.password,
-      isElevated: !!auth.session?.hasElevatedPermission,
-      expiresAt: session?.expiresAt?.toISOString(),
-      pinExpiresAt: session?.pinExpiresAt?.toISOString(),
-    };
+        return {
+          pinCode: !!user.pinCode,
+          password: !!user.password,
+          isElevated: !!auth.session?.hasElevatedPermission,
+          expiresAt: session?.expiresAt?.toISOString(),
+          pinExpiresAt: session?.pinExpiresAt?.toISOString(),
+        };
+      }),
+    );
   }
 }

@@ -1,9 +1,11 @@
 import { schemaDiff } from '@immich/sql-tools';
 import { Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { isAbsolute, join } from 'node:path';
 import { SALT_ROUNDS } from 'src/constants.js';
 import { MaintenanceAuthDto } from 'src/dtos/maintenance.dto.js';
 import { UserAdminResponseDto, mapUserAdmin } from 'src/dtos/user.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import { MaintenanceAction, SystemMetadataKey } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { createMaintenanceLoginUrl, generateMaintenanceSecret } from 'src/utils/maintenance.js';
@@ -22,176 +24,232 @@ type MigrationStatus = {
 @Injectable()
 export class CliService extends BaseService {
   async schemaReport(): Promise<SchemaReport> {
-    const allFiles = await this.storageRepository.readdir(join(import.meta.dirname, '../schema/migrations'));
-    const files = allFiles.filter((file) => file.endsWith('.js')).map((file) => file.slice(0, -3));
-    const rows = await this.databaseRepository.getMigrations();
-    const filesSet = new Set(files);
-    const rowsSet = new Set(rows.map((item) => item.name));
-    const combined = [...filesSet, ...rowsSet].toSorted();
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const allFiles = yield* this.fx.storage.readdir(join(import.meta.dirname, '../schema/migrations'));
+        const files = allFiles.filter((file) => file.endsWith('.js')).map((file) => file.slice(0, -3));
+        const rows = yield* this.fx.database.getMigrations();
+        const filesSet = new Set(files);
+        const rowsSet = new Set(rows.map((item) => item.name));
+        const combined = [...filesSet, ...rowsSet].toSorted();
 
-    const migrations: MigrationStatus[] = [];
+        const migrations: MigrationStatus[] = [];
 
-    for (const name of combined) {
-      if (filesSet.has(name) && rowsSet.has(name)) {
-        migrations.push({ name, status: 'applied' });
-        continue;
-      }
+        for (const name of combined) {
+          if (filesSet.has(name) && rowsSet.has(name)) {
+            migrations.push({ name, status: 'applied' });
+            continue;
+          }
 
-      if (filesSet.has(name) && !rowsSet.has(name)) {
-        migrations.push({ name, status: 'missing' });
-        continue;
-      }
+          if (filesSet.has(name) && !rowsSet.has(name)) {
+            migrations.push({ name, status: 'missing' });
+            continue;
+          }
 
-      if (!filesSet.has(name) && rowsSet.has(name)) {
-        migrations.push({ name, status: 'deleted' });
-      }
-    }
+          if (!filesSet.has(name) && rowsSet.has(name)) {
+            migrations.push({ name, status: 'deleted' });
+          }
+        }
 
-    const drift = await this.databaseRepository.getSchemaDrift();
+        const drift = yield* this.fx.database.getSchemaDrift();
 
-    return { migrations, drift };
+        return { migrations, drift };
+      }),
+    );
   }
 
   async listUsers(): Promise<UserAdminResponseDto[]> {
-    const users = await this.userRepository.getList({ withDeleted: true });
-    return users.map((user) => mapUserAdmin(user));
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const users = yield* this.fx.user.getList({ withDeleted: true });
+        return users.map((user) => mapUserAdmin(user));
+      }),
+    );
   }
 
   async resetAdminPassword(
     ask: (admin: UserAdminResponseDto) => Promise<{ newPassword: string | undefined; invalidateSessions: boolean }>,
   ) {
-    const admin = await this.userRepository.getAdmin();
-    if (!admin) {
-      throw new Error('Admin account does not exist');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const admin = yield* this.fx.user.getAdmin();
+        if (!admin) {
+          return yield* Effect.fail(new Error('Admin account does not exist'));
+        }
 
-    const { newPassword: providedPassword, invalidateSessions } = await ask(mapUserAdmin(admin));
-    const password = providedPassword || this.cryptoRepository.randomBytesAsText(24);
-    const hashedPassword = await this.cryptoRepository.hashBcrypt(password, SALT_ROUNDS);
+        const { newPassword: providedPassword, invalidateSessions } = yield* Effect.tryPromise({
+          try: () => ask(mapUserAdmin(admin)),
+          catch: (cause) => cause,
+        });
+        const password = providedPassword || (yield* this.fx.crypto.randomBytesAsText(24));
+        const hashedPassword = yield* this.fx.crypto.hashBcrypt(password, SALT_ROUNDS);
 
-    await this.userRepository.update(admin.id, { password: hashedPassword });
+        yield* this.fx.user.update(admin.id, { password: hashedPassword });
 
-    if (invalidateSessions) {
-      await this.sessionRepository.invalidateAll({ userId: admin.id });
-    }
+        if (invalidateSessions) {
+          yield* this.fx.session.invalidateAll({ userId: admin.id });
+        }
 
-    return { admin, password, provided: !!providedPassword };
+        return { admin, password, provided: !!providedPassword };
+      }),
+    );
   }
 
   async disablePasswordLogin(): Promise<void> {
-    const config = await this.getConfig({ withCache: false });
-    config.passwordLogin.enabled = false;
-    await this.updateConfig(config);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        config.passwordLogin.enabled = false;
+        yield* this.updateConfigFx(config);
+      }),
+    );
   }
 
   async enablePasswordLogin(): Promise<void> {
-    const config = await this.getConfig({ withCache: false });
-    config.passwordLogin.enabled = true;
-    await this.updateConfig(config);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        config.passwordLogin.enabled = true;
+        yield* this.updateConfigFx(config);
+      }),
+    );
   }
 
   async disableMaintenanceMode(): Promise<{ alreadyDisabled: boolean }> {
-    const currentState = (await this.systemMetadataRepository.get(SystemMetadataKey.MaintenanceMode)) ?? {
-      isMaintenanceMode: false as const,
-    };
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const currentState = (yield* this.fx.systemMetadata.get(SystemMetadataKey.MaintenanceMode)) ?? {
+          isMaintenanceMode: false as const,
+        };
 
-    if (!currentState.isMaintenanceMode) {
-      return {
-        alreadyDisabled: true,
-      };
-    }
+        if (!currentState.isMaintenanceMode) {
+          return {
+            alreadyDisabled: true,
+          };
+        }
 
-    const state = { isMaintenanceMode: false as const };
-    await this.systemMetadataRepository.set(SystemMetadataKey.MaintenanceMode, state);
-    await this.appRepository.sendOneShotAppRestart(state);
+        const state = { isMaintenanceMode: false as const };
+        yield* this.fx.systemMetadata.set(SystemMetadataKey.MaintenanceMode, state);
+        yield* this.fx.app.sendOneShotAppRestart(state);
 
-    return {
-      alreadyDisabled: false,
-    };
+        return {
+          alreadyDisabled: false,
+        };
+      }),
+    );
   }
 
   async enableMaintenanceMode(): Promise<{ authUrl: string; alreadyEnabled: boolean }> {
-    const { server } = await this.getConfig({ withCache: true });
-    const baseUrl = getExternalDomain(server);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { server } = yield* this.getConfigFx({ withCache: true });
+        const baseUrl = getExternalDomain(server);
 
-    const payload: MaintenanceAuthDto = {
-      username: 'cli-admin',
-    };
+        const payload: MaintenanceAuthDto = {
+          username: 'cli-admin',
+        };
 
-    const state = (await this.systemMetadataRepository.get(SystemMetadataKey.MaintenanceMode)) ?? {
-      isMaintenanceMode: false as const,
-    };
+        const state = (yield* this.fx.systemMetadata.get(SystemMetadataKey.MaintenanceMode)) ?? {
+          isMaintenanceMode: false as const,
+        };
 
-    if (state.isMaintenanceMode) {
-      return {
-        authUrl: await createMaintenanceLoginUrl(baseUrl, payload, state.secret),
-        alreadyEnabled: true,
-      };
-    }
+        if (state.isMaintenanceMode) {
+          return {
+            authUrl: yield* Effect.tryPromise({
+              try: () => createMaintenanceLoginUrl(baseUrl, payload, state.secret),
+              catch: (cause) => cause,
+            }),
+            alreadyEnabled: true,
+          };
+        }
 
-    const secret = generateMaintenanceSecret();
+        const secret = generateMaintenanceSecret();
 
-    await this.systemMetadataRepository.set(SystemMetadataKey.MaintenanceMode, {
-      isMaintenanceMode: true,
-      secret,
-      action: {
-        action: MaintenanceAction.Start,
-      },
-    });
+        yield* this.fx.systemMetadata.set(SystemMetadataKey.MaintenanceMode, {
+          isMaintenanceMode: true,
+          secret,
+          action: {
+            action: MaintenanceAction.Start,
+          },
+        });
 
-    await this.appRepository.sendOneShotAppRestart({
-      isMaintenanceMode: true,
-    });
+        yield* this.fx.app.sendOneShotAppRestart({
+          isMaintenanceMode: true,
+        });
 
-    return {
-      authUrl: await createMaintenanceLoginUrl(baseUrl, payload, secret),
-      alreadyEnabled: false,
-    };
+        return {
+          authUrl: yield* Effect.tryPromise({
+            try: () => createMaintenanceLoginUrl(baseUrl, payload, secret),
+            catch: (cause) => cause,
+          }),
+          alreadyEnabled: false,
+        };
+      }),
+    );
   }
 
   async grantAdminAccess(email: string): Promise<void> {
-    const user = await this.userRepository.getByEmail(email);
-    if (!user) {
-      throw new Error('User does not exist');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const user = yield* this.fx.user.getByEmail(email);
+        if (!user) {
+          return yield* Effect.fail(new Error('User does not exist'));
+        }
 
-    await this.userRepository.update(user.id, { isAdmin: true });
+        yield* this.fx.user.update(user.id, { isAdmin: true });
+      }),
+    );
   }
 
   async revokeAdminAccess(email: string): Promise<void> {
-    const user = await this.userRepository.getByEmail(email);
-    if (!user) {
-      throw new Error('User does not exist');
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const user = yield* this.fx.user.getByEmail(email);
+        if (!user) {
+          return yield* Effect.fail(new Error('User does not exist'));
+        }
 
-    await this.userRepository.update(user.id, { isAdmin: false });
+        yield* this.fx.user.update(user.id, { isAdmin: false });
+      }),
+    );
   }
 
   async disableOAuthLogin(): Promise<void> {
-    const config = await this.getConfig({ withCache: false });
-    config.oauth.enabled = false;
-    await this.updateConfig(config);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        config.oauth.enabled = false;
+        yield* this.updateConfigFx(config);
+      }),
+    );
   }
 
   async enableOAuthLogin(): Promise<void> {
-    const config = await this.getConfig({ withCache: false });
-    config.oauth.enabled = true;
-    await this.updateConfig(config);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        config.oauth.enabled = true;
+        yield* this.updateConfigFx(config);
+      }),
+    );
   }
 
   async getSampleFilePaths(): Promise<string[]> {
-    const [assets, users] = await Promise.all([
-      this.assetRepository.getFileSamples(),
-      this.userRepository.getFileSamples(),
-    ]);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const [assets, users] = yield* Effect.all([this.fx.asset.getFileSamples(), this.fx.user.getFileSamples()], {
+          concurrency: 'unbounded',
+        });
 
-    const paths: string[] = Array.from(users, (user) => user.profileImagePath);
+        const paths: string[] = Array.from(users, (user) => user.profileImagePath);
 
-    for (const asset of assets) {
-      paths.push(asset.path);
-    }
+        for (const asset of assets) {
+          paths.push(asset.path);
+        }
 
-    return paths.filter(Boolean) as string[];
+        return paths.filter(Boolean) as string[];
+      }),
+    );
   }
 
   async migrateFilePaths({
@@ -203,26 +261,34 @@ export class CliService extends BaseService {
     newValue: string;
     confirm: (data: { sourceFolder: string; targetFolder: string }) => Promise<boolean>;
   }): Promise<boolean> {
-    let sourceFolder = oldValue;
-    if (sourceFolder.startsWith('./')) {
-      sourceFolder = sourceFolder.slice(2);
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        let sourceFolder = oldValue;
+        if (sourceFolder.startsWith('./')) {
+          sourceFolder = sourceFolder.slice(2);
+        }
 
-    const targetFolder = newValue;
-    if (!isAbsolute(targetFolder)) {
-      throw new Error('Target media location must be an absolute path');
-    }
+        const targetFolder = newValue;
+        if (!isAbsolute(targetFolder)) {
+          return yield* Effect.fail(new Error('Target media location must be an absolute path'));
+        }
 
-    if (!(await confirm({ sourceFolder, targetFolder }))) {
-      return false;
-    }
+        const confirmed = yield* Effect.tryPromise({
+          try: () => confirm({ sourceFolder, targetFolder }),
+          catch: (cause) => cause,
+        });
+        if (!confirmed) {
+          return false;
+        }
 
-    await this.databaseRepository.migrateFilePaths(sourceFolder, targetFolder);
+        yield* this.fx.database.migrateFilePaths(sourceFolder, targetFolder);
 
-    return true;
+        return true;
+      }),
+    );
   }
 
   cleanup() {
-    return this.databaseRepository.shutdown();
+    return runPromise(this.fx.database.shutdown());
   }
 }

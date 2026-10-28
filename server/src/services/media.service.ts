@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Cause, Effect } from 'effect';
 import type {
   AudioStreamInfo,
   DecodeToBufferOptions,
@@ -12,6 +13,7 @@ import { ImagePathOptions, StorageCore, ThumbnailPathEntity } from 'src/cores/st
 import { AssetFile } from 'src/database.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
 import { ConfigFFmpegDto, SystemConfig } from 'src/dtos/config.dto.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetType,
@@ -50,163 +52,219 @@ interface UpsertFileOptions {
 
 type ThumbnailAsset = NonNullable<Awaited<ReturnType<AssetJobRepository['getForGenerateThumbnailJob']>>>;
 
+/** Runs the async iterator plumbing as an Effect; the error stays the original thrown value. */
+const attempt = <A>(run: () => A | PromiseLike<A>) =>
+  Effect.tryPromise({ try: async () => await run(), catch: (cause) => cause });
+
+/** Effect errors wrap the original thrown value in `cause`; the transcoding fallbacks inspect the original. */
+/** Mirrors `for await (const items of batches)`: the iterator is closed when the loop exits early or fails. */
+const forEachBatch = <T, E>(batches: AsyncGenerator<T[]>, handle: (items: T[]) => Effect.Effect<unknown, E>) =>
+  Effect.ensuring(
+    Effect.gen(function* () {
+      while (true) {
+        const next = yield* attempt(() => batches.next());
+        if (next.done) {
+          break;
+        }
+
+        yield* handle(next.value);
+      }
+    }),
+    Effect.promise(() => batches.return(undefined).catch(() => {})),
+  );
+
 @Injectable()
 export class MediaService extends BaseService {
   videoInterfaces: VideoInterfaces = { dri: [], mali: false };
 
   @OnEvent({ name: 'AppBootstrap', workers: [ImmichWorker.Microservices] })
   async onBootstrap() {
-    this.videoInterfaces = await this.storageCore.getVideoInterfaces();
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        this.videoInterfaces = yield* this.storageCore.getVideoInterfacesFx();
+      }),
+    );
   }
 
   @OnJob({ name: JobName.AssetGenerateThumbnailsQueueAll, queue: QueueName.ThumbnailGeneration })
   async handleQueueGenerateThumbnails({ force }: JobOf<JobName.AssetGenerateThumbnailsQueueAll>): Promise<JobStatus> {
-    const config = await this.getConfig({ withCache: true });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: true });
 
-    const isFullsizeEnabled = config.image.fullsize.enabled;
-    for await (const assets of batched(
-      this.assetJobRepository.streamForThumbnailJob({ force, fullsizeEnabled: isFullsizeEnabled }),
-    )) {
-      const jobs: JobItem[] = [];
-      for (const asset of assets) {
-        if (force || !asset.isEdited) {
-          jobs.push({ name: JobName.AssetGenerateThumbnails, data: { id: asset.id } });
-        }
+        const isFullsizeEnabled = config.image.fullsize.enabled;
+        const batches = batched(
+          yield* this.fx.assetJob.streamForThumbnailJob({ force, fullsizeEnabled: isFullsizeEnabled }),
+        );
+        yield* forEachBatch(batches, (assets) => {
+          const jobs: JobItem[] = [];
+          for (const asset of assets) {
+            if (force || !asset.isEdited) {
+              jobs.push({ name: JobName.AssetGenerateThumbnails, data: { id: asset.id } });
+            }
 
-        if (asset.isEdited) {
-          jobs.push({ name: JobName.AssetEditThumbnailGeneration, data: { id: asset.id } });
-        }
-      }
+            if (asset.isEdited) {
+              jobs.push({ name: JobName.AssetEditThumbnailGeneration, data: { id: asset.id } });
+            }
+          }
 
-      await this.jobRepository.queueAll(jobs);
-    }
+          return this.fx.job.queueAll(jobs);
+        });
 
-    return JobStatus.Success;
+        return JobStatus.Success;
+      }),
+    );
   }
 
   @OnJob({ name: JobName.FileMigrationQueueAll, queue: QueueName.Migration })
   async handleQueueMigration(): Promise<JobStatus> {
-    const { active, waiting } = await this.jobRepository.getJobCounts(QueueName.Migration);
-    if (active === 1 && waiting === 0) {
-      await this.storageCore.removeEmptyDirs(StorageFolder.Thumbnails);
-      await this.storageCore.removeEmptyDirs(StorageFolder.EncodedVideo);
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { active, waiting } = yield* this.fx.job.getJobCounts(QueueName.Migration);
+        if (active === 1 && waiting === 0) {
+          yield* this.storageCore.removeEmptyDirsFx(StorageFolder.Thumbnails);
+          yield* this.storageCore.removeEmptyDirsFx(StorageFolder.EncodedVideo);
+        }
 
-    for await (const assets of batched(this.assetJobRepository.streamForMigrationJob())) {
-      await this.jobRepository.queueAll(
-        assets.map((asset) => ({ name: JobName.AssetFileMigration, data: { id: asset.id } })),
-      );
-    }
+        const batches = batched(yield* this.fx.assetJob.streamForMigrationJob());
+        yield* forEachBatch(batches, (assets) =>
+          this.fx.job.queueAll(assets.map((asset) => ({ name: JobName.AssetFileMigration, data: { id: asset.id } }))),
+        );
 
-    return JobStatus.Success;
+        return JobStatus.Success;
+      }),
+    );
   }
 
   @OnJob({ name: JobName.AssetFileMigration, queue: QueueName.Migration })
   async handleAssetMigration({ id }: JobOf<JobName.AssetFileMigration>): Promise<JobStatus> {
-    const { image } = await this.getConfig({ withCache: true });
-    const asset = await this.assetJobRepository.getForMigrationJob(id);
-    if (!asset) {
-      return JobStatus.Failed;
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { image } = yield* this.getConfigFx({ withCache: true });
+        const asset = yield* this.fx.assetJob.getForMigrationJob(id);
+        if (!asset) {
+          return JobStatus.Failed;
+        }
 
-    await this.storageCore.moveAssetImage(asset, AssetFileType.FullSize, image.fullsize.format);
-    await this.storageCore.moveAssetImage(asset, AssetFileType.Preview, image.preview.format);
-    await this.storageCore.moveAssetImage(asset, AssetFileType.Thumbnail, image.thumbnail.format);
-    await this.storageCore.moveAssetVideo(asset);
+        yield* this.storageCore.moveAssetImageFx(asset, AssetFileType.FullSize, image.fullsize.format);
+        yield* this.storageCore.moveAssetImageFx(asset, AssetFileType.Preview, image.preview.format);
+        yield* this.storageCore.moveAssetImageFx(asset, AssetFileType.Thumbnail, image.thumbnail.format);
+        yield* this.storageCore.moveAssetVideoFx(asset);
 
-    return JobStatus.Success;
+        return JobStatus.Success;
+      }),
+    );
   }
 
   @OnJob({ name: JobName.AssetEditThumbnailGeneration, queue: QueueName.Editor })
   async handleAssetEditThumbnailGeneration({ id }: JobOf<JobName.AssetEditThumbnailGeneration>): Promise<JobStatus> {
-    const asset = await this.assetJobRepository.getForGenerateThumbnailJob(id);
-    const config = await this.getConfig({ withCache: true });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const asset = yield* this.fx.assetJob.getForGenerateThumbnailJob(id);
+        const config = yield* this.getConfigFx({ withCache: true });
 
-    if (!asset) {
-      this.logger.warn(`Thumbnail generation failed for asset ${id}: not found in database or missing metadata`);
-      return JobStatus.Failed;
-    }
+        if (!asset) {
+          this.logger.warn(`Thumbnail generation failed for asset ${id}: not found in database or missing metadata`);
+          return JobStatus.Failed;
+        }
 
-    const generated = await this.generateEditedThumbnails(asset, config);
-    await this.syncFiles(
-      asset.files.filter((file) => file.isEdited),
-      generated?.files ?? [],
+        const generated = yield* this.generateEditedThumbnailsFx(asset, config);
+        yield* this.syncFilesFx(
+          asset.files.filter((file) => file.isEdited),
+          generated?.files ?? [],
+        );
+
+        let thumbhash: Buffer | undefined = generated?.thumbhash;
+        if (!thumbhash) {
+          const extractedImage = yield* this.extractOriginalImageFx(asset, config.image);
+          const { info, data, colorspace } = extractedImage;
+
+          thumbhash = yield* this.fx.media.generateThumbhash(
+            { data, info },
+            { colorspace, processInvalidImages: false, edits: [] },
+          );
+        }
+
+        if (!asset.thumbhash || Buffer.compare(asset.thumbhash, thumbhash) !== 0) {
+          yield* this.fx.asset.update({ id: asset.id, thumbhash });
+        }
+
+        const fullsizeDimensions = generated?.fullsizeDimensions ?? getDimensions(asset.exifInfo!);
+        yield* this.fx.asset.update({ id: asset.id, ...fullsizeDimensions });
+
+        return JobStatus.Success;
+      }),
     );
-
-    let thumbhash: Buffer | undefined = generated?.thumbhash;
-    if (!thumbhash) {
-      const extractedImage = await this.extractOriginalImage(asset, config.image);
-      const { info, data, colorspace } = extractedImage;
-
-      thumbhash = await this.mediaRepository.generateThumbhash(
-        { data, info },
-        { colorspace, processInvalidImages: false, edits: [] },
-      );
-    }
-
-    if (!asset.thumbhash || Buffer.compare(asset.thumbhash, thumbhash) !== 0) {
-      await this.assetRepository.update({ id: asset.id, thumbhash });
-    }
-
-    const fullsizeDimensions = generated?.fullsizeDimensions ?? getDimensions(asset.exifInfo!);
-    await this.assetRepository.update({ id: asset.id, ...fullsizeDimensions });
-
-    return JobStatus.Success;
   }
 
   @OnJob({ name: JobName.AssetGenerateThumbnails, queue: QueueName.ThumbnailGeneration })
   async handleGenerateThumbnails({ id }: JobOf<JobName.AssetGenerateThumbnails>): Promise<JobStatus> {
-    const asset = await this.assetJobRepository.getForGenerateThumbnailJob(id);
-    const config = await this.getConfig({ withCache: true });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const asset = yield* this.fx.assetJob.getForGenerateThumbnailJob(id);
+        const config = yield* this.getConfigFx({ withCache: true });
 
-    if (!asset) {
-      this.logger.warn(`Thumbnail generation failed for asset ${id}: not found in database or missing metadata`);
-      return JobStatus.Failed;
-    }
+        if (!asset) {
+          this.logger.warn(`Thumbnail generation failed for asset ${id}: not found in database or missing metadata`);
+          return JobStatus.Failed;
+        }
 
-    if (asset.visibility === AssetVisibility.Hidden) {
-      this.logger.verbose(`Thumbnail generation skipped for asset ${id}: not visible`);
-      return JobStatus.Skipped;
-    }
+        if (asset.visibility === AssetVisibility.Hidden) {
+          this.logger.verbose(`Thumbnail generation skipped for asset ${id}: not visible`);
+          return JobStatus.Skipped;
+        }
 
-    let generated: Awaited<ReturnType<MediaService['generateImageThumbnails']>>;
-    if (asset.type === AssetType.Video || asset.originalFileName.toLowerCase().endsWith('.gif')) {
-      this.logger.verbose(`Thumbnail generation for video ${id} ${asset.originalPath}`);
-      generated = await this.generateVideoThumbnails(asset, config);
-    } else if (asset.type === AssetType.Image) {
-      this.logger.verbose(`Thumbnail generation for image ${id} ${asset.originalPath}`);
-      generated = await this.generateImageThumbnails(asset, config);
-    } else {
-      this.logger.warn(`Skipping thumbnail generation for asset ${id}: ${asset.type} is not an image or video`);
-      return JobStatus.Skipped;
-    }
+        let generated: Effect.Success<ReturnType<MediaService['generateImageThumbnailsFx']>>;
+        if (asset.type === AssetType.Video || asset.originalFileName.toLowerCase().endsWith('.gif')) {
+          this.logger.verbose(`Thumbnail generation for video ${id} ${asset.originalPath}`);
+          generated = yield* this.generateVideoThumbnailsFx(asset, config);
+        } else if (asset.type === AssetType.Image) {
+          this.logger.verbose(`Thumbnail generation for image ${id} ${asset.originalPath}`);
+          generated = yield* this.generateImageThumbnailsFx(asset, config);
+        } else {
+          this.logger.warn(`Skipping thumbnail generation for asset ${id}: ${asset.type} is not an image or video`);
+          return JobStatus.Skipped;
+        }
 
-    const editedGenerated = await this.generateEditedThumbnails(asset, config);
-    if (editedGenerated) {
-      generated.files.push(...editedGenerated.files);
-    }
+        const editedGenerated = yield* this.generateEditedThumbnailsFx(asset, config);
+        if (editedGenerated) {
+          generated.files.push(...editedGenerated.files);
+        }
 
-    await this.syncFiles(asset.files, generated.files);
-    const thumbhash = editedGenerated?.thumbhash || generated.thumbhash;
+        yield* this.syncFilesFx(asset.files, generated.files);
+        const thumbhash = editedGenerated?.thumbhash || generated.thumbhash;
 
-    if (!asset.thumbhash || Buffer.compare(asset.thumbhash, thumbhash) !== 0) {
-      await this.assetRepository.update({ id: asset.id, thumbhash });
-    }
+        if (!asset.thumbhash || Buffer.compare(asset.thumbhash, thumbhash) !== 0) {
+          yield* this.fx.asset.update({ id: asset.id, thumbhash });
+        }
 
-    return JobStatus.Success;
+        return JobStatus.Success;
+      }),
+    );
   }
 
-  private async extractImage(originalPath: string, minSize: number) {
-    let extracted = await this.mediaRepository.extract(originalPath);
-    if (extracted && !(await this.shouldUseExtractedImage(extracted.buffer, minSize))) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly extractImageFx = Effect.fn('MediaService.extractImage')(function* (
+    this: MediaService,
+    originalPath: string,
+    minSize: number,
+  ) {
+    let extracted = yield* this.fx.media.extract(originalPath);
+    if (extracted && !(yield* this.shouldUseExtractedImageFx(extracted.buffer, minSize))) {
       extracted = null;
     }
 
     return extracted;
-  }
+  });
 
-  private async decodeImage(thumbSource: string | Buffer, exifInfo: ThumbnailAsset['exifInfo'], targetSize?: number) {
-    const { image } = await this.getConfig({ withCache: true });
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly decodeImageFx = Effect.fn('MediaService.decodeImage')(function* (
+    this: MediaService,
+    thumbSource: string | Buffer,
+    exifInfo: ThumbnailAsset['exifInfo'],
+    targetSize?: number,
+  ) {
+    const { image } = yield* this.getConfigFx({ withCache: true });
     const colorspace = this.isSRGB(exifInfo) ? Colorspace.Srgb : image.colorspace;
     const decodeOptions: DecodeToBufferOptions = {
       colorspace,
@@ -215,13 +273,19 @@ export class MediaService extends BaseService {
       orientation: exifInfo.orientation ? Number(exifInfo.orientation) : undefined,
     };
 
-    const { info, data } = await this.mediaRepository.decodeImage(thumbSource, decodeOptions);
+    const { info, data } = yield* this.fx.media.decodeImage(thumbSource, decodeOptions);
     return { info, data, colorspace };
-  }
+  });
 
-  private async extractOriginalImage(asset: ThumbnailAsset, image: SystemConfig['image'], useEdits = false) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly extractOriginalImageFx = Effect.fn('MediaService.extractOriginalImage')(function* (
+    this: MediaService,
+    asset: ThumbnailAsset,
+    image: SystemConfig['image'],
+    useEdits = false,
+  ) {
     const isExtractEmbedded = image.extractEmbedded && mimeTypes.isRaw(asset.originalFileName);
-    const extracted = isExtractEmbedded ? await this.extractImage(asset.originalPath, image.preview.size) : null;
+    const extracted = isExtractEmbedded ? yield* this.extractImageFx(asset.originalPath, image.preview.size) : null;
     const isGenerateFullsize =
       ((image.fullsize.enabled || asset.exifInfo.projectionType === 'EQUIRECTANGULAR') &&
         !mimeTypes.isWebSupportedImage(asset.originalPath)) ||
@@ -230,7 +294,7 @@ export class MediaService extends BaseService {
       isGenerateFullsize && (!extracted || !mimeTypes.isWebSupportedImage(` .${extracted.format}`));
 
     const thumbSource = extracted ? extracted.buffer : asset.originalPath;
-    const { data, info, colorspace } = await this.decodeImage(
+    const { data, info, colorspace } = yield* this.decodeImageFx(
       thumbSource,
       // only specify orientation to extracted images which don't have EXIF orientation data
       // or it can double rotate the image
@@ -240,7 +304,7 @@ export class MediaService extends BaseService {
 
     let isTransparent = false;
     if (!extracted && mimeTypes.canBeTransparent(asset.originalPath)) {
-      ({ isTransparent } = await this.mediaRepository.getImageMetadata(asset.originalPath));
+      ({ isTransparent } = yield* this.fx.media.getImageMetadata(asset.originalPath));
     }
 
     return {
@@ -252,11 +316,16 @@ export class MediaService extends BaseService {
       generateFullsize: isGenerateFullsize,
       isTransparent,
     };
-  }
+  });
 
-  private async generateImageThumbnails(asset: ThumbnailAsset, { image }: SystemConfig, useEdits: boolean = false) {
+  private readonly generateImageThumbnailsFx = Effect.fn('MediaService.generateImageThumbnails')(function* (
+    this: MediaService,
+    asset: ThumbnailAsset,
+    { image }: SystemConfig,
+    useEdits: boolean = false,
+  ) {
     // Handle embedded preview extraction for RAW files
-    const extractedImage = await this.extractOriginalImage(asset, image, useEdits);
+    const extractedImage = yield* this.extractOriginalImageFx(asset, image, useEdits);
     const { info, data, colorspace, generateFullsize, convertFullsize, extracted, isTransparent } = extractedImage;
 
     const previewFormat = image.preview.format;
@@ -286,10 +355,11 @@ export class MediaService extends BaseService {
     const baseOptions = { colorspace, processInvalidImages: false, edits: useEdits ? asset.edits : [] };
     const thumbnailOptions = { ...image.thumbnail, ...baseOptions, format: thumbnailFormat };
     const previewOptions = { ...image.preview, ...baseOptions, format: previewFormat };
-    const promises = [
-      this.mediaRepository.generateThumbhash(decoded, baseOptions),
-      this.mediaRepository.generateThumbnail(decoded, thumbnailOptions, thumbnailFile.path),
-      this.mediaRepository.generateThumbnail(decoded, previewOptions, previewFile.path),
+    // the effects run together below (like the original already-started promises), the raw fullsize write included
+    const promises: Effect.Effect<unknown, unknown>[] = [
+      this.fx.media.generateThumbhash(decoded, baseOptions),
+      this.fx.media.generateThumbnail(decoded, thumbnailOptions, thumbnailFile.path),
+      this.fx.media.generateThumbnail(decoded, previewOptions, previewFile.path),
     ];
 
     let fullsizeFile: UpsertFileOptions | undefined;
@@ -310,7 +380,7 @@ export class MediaService extends BaseService {
         quality: image.fullsize.quality,
         progressive: image.fullsize.progressive,
       };
-      promises.push(this.mediaRepository.generateThumbnail(decoded, fullsizeOptions, fullsizeFile.path));
+      promises.push(this.fx.media.generateThumbnail(decoded, fullsizeOptions, fullsizeFile.path));
     } else if (generateFullsize && extracted && extracted.format === RawExtractedFormat.Jpeg) {
       fullsizeFile = this.getImageFile(asset, {
         fileType: AssetFileType.FullSize,
@@ -322,26 +392,29 @@ export class MediaService extends BaseService {
       this.storageCore.ensureFolders(fullsizeFile.path);
 
       // Write the buffer to disk with essential EXIF data
-      await this.storageRepository.createOrOverwriteFile(fullsizeFile.path, extracted.buffer);
-      await this.mediaRepository.writeExif(
-        {
-          orientation: asset.exifInfo.orientation,
-          colorspace: asset.exifInfo.colorspace,
-        },
-        fullsizeFile.path,
+      const rawFullsizePath = fullsizeFile.path;
+      promises.push(
+        Effect.gen({ self: this }, function* () {
+          yield* this.fx.storage.createOrOverwriteFile(rawFullsizePath, extracted.buffer);
+          yield* this.fx.media.writeExif(
+            {
+              orientation: asset.exifInfo.orientation,
+              colorspace: asset.exifInfo.colorspace,
+            },
+            rawFullsizePath,
+          );
+        }),
       );
     }
 
-    const outputs = await Promise.all(promises);
+    const outputs = yield* Effect.all(promises, { concurrency: 'unbounded' });
 
     if (asset.exifInfo.projectionType === 'EQUIRECTANGULAR') {
       const promises = [
-        this.mediaRepository.copyTagGroup('XMP-GPano', asset.originalPath, previewFile.path),
-        fullsizeFile
-          ? this.mediaRepository.copyTagGroup('XMP-GPano', asset.originalPath, fullsizeFile.path)
-          : Promise.resolve(),
+        this.fx.media.copyTagGroup('XMP-GPano', asset.originalPath, previewFile.path),
+        fullsizeFile ? this.fx.media.copyTagGroup('XMP-GPano', asset.originalPath, fullsizeFile.path) : Effect.void,
       ];
-      await Promise.all(promises);
+      yield* Effect.all(promises, { concurrency: 'unbounded' });
     }
 
     const decodedDimensions = { width: info.width, height: info.height };
@@ -352,9 +425,13 @@ export class MediaService extends BaseService {
       thumbhash: outputs[0] as Buffer,
       fullsizeDimensions,
     };
-  }
+  });
 
-  private async generateVideoThumbnails(asset: ThumbnailAsset, { ffmpeg, image }: SystemConfig) {
+  private readonly generateVideoThumbnailsFx = Effect.fn('MediaService.generateVideoThumbnails')(function* (
+    this: MediaService,
+    asset: ThumbnailAsset,
+    { ffmpeg, image }: SystemConfig,
+  ) {
     const previewFile = this.getImageFile(asset, {
       fileType: AssetFileType.Preview,
       format: image.preview.format,
@@ -373,7 +450,7 @@ export class MediaService extends BaseService {
 
     const { videoStream, format } = asset;
     if (!videoStream || !format) {
-      throw new Error(`Missing video metadata for asset ${asset.id}`);
+      return yield* Effect.fail(new Error(`Missing video metadata for asset ${asset.id}`));
     }
 
     const previewConfig = ThumbnailConfig.create({ ...ffmpeg, targetResolution: image.preview.size.toString() });
@@ -381,15 +458,15 @@ export class MediaService extends BaseService {
     const previewOptions = previewConfig.getCommand(TranscodeTarget.Video, videoStream, undefined, format ?? undefined);
     const thumbnailOptions = thumbConfig.getCommand(TranscodeTarget.Video, videoStream, undefined, format ?? undefined);
 
-    await this.mediaRepository.transcode(asset.originalPath, previewFile.path, previewOptions);
-    await this.mediaRepository.transcode(asset.originalPath, thumbnailFile.path, thumbnailOptions);
+    yield* this.fx.media.transcode(asset.originalPath, previewFile.path, previewOptions);
+    yield* this.fx.media.transcode(asset.originalPath, thumbnailFile.path, thumbnailOptions);
 
     const processInvalidImages = process.env.IMMICH_PROCESS_INVALID_IMAGES === 'true';
-    const preview = await this.mediaRepository.decodeImage(previewFile.path, {
+    const preview = yield* this.fx.media.decodeImage(previewFile.path, {
       colorspace: image.colorspace,
       processInvalidImages,
     });
-    const thumbhash = await this.mediaRepository.generateThumbhash(preview, {
+    const thumbhash = yield* this.fx.media.generateThumbhash(preview, {
       colorspace: image.colorspace,
       processInvalidImages,
     });
@@ -399,106 +476,137 @@ export class MediaService extends BaseService {
       thumbhash,
       fullsizeDimensions: { width: videoStream.width, height: videoStream.height },
     };
-  }
+  });
 
   @OnJob({ name: JobName.AssetEncodeVideoQueueAll, queue: QueueName.VideoConversion })
   async handleQueueVideoConversion(job: JobOf<JobName.AssetEncodeVideoQueueAll>): Promise<JobStatus> {
     const { force } = job;
 
-    for await (const assets of batched(this.assetJobRepository.streamForVideoConversion(force))) {
-      await this.jobRepository.queueAll(
-        assets.map((asset) => ({ name: JobName.AssetEncodeVideo, data: { id: asset.id } })),
-      );
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const batches = batched(yield* this.fx.assetJob.streamForVideoConversion(force));
+        yield* forEachBatch(batches, (assets) =>
+          this.fx.job.queueAll(assets.map((asset) => ({ name: JobName.AssetEncodeVideo, data: { id: asset.id } }))),
+        );
 
-    return JobStatus.Success;
+        return JobStatus.Success;
+      }),
+    );
   }
 
   @OnJob({ name: JobName.AssetEncodeVideo, queue: QueueName.VideoConversion })
   async handleVideoConversion({ id }: JobOf<JobName.AssetEncodeVideo>): Promise<JobStatus> {
-    const asset = await this.assetJobRepository.getForVideoConversion(id);
-    if (!asset) {
-      return JobStatus.Failed;
-    }
-
-    const input = asset.originalPath;
-    const output = StorageCore.getEncodedVideoPath(asset);
-    this.storageCore.ensureFolders(output);
-
-    const { videoStream, format } = asset;
-    const audioStream = asset.audioStream ?? undefined;
-    if (!videoStream || !format) {
-      this.logger.warn(`Skipped transcoding for asset ${asset.id}: missing metadata; re-run extraction first`);
-      return JobStatus.Failed;
-    }
-    if (!videoStream.height || !videoStream.width) {
-      this.logger.warn(`Skipped transcoding for asset ${asset.id}: no video dimensions`);
-      return JobStatus.Failed;
-    }
-
-    let { ffmpeg } = await this.getConfig({ withCache: true });
-    const target = this.getTranscodeTarget(ffmpeg, videoStream, audioStream);
-    if (target === TranscodeTarget.None && !this.isRemuxRequired(ffmpeg, format)) {
-      const encodedVideo = getAssetFile(asset.files, AssetFileType.EncodedVideo, { isEdited: false });
-      if (encodedVideo) {
-        this.logger.log(`Transcoded video exists for asset ${asset.id}, but is no longer required. Deleting...`);
-        await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [encodedVideo.path] } });
-        await this.assetRepository.deleteFiles([encodedVideo]);
-      } else {
-        this.logger.verbose(`Asset ${asset.id} does not require transcoding based on current policy, skipping`);
-      }
-
-      return JobStatus.Skipped;
-    }
-
-    const command = BaseConfig.create(ffmpeg, this.videoInterfaces).getCommand(target, videoStream, audioStream);
-    if (ffmpeg.accel === TranscodeHardwareAcceleration.Disabled) {
-      this.logger.log(`Transcoding video ${asset.id} without hardware acceleration`);
-    } else {
-      this.logger.log(
-        `Transcoding video ${asset.id} with ${ffmpeg.accel.toUpperCase()}-accelerated encoding and${ffmpeg.accelDecode ? '' : ' software'} decoding`,
-      );
-    }
-
-    try {
-      await this.mediaRepository.transcode(input, output, command);
-    } catch (error: any) {
-      this.logger.error(`Error occurred during transcoding: ${error.message}`);
-      if (ffmpeg.accel === TranscodeHardwareAcceleration.Disabled) {
-        return JobStatus.Failed;
-      }
-
-      let isPartialFallbackSuccess = false;
-      if (ffmpeg.accelDecode) {
-        try {
-          this.logger.error(`Retrying with ${ffmpeg.accel.toUpperCase()}-accelerated encoding and software decoding`);
-          ffmpeg = { ...ffmpeg, accelDecode: false };
-          const command = BaseConfig.create(ffmpeg, this.videoInterfaces).getCommand(target, videoStream, audioStream);
-          await this.mediaRepository.transcode(input, output, command);
-          isPartialFallbackSuccess = true;
-        } catch (error: any) {
-          this.logger.error(`Error occurred during transcoding: ${error.message}`);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const asset = yield* this.fx.assetJob.getForVideoConversion(id);
+        if (!asset) {
+          return JobStatus.Failed;
         }
-      }
 
-      if (!isPartialFallbackSuccess) {
-        this.logger.error(`Retrying with ${ffmpeg.accel.toUpperCase()} acceleration disabled`);
-        ffmpeg = { ...ffmpeg, accel: TranscodeHardwareAcceleration.Disabled };
+        const input = asset.originalPath;
+        const output = StorageCore.getEncodedVideoPath(asset);
+        this.storageCore.ensureFolders(output);
+
+        const { videoStream, format } = asset;
+        const audioStream = asset.audioStream ?? undefined;
+        if (!videoStream || !format) {
+          this.logger.warn(`Skipped transcoding for asset ${asset.id}: missing metadata; re-run extraction first`);
+          return JobStatus.Failed;
+        }
+        if (!videoStream.height || !videoStream.width) {
+          this.logger.warn(`Skipped transcoding for asset ${asset.id}: no video dimensions`);
+          return JobStatus.Failed;
+        }
+
+        let { ffmpeg } = yield* this.getConfigFx({ withCache: true });
+        const target = this.getTranscodeTarget(ffmpeg, videoStream, audioStream);
+        if (target === TranscodeTarget.None && !this.isRemuxRequired(ffmpeg, format)) {
+          const encodedVideo = getAssetFile(asset.files, AssetFileType.EncodedVideo, { isEdited: false });
+          if (encodedVideo) {
+            this.logger.log(`Transcoded video exists for asset ${asset.id}, but is no longer required. Deleting...`);
+            yield* this.fx.job.queue({ name: JobName.FileDelete, data: { files: [encodedVideo.path] } });
+            yield* this.fx.asset.deleteFiles([encodedVideo]);
+          } else {
+            this.logger.verbose(`Asset ${asset.id} does not require transcoding based on current policy, skipping`);
+          }
+
+          return JobStatus.Skipped;
+        }
+
         const command = BaseConfig.create(ffmpeg, this.videoInterfaces).getCommand(target, videoStream, audioStream);
-        await this.mediaRepository.transcode(input, output, command);
-      }
-    }
+        if (ffmpeg.accel === TranscodeHardwareAcceleration.Disabled) {
+          this.logger.log(`Transcoding video ${asset.id} without hardware acceleration`);
+        } else {
+          this.logger.log(
+            `Transcoding video ${asset.id} with ${ffmpeg.accel.toUpperCase()}-accelerated encoding and${ffmpeg.accelDecode ? '' : ' software'} decoding`,
+          );
+        }
 
-    this.logger.log(`Successfully encoded ${asset.id}`);
+        const isFailed = yield* this.fx.media.transcode(input, output, command).pipe(
+          Effect.as(false),
+          Effect.catch((error_) =>
+            Effect.gen({ self: this }, function* () {
+              const error: any = unwrap(error_);
+              this.logger.error(`Error occurred during transcoding: ${error.message}`);
+              if (ffmpeg.accel === TranscodeHardwareAcceleration.Disabled) {
+                return true;
+              }
 
-    await this.assetRepository.upsertFile({
-      assetId: asset.id,
-      type: AssetFileType.EncodedVideo,
-      path: output,
-      isEdited: false,
-    });
+              let isPartialFallbackSuccess = false;
+              if (ffmpeg.accelDecode) {
+                yield* Effect.gen({ self: this }, function* () {
+                  this.logger.error(
+                    `Retrying with ${ffmpeg.accel.toUpperCase()}-accelerated encoding and software decoding`,
+                  );
+                  ffmpeg = { ...ffmpeg, accelDecode: false };
+                  const command = BaseConfig.create(ffmpeg, this.videoInterfaces).getCommand(
+                    target,
+                    videoStream,
+                    audioStream,
+                  );
+                  yield* this.fx.media.transcode(input, output, command);
+                  isPartialFallbackSuccess = true;
+                }).pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.sync(() => {
+                      const error: any = unwrap(Cause.squash(cause));
+                      this.logger.error(`Error occurred during transcoding: ${error.message}`);
+                    }),
+                  ),
+                );
+              }
 
-    return JobStatus.Success;
+              if (!isPartialFallbackSuccess) {
+                this.logger.error(`Retrying with ${ffmpeg.accel.toUpperCase()} acceleration disabled`);
+                ffmpeg = { ...ffmpeg, accel: TranscodeHardwareAcceleration.Disabled };
+                const command = BaseConfig.create(ffmpeg, this.videoInterfaces).getCommand(
+                  target,
+                  videoStream,
+                  audioStream,
+                );
+                yield* this.fx.media.transcode(input, output, command);
+              }
+
+              return false;
+            }),
+          ),
+        );
+        if (isFailed) {
+          return JobStatus.Failed;
+        }
+
+        this.logger.log(`Successfully encoded ${asset.id}`);
+
+        yield* this.fx.asset.upsertFile({
+          assetId: asset.id,
+          type: AssetFileType.EncodedVideo,
+          path: output,
+          isEdited: false,
+        });
+
+        return JobStatus.Success;
+      }),
+    );
   }
 
   private getTranscodeTarget(
@@ -631,13 +739,28 @@ export class MediaService extends BaseService {
     return bitrateValue;
   }
 
-  private async shouldUseExtractedImage(extractedPathOrBuffer: string | Buffer, targetSize: number) {
-    const { width, height } = await this.mediaRepository.getImageMetadata(extractedPathOrBuffer);
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly shouldUseExtractedImageFx = Effect.fn('MediaService.shouldUseExtractedImage')(function* (
+    this: MediaService,
+    extractedPathOrBuffer: string | Buffer,
+    targetSize: number,
+  ) {
+    const { width, height } = yield* this.fx.media.getImageMetadata(extractedPathOrBuffer);
     const extractedSize = Math.min(width, height);
     return extractedSize >= targetSize;
+  });
+
+  // kept as a Promise method: the spec calls it directly
+  private async syncFiles(
+    oldFiles: (AssetFile & { isProgressive: boolean; isTransparent: boolean })[],
+    newFiles: UpsertFileOptions[],
+  ) {
+    return runPromise(this.syncFilesFx(oldFiles, newFiles));
   }
 
-  private async syncFiles(
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly syncFilesFx = Effect.fn('MediaService.syncFiles')(function* (
+    this: MediaService,
     oldFiles: (AssetFile & { isProgressive: boolean; isTransparent: boolean })[],
     newFiles: UpsertFileOptions[],
   ) {
@@ -671,7 +794,7 @@ export class MediaService extends BaseService {
     }
 
     if (toUpsert.length > 0) {
-      await this.assetRepository.upsertFiles(toUpsert);
+      yield* this.fx.asset.upsertFiles(toUpsert);
     }
 
     if (toDelete.size > 0) {
@@ -679,23 +802,28 @@ export class MediaService extends BaseService {
       for (const file of toDeleteArray) {
         pathsToDelete.push(file.path);
       }
-      await this.assetRepository.deleteFiles(toDeleteArray);
+      yield* this.fx.asset.deleteFiles(toDeleteArray);
     }
 
     if (pathsToDelete.length > 0) {
-      await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: pathsToDelete } });
+      yield* this.fx.job.queue({ name: JobName.FileDelete, data: { files: pathsToDelete } });
     }
-  }
+  });
 
-  private async generateEditedThumbnails(asset: ThumbnailAsset, config: SystemConfig) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private readonly generateEditedThumbnailsFx = Effect.fn('MediaService.generateEditedThumbnails')(function* (
+    this: MediaService,
+    asset: ThumbnailAsset,
+    config: SystemConfig,
+  ) {
     if (asset.type !== AssetType.Image || (asset.files.length === 0 && asset.edits.length === 0)) {
       return;
     }
 
-    const generated = asset.edits.length > 0 ? await this.generateImageThumbnails(asset, config, true) : undefined;
+    const generated = asset.edits.length > 0 ? yield* this.generateImageThumbnailsFx(asset, config, true) : undefined;
 
     return generated;
-  }
+  });
 
   private warnOnTransparencyLoss(isTransparent: boolean, format: ImageFormat, assetId: string) {
     if (isTransparent && format === ImageFormat.Jpeg) {

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Effect } from 'effect';
 import { isUndefined, omitBy } from 'lodash-es';
 import { DateTime, Duration } from 'luxon';
 import type { AssetFile } from 'src/database.js';
@@ -27,6 +28,7 @@ import {
   AssetEditsCreateDto,
   AssetEditsResponseDto,
 } from 'src/dtos/editing.dto.js';
+import { runPromise } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetStatus,
@@ -43,142 +45,171 @@ import {
   getAssetFiles,
   getDimensions,
   isPanorama,
-  onAfterUnlink,
-  onBeforeLink,
-  onBeforeUnlink,
+  onAfterUnlinkFx,
+  onBeforeLinkFx,
+  onBeforeUnlinkFx,
 } from 'src/utils/asset.util.js';
 import { updateLockedColumns } from 'src/utils/database.js';
 import { extractTimeZone } from 'src/utils/date.js';
-import { batched, findOrFail } from 'src/utils/misc.js';
+import { batched } from 'src/utils/misc.js';
+
+/** Run a Promise-based collaborator (`this.get`, iterator plumbing) as an Effect; the error stays the original thrown value. */
+const attempt = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (cause) => cause });
 
 @Injectable()
 export class AssetService extends BaseService {
   async getStatistics(auth: AuthDto, dto: AssetStatsDto) {
-    if (dto.visibility === AssetVisibility.Locked) {
-      requireElevatedPermission(auth);
-    }
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        if (dto.visibility === AssetVisibility.Locked) {
+          requireElevatedPermission(auth);
+        }
 
-    const stats = await this.assetRepository.getStatistics(auth.user.id, dto);
-    return mapStats(stats);
+        const stats = yield* this.fx.asset.getStatistics(auth.user.id, dto);
+        return mapStats(stats);
+      }),
+    );
   }
 
   async get(auth: AuthDto, id: string): Promise<AssetResponseDto | SanitizedAssetResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.AssetRead, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetRead, ids: [id] });
 
-    const asset = await this.assetRepository.getById(id, {
-      exifInfo: true,
-      owner: true,
-      stack: { assets: true },
-      edits: true,
-      tags: true,
-    });
+        const asset = yield* this.fx.asset.getById(id, {
+          exifInfo: true,
+          owner: true,
+          stack: { assets: true },
+          edits: true,
+          tags: true,
+        });
 
-    if (!asset) {
-      throw new BadRequestException('Asset not found');
-    }
+        if (!asset) {
+          return yield* Effect.fail(new BadRequestException('Asset not found'));
+        }
 
-    return mapAsset(asset, { withStack: true, auth });
+        return mapAsset(asset, { withStack: true, auth });
+      }),
+    );
   }
 
   async update(auth: AuthDto, id: string, dto: UpdateAssetDto): Promise<AssetResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetUpdate, ids: [id] });
 
-    const { description, dateTimeOriginal, latitude, longitude, rating, ...rest } = dto;
-    const repos = { asset: this.assetRepository, event: this.eventRepository };
+        const { description, dateTimeOriginal, latitude, longitude, rating, ...rest } = dto;
+        const repos = { asset: this.fx.asset, event: this.fx.event };
 
-    let previousMotion: { id: string } | null = null;
-    if (rest.livePhotoVideoId) {
-      await onBeforeLink(repos, { userId: auth.user.id, livePhotoVideoId: rest.livePhotoVideoId });
-    } else if (rest.livePhotoVideoId === null) {
-      const asset = await this.findOrFail(id);
-      if (asset.livePhotoVideoId) {
-        previousMotion = await onBeforeUnlink(repos, { livePhotoVideoId: asset.livePhotoVideoId });
-      }
-    }
+        let previousMotion: { id: string } | null = null;
+        if (rest.livePhotoVideoId) {
+          const { livePhotoVideoId } = rest;
+          yield* onBeforeLinkFx(repos, { userId: auth.user.id, livePhotoVideoId });
+        } else if (rest.livePhotoVideoId === null) {
+          const asset = yield* this.findOrFail(id);
+          if (asset.livePhotoVideoId) {
+            const { livePhotoVideoId } = asset;
+            previousMotion = yield* onBeforeUnlinkFx(repos, { livePhotoVideoId });
+          }
+        }
 
-    const wroteMetadata = await this.updateExif({ id, description, dateTimeOriginal, latitude, longitude, rating });
+        const wroteMetadata = yield* this.updateExif({
+          id,
+          description,
+          dateTimeOriginal,
+          latitude,
+          longitude,
+          rating,
+        });
 
-    const asset = await this.assetRepository.update({ id, ...rest });
+        const asset = yield* this.fx.asset.update({ id, ...rest });
 
-    if (previousMotion && asset) {
-      await onAfterUnlink(repos, {
-        userId: auth.user.id,
-        livePhotoVideoId: previousMotion.id,
-        visibility: asset.visibility,
-      });
-    }
+        if (previousMotion && asset) {
+          const { id: livePhotoVideoId } = previousMotion;
+          yield* onAfterUnlinkFx(repos, {
+            userId: auth.user.id,
+            livePhotoVideoId,
+            visibility: asset.visibility,
+          });
+        }
 
-    if (!asset) {
-      throw new BadRequestException('Asset not found');
-    }
+        if (!asset) {
+          return yield* Effect.fail(new BadRequestException('Asset not found'));
+        }
 
-    if (!wroteMetadata) {
-      this.websocketRepository.clientSend('on_asset_update', auth.user.id, mapAsset(asset, { auth }));
-    }
+        if (!wroteMetadata) {
+          yield* this.fx.websocket.clientSend('on_asset_update', auth.user.id, mapAsset(asset, { auth }));
+        }
 
-    return this.get(auth, id) as Promise<AssetResponseDto>;
+        return yield* attempt(() => this.get(auth, id) as Promise<AssetResponseDto>);
+      }),
+    );
   }
 
   async updateAll(auth: AuthDto, dto: AssetBulkUpdateDto): Promise<void> {
-    const {
-      ids,
-      isFavorite,
-      visibility,
-      dateTimeOriginal,
-      latitude,
-      longitude,
-      rating,
-      description,
-      dateTimeRelative,
-      timeZone,
-    } = dto;
-    await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const {
+          ids,
+          isFavorite,
+          visibility,
+          dateTimeOriginal,
+          latitude,
+          longitude,
+          rating,
+          description,
+          dateTimeRelative,
+          timeZone,
+        } = dto;
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetUpdate, ids });
 
-    const assetDto = omitBy({ isFavorite, visibility }, isUndefined);
-    const exifDto = omitBy(
-      {
-        latitude,
-        longitude,
-        rating,
-        description,
-        dateTimeOriginal,
-      },
-      isUndefined,
+        const assetDto = omitBy({ isFavorite, visibility }, isUndefined);
+        const exifDto = omitBy(
+          {
+            latitude,
+            longitude,
+            rating,
+            description,
+            dateTimeOriginal,
+          },
+          isUndefined,
+        );
+
+        let shouldWriteSidecar = false;
+        if (Object.keys(exifDto).length > 0) {
+          yield* this.fx.asset.updateAllExif(ids, exifDto);
+          shouldWriteSidecar = true;
+        }
+
+        const extractedTimeZone = extractTimeZone(dateTimeOriginal);
+
+        if (
+          (dateTimeRelative !== undefined && dateTimeRelative !== 0) ||
+          timeZone !== undefined ||
+          extractedTimeZone?.type === 'fixed'
+        ) {
+          yield* this.fx.asset.updateDateTimeOriginal(ids, dateTimeRelative, timeZone ?? extractedTimeZone?.name);
+          shouldWriteSidecar = true;
+        }
+
+        if (Object.keys(assetDto).length > 0) {
+          yield* this.fx.asset.updateAll(ids, assetDto);
+        }
+
+        if (visibility === AssetVisibility.Locked) {
+          yield* this.fx.album.removeAssetsFromAll(ids);
+        }
+
+        if (shouldWriteSidecar) {
+          yield* this.fx.job.queueAll(ids.map((id) => ({ name: JobName.SidecarWrite, data: { id } })));
+        } else {
+          const assets = yield* this.fx.asset.getByIds(ids);
+          for (const asset of assets) {
+            yield* this.fx.websocket.clientSend('on_asset_update', auth.user.id, mapAsset(asset, { auth }));
+          }
+        }
+      }),
     );
-
-    let shouldWriteSidecar = false;
-    if (Object.keys(exifDto).length > 0) {
-      await this.assetRepository.updateAllExif(ids, exifDto);
-      shouldWriteSidecar = true;
-    }
-
-    const extractedTimeZone = extractTimeZone(dateTimeOriginal);
-
-    if (
-      (dateTimeRelative !== undefined && dateTimeRelative !== 0) ||
-      timeZone !== undefined ||
-      extractedTimeZone?.type === 'fixed'
-    ) {
-      await this.assetRepository.updateDateTimeOriginal(ids, dateTimeRelative, timeZone ?? extractedTimeZone?.name);
-      shouldWriteSidecar = true;
-    }
-
-    if (Object.keys(assetDto).length > 0) {
-      await this.assetRepository.updateAll(ids, assetDto);
-    }
-
-    if (visibility === AssetVisibility.Locked) {
-      await this.albumRepository.removeAssetsFromAll(ids);
-    }
-
-    if (shouldWriteSidecar) {
-      await this.jobRepository.queueAll(ids.map((id) => ({ name: JobName.SidecarWrite, data: { id } })));
-    } else {
-      const assets = await this.assetRepository.getByIds(ids);
-      for (const asset of assets) {
-        this.websocketRepository.clientSend('on_asset_update', auth.user.id, mapAsset(asset, { auth }));
-      }
-    }
   }
 
   async copy(
@@ -193,65 +224,77 @@ export class AssetService extends BaseService {
       favorite = true,
     }: AssetCopyDto,
   ) {
-    await this.requireAccess({ auth, permission: Permission.AssetCopy, ids: [sourceId, targetId] });
-    const sourceAsset = await this.assetRepository.getForCopy(sourceId);
-    const targetAsset = await this.assetRepository.getForCopy(targetId);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetCopy, ids: [sourceId, targetId] });
+        const sourceAsset = yield* this.fx.asset.getForCopy(sourceId);
+        const targetAsset = yield* this.fx.asset.getForCopy(targetId);
 
-    if (!sourceAsset || !targetAsset) {
-      throw new BadRequestException('Both assets must exist');
-    }
+        if (!sourceAsset || !targetAsset) {
+          return yield* Effect.fail(new BadRequestException('Both assets must exist'));
+        }
 
-    if (sourceId === targetId) {
-      throw new BadRequestException('Source and target id must be distinct');
-    }
+        if (sourceId === targetId) {
+          return yield* Effect.fail(new BadRequestException('Source and target id must be distinct'));
+        }
 
-    if (albums) {
-      await this.albumRepository.copyAlbums({ sourceAssetId: sourceId, targetAssetId: targetId });
-    }
+        if (albums) {
+          yield* this.fx.album.copyAlbums({ sourceAssetId: sourceId, targetAssetId: targetId });
+        }
 
-    if (sharedLinks) {
-      await this.sharedLinkAssetRepository.copySharedLinks({ sourceAssetId: sourceId, targetAssetId: targetId });
-    }
+        if (sharedLinks) {
+          yield* this.fx.sharedLinkAsset.copySharedLinks({ sourceAssetId: sourceId, targetAssetId: targetId });
+        }
 
-    if (stack) {
-      await this.copyStack({ sourceAsset, targetAsset });
-    }
+        if (stack) {
+          yield* this.copyStack({ sourceAsset, targetAsset });
+        }
 
-    if (favorite) {
-      await this.assetRepository.update({ id: targetId, isFavorite: sourceAsset.isFavorite });
-    }
+        if (favorite) {
+          yield* this.fx.asset.update({ id: targetId, isFavorite: sourceAsset.isFavorite });
+        }
 
-    if (sidecar) {
-      await this.copySidecar({ sourceAsset, targetAsset });
-    }
+        if (sidecar) {
+          yield* this.copySidecar({ sourceAsset, targetAsset });
+        }
+      }),
+    );
   }
 
-  private async copyStack({
-    sourceAsset,
-    targetAsset,
-  }: {
-    sourceAsset: { id: string; stackId: string | null };
-    targetAsset: { id: string; stackId: string | null };
-  }) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private copyStack = Effect.fn('AssetService.copyStack')(function* (
+    this: AssetService,
+    {
+      sourceAsset,
+      targetAsset,
+    }: {
+      sourceAsset: { id: string; stackId: string | null };
+      targetAsset: { id: string; stackId: string | null };
+    },
+  ) {
     if (!sourceAsset.stackId) {
       return;
     }
 
     if (targetAsset.stackId) {
-      await this.stackRepository.merge({ sourceId: sourceAsset.stackId, targetId: targetAsset.stackId });
-      await this.stackRepository.delete(sourceAsset.stackId);
+      yield* this.fx.stack.merge({ sourceId: sourceAsset.stackId, targetId: targetAsset.stackId });
+      yield* this.fx.stack.delete(sourceAsset.stackId);
     } else {
-      await this.assetRepository.update({ id: targetAsset.id, stackId: sourceAsset.stackId });
+      yield* this.fx.asset.update({ id: targetAsset.id, stackId: sourceAsset.stackId });
     }
-  }
+  });
 
-  private async copySidecar({
-    sourceAsset,
-    targetAsset,
-  }: {
-    sourceAsset: { files: AssetFile[] };
-    targetAsset: { id: string; files: AssetFile[]; originalPath: string };
-  }) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private copySidecar = Effect.fn('AssetService.copySidecar')(function* (
+    this: AssetService,
+    {
+      sourceAsset,
+      targetAsset,
+    }: {
+      sourceAsset: { files: AssetFile[] };
+      targetAsset: { id: string; files: AssetFile[]; originalPath: string };
+    },
+  ) {
     const { sidecarFile: sourceFile } = getAssetFiles(sourceAsset.files);
     if (!sourceFile?.path) {
       return;
@@ -259,222 +302,294 @@ export class AssetService extends BaseService {
 
     const { sidecarFile: targetFile } = getAssetFiles(targetAsset.files ?? []);
     if (targetFile?.path) {
-      await this.storageRepository.unlink(targetFile.path);
+      yield* this.fx.storage.unlink(targetFile.path);
     }
 
-    await this.storageRepository.copyFile(sourceFile.path, `${targetAsset.originalPath}.xmp`);
-    await this.assetRepository.upsertFile({
+    yield* this.fx.storage.copyFile(sourceFile.path, `${targetAsset.originalPath}.xmp`);
+    yield* this.fx.asset.upsertFile({
       assetId: targetAsset.id,
       path: `${targetAsset.originalPath}.xmp`,
       type: AssetFileType.Sidecar,
     });
-    await this.jobRepository.queue({ name: JobName.AssetExtractMetadata, data: { id: targetAsset.id } });
-  }
+    yield* this.fx.job.queue({ name: JobName.AssetExtractMetadata, data: { id: targetAsset.id } });
+  });
 
   @OnJob({ name: JobName.AssetDeleteCheck, queue: QueueName.BackgroundTask })
   async handleAssetDeletionCheck(): Promise<JobStatus> {
-    const config = await this.getConfig({ withCache: false });
-    const trashedDays = config.trash.enabled ? config.trash.days : 0;
-    const trashedBefore = DateTime.now()
-      .minus(Duration.fromObject({ days: trashedDays }))
-      .toJSDate();
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const config = yield* this.getConfigFx({ withCache: false });
+        const trashedDays = config.trash.enabled ? config.trash.days : 0;
+        const trashedBefore = DateTime.now()
+          .minus(Duration.fromObject({ days: trashedDays }))
+          .toJSDate();
 
-    let count = 0;
-    for await (const assets of batched(this.assetJobRepository.streamForDeletedJob(trashedBefore))) {
-      await this.jobRepository.queueAll(
-        assets.map(({ id }) => ({ name: JobName.AssetDelete, data: { id, deleteOnDisk: true } })),
-      );
-      count += assets.length;
-    }
-    if (count > 0) {
-      this.logger.log(`Automatically queued ${count} expired trash asset(s) for deletion`);
-    }
+        let count = 0;
+        const batches = batched(yield* this.fx.assetJob.streamForDeletedJob(trashedBefore));
+        // mirrors `for await`: the iterator is closed when the loop exits early or fails
+        yield* Effect.ensuring(
+          Effect.gen({ self: this }, function* () {
+            while (true) {
+              const next = yield* attempt(() => batches.next());
+              if (next.done) {
+                break;
+              }
 
-    return JobStatus.Success;
+              const assets = next.value;
+              yield* this.fx.job.queueAll(
+                assets.map(({ id }) => ({ name: JobName.AssetDelete, data: { id, deleteOnDisk: true } })),
+              );
+              count += assets.length;
+            }
+          }),
+          Effect.promise(() => batches.return(undefined).catch(() => {})),
+        );
+        if (count > 0) {
+          this.logger.log(`Automatically queued ${count} expired trash asset(s) for deletion`);
+        }
+
+        return JobStatus.Success;
+      }),
+    );
   }
 
   @OnJob({ name: JobName.AssetDelete, queue: QueueName.BackgroundTask })
   async handleAssetDeletion(job: JobOf<JobName.AssetDelete>): Promise<JobStatus> {
-    const { id, deleteOnDisk: isDeleteOnDiskRequest } = job;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { id, deleteOnDisk: isDeleteOnDiskRequest } = job;
 
-    const asset = await this.assetJobRepository.getForAssetDeletion(id);
+        const asset = yield* this.fx.assetJob.getForAssetDeletion(id);
 
-    if (!asset) {
-      return JobStatus.Failed;
-    }
+        if (!asset) {
+          return JobStatus.Failed;
+        }
 
-    // isOffline is an alias for excluded library assets
-    const deleteOnDisk = isDeleteOnDiskRequest && !asset.isOffline;
+        // isOffline is an alias for excluded library assets
+        const deleteOnDisk = isDeleteOnDiskRequest && !asset.isOffline;
 
-    if (asset.stack) {
-      // asset.stack.assets only includes timeline visible assets and excludes the primary asset
-      const remainingStackAssetIds = asset.stack.assets.map((a) => a.id).filter((assetId) => assetId !== id);
+        if (asset.stack) {
+          // asset.stack.assets only includes timeline visible assets and excludes the primary asset
+          const remainingStackAssetIds = asset.stack.assets.map((a) => a.id).filter((assetId) => assetId !== id);
 
-      // the primary survives unless it is the asset being deleted
-      let remainingCount = remainingStackAssetIds.length;
-      if (asset.stack.primaryAssetId !== id) {
-        remainingCount++;
-      }
+          // the primary survives unless it is the asset being deleted
+          let remainingCount = remainingStackAssetIds.length;
+          if (asset.stack.primaryAssetId !== id) {
+            remainingCount++;
+          }
 
-      if (remainingCount < 2) {
-        // 0 or 1 asset would remain: dissolve the stack so it does not linger as a single-asset stack
-        await this.stackRepository.delete(asset.stack.id);
-      } else if (asset.stack.primaryAssetId === id) {
-        // the primary is being deleted but others remain: promote a new primary
-        await this.stackRepository.update(asset.stack.id, {
-          id: asset.stack.id,
-          primaryAssetId: remainingStackAssetIds[0],
-        });
-      }
-    }
+          if (remainingCount < 2) {
+            // 0 or 1 asset would remain: dissolve the stack so it does not linger as a single-asset stack
+            yield* this.fx.stack.delete(asset.stack.id);
+          } else if (asset.stack.primaryAssetId === id) {
+            // the primary is being deleted but others remain: promote a new primary
+            yield* this.fx.stack.update(asset.stack.id, {
+              id: asset.stack.id,
+              primaryAssetId: remainingStackAssetIds[0],
+            });
+          }
+        }
 
-    await this.assetRepository.remove(asset);
-    if (!asset.libraryId) {
-      await this.userRepository.updateUsage(asset.ownerId, -(asset.exifInfo?.fileSizeInByte || 0));
-    }
+        yield* this.fx.asset.remove(asset);
+        if (!asset.libraryId) {
+          yield* this.fx.user.updateUsage(asset.ownerId, -(asset.exifInfo?.fileSizeInByte || 0));
+        }
 
-    await this.eventRepository.emit('AssetDelete', { assetId: id, userId: asset.ownerId });
+        yield* this.fx.event.emit('AssetDelete', { assetId: id, userId: asset.ownerId });
 
-    // delete the motion if it is not used by another asset
-    if (asset.livePhotoVideoId) {
-      const count = await this.assetRepository.getLivePhotoCount(asset.livePhotoVideoId);
-      if (count === 0) {
-        await this.jobRepository.queue({
-          name: JobName.AssetDelete,
-          data: { id: asset.livePhotoVideoId, deleteOnDisk },
-        });
-      }
-    }
+        // delete the motion if it is not used by another asset
+        if (asset.livePhotoVideoId) {
+          const count = yield* this.fx.asset.getLivePhotoCount(asset.livePhotoVideoId);
+          if (count === 0) {
+            yield* this.fx.job.queue({
+              name: JobName.AssetDelete,
+              data: { id: asset.livePhotoVideoId, deleteOnDisk },
+            });
+          }
+        }
 
-    const assetFiles = getAssetFiles(asset.files ?? []);
-    const files = [
-      assetFiles.thumbnailFile?.path,
-      assetFiles.previewFile?.path,
-      assetFiles.fullsizeFile?.path,
-      assetFiles.editedFullsizeFile?.path,
-      assetFiles.editedPreviewFile?.path,
-      assetFiles.editedThumbnailFile?.path,
-      assetFiles.encodedVideoFile?.path,
-    ];
+        const assetFiles = getAssetFiles(asset.files ?? []);
+        const files = [
+          assetFiles.thumbnailFile?.path,
+          assetFiles.previewFile?.path,
+          assetFiles.fullsizeFile?.path,
+          assetFiles.editedFullsizeFile?.path,
+          assetFiles.editedPreviewFile?.path,
+          assetFiles.editedThumbnailFile?.path,
+          assetFiles.encodedVideoFile?.path,
+        ];
 
-    if (deleteOnDisk) {
-      files.push(assetFiles.sidecarFile?.path, asset.originalPath);
-    }
+        if (deleteOnDisk) {
+          files.push(assetFiles.sidecarFile?.path, asset.originalPath);
+        }
 
-    await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: files.filter(Boolean) } });
+        yield* this.fx.job.queue({ name: JobName.FileDelete, data: { files: files.filter(Boolean) } });
 
-    return JobStatus.Success;
+        return JobStatus.Success;
+      }),
+    );
   }
 
   async deleteAll(auth: AuthDto, dto: AssetBulkDeleteDto): Promise<void> {
-    const { ids, force } = dto;
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        const { ids, force } = dto;
 
-    await this.requireAccess({ auth, permission: Permission.AssetDelete, ids });
-    await this.assetRepository.updateAll(ids, {
-      deletedAt: new Date(),
-      status: force ? AssetStatus.Deleted : AssetStatus.Trashed,
-    });
-    await this.eventRepository.emit(force ? 'AssetDeleteAll' : 'AssetTrashAll', {
-      assetIds: ids,
-      userId: auth.user.id,
-    });
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetDelete, ids });
+        yield* this.fx.asset.updateAll(ids, {
+          deletedAt: new Date(),
+          status: force ? AssetStatus.Deleted : AssetStatus.Trashed,
+        });
+        yield* this.fx.event.emit(force ? 'AssetDeleteAll' : 'AssetTrashAll', {
+          assetIds: ids,
+          userId: auth.user.id,
+        });
+      }),
+    );
   }
 
   async getMetadata(auth: AuthDto, id: string): Promise<AssetMetadataResponseDto[]> {
-    await this.requireAccess({ auth, permission: Permission.AssetRead, ids: [id] });
-    return this.assetRepository.getMetadata(id);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetRead, ids: [id] });
+        return yield* this.fx.asset.getMetadata(id);
+      }),
+    );
   }
 
   async upsertBulkMetadata(auth: AuthDto, dto: AssetMetadataBulkUpsertDto): Promise<AssetMetadataBulkResponseDto[]> {
-    await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: dto.items.map((item) => item.assetId) });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({
+          auth,
+          permission: Permission.AssetUpdate,
+          ids: dto.items.map((item) => item.assetId),
+        });
 
-    const uniqueKeys = new Set<string>();
-    for (const item of dto.items) {
-      const key = `(${item.assetId}, ${item.key})`;
-      if (uniqueKeys.has(key)) {
-        throw new BadRequestException(`Duplicate items are not allowed: "${key}"`);
-      }
+        const uniqueKeys = new Set<string>();
+        for (const item of dto.items) {
+          const key = `(${item.assetId}, ${item.key})`;
+          if (uniqueKeys.has(key)) {
+            return yield* Effect.fail(new BadRequestException(`Duplicate items are not allowed: "${key}"`));
+          }
 
-      uniqueKeys.add(key);
-    }
+          uniqueKeys.add(key);
+        }
 
-    return this.assetRepository.upsertBulkMetadata(dto.items);
+        return yield* this.fx.asset.upsertBulkMetadata(dto.items);
+      }),
+    );
   }
 
   async upsertMetadata(auth: AuthDto, id: string, dto: AssetMetadataUpsertDto): Promise<AssetMetadataResponseDto[]> {
-    await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetUpdate, ids: [id] });
 
-    const uniqueKeys = new Set<string>();
-    for (const { key } of dto.items) {
-      if (uniqueKeys.has(key)) {
-        throw new BadRequestException(`Duplicate items are not allowed: "${key}"`);
-      }
+        const uniqueKeys = new Set<string>();
+        for (const { key } of dto.items) {
+          if (uniqueKeys.has(key)) {
+            return yield* Effect.fail(new BadRequestException(`Duplicate items are not allowed: "${key}"`));
+          }
 
-      uniqueKeys.add(key);
-    }
+          uniqueKeys.add(key);
+        }
 
-    return this.assetRepository.upsertMetadata(id, dto.items);
+        return yield* this.fx.asset.upsertMetadata(id, dto.items);
+      }),
+    );
   }
 
   async getMetadataByKey(auth: AuthDto, id: string, key: string): Promise<AssetMetadataResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.AssetRead, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetRead, ids: [id] });
 
-    const item = await this.assetRepository.getMetadataByKey(id, key);
-    if (!item) {
-      throw new BadRequestException(`Metadata with key "${key}" not found for asset with id "${id}"`);
-    }
-    return item;
+        const item = yield* this.fx.asset.getMetadataByKey(id, key);
+        if (!item) {
+          return yield* Effect.fail(
+            new BadRequestException(`Metadata with key "${key}" not found for asset with id "${id}"`),
+          );
+        }
+        return item;
+      }),
+    );
   }
 
   async deleteMetadataByKey(auth: AuthDto, id: string, key: string): Promise<void> {
-    await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: [id] });
-    return this.assetRepository.deleteMetadataByKey(id, key);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetUpdate, ids: [id] });
+        return yield* this.fx.asset.deleteMetadataByKey(id, key);
+      }),
+    );
   }
 
   async deleteBulkMetadata(auth: AuthDto, dto: AssetMetadataBulkDeleteDto) {
-    await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: dto.items.map((item) => item.assetId) });
-    await this.assetRepository.deleteBulkMetadata(dto.items);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({
+          auth,
+          permission: Permission.AssetUpdate,
+          ids: dto.items.map((item) => item.assetId),
+        });
+        yield* this.fx.asset.deleteBulkMetadata(dto.items);
+      }),
+    );
   }
 
   async run(auth: AuthDto, dto: AssetJobsDto) {
-    await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: dto.assetIds });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetUpdate, ids: dto.assetIds });
 
-    const jobs: JobItem[] = [];
+        const jobs: JobItem[] = [];
 
-    for (const id of dto.assetIds) {
-      switch (dto.name) {
-        case AssetJobName.REFRESH_METADATA: {
-          jobs.push({ name: JobName.AssetExtractMetadata, data: { id } });
-          break;
+        for (const id of dto.assetIds) {
+          switch (dto.name) {
+            case AssetJobName.REFRESH_METADATA: {
+              jobs.push({ name: JobName.AssetExtractMetadata, data: { id } });
+              break;
+            }
+
+            case AssetJobName.REGENERATE_THUMBNAIL: {
+              jobs.push({ name: JobName.AssetGenerateThumbnails, data: { id } });
+              break;
+            }
+
+            case AssetJobName.TRANSCODE_VIDEO: {
+              jobs.push({ name: JobName.AssetEncodeVideo, data: { id } });
+              break;
+            }
+          }
         }
 
-        case AssetJobName.REGENERATE_THUMBNAIL: {
-          jobs.push({ name: JobName.AssetGenerateThumbnails, data: { id } });
-          break;
-        }
+        yield* this.fx.job.queueAll(jobs);
+      }),
+    );
+  }
 
-        case AssetJobName.TRANSCODE_VIDEO: {
-          jobs.push({ name: JobName.AssetEncodeVideo, data: { id } });
-          break;
-        }
-      }
+  private findOrFail = Effect.fn('AssetService.findOrFail')(function* (this: AssetService, id: string) {
+    const value = yield* this.fx.asset.getById(id);
+    if (!value) {
+      return yield* Effect.fail(new BadRequestException('Asset not found'));
     }
 
-    await this.jobRepository.queueAll(jobs);
-  }
+    return value;
+  });
 
-  private findOrFail(id: string) {
-    return findOrFail(() => this.assetRepository.getById(id), 'Asset');
-  }
-
-  private async updateExif(dto: {
-    id: string;
-    description?: string;
-    dateTimeOriginal?: string;
-    latitude?: number;
-    longitude?: number;
-    rating?: number | null;
-  }) {
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  private updateExif = Effect.fn('AssetService.updateExif')(function* (
+    this: AssetService,
+    dto: {
+      id: string;
+      description?: string;
+      dateTimeOriginal?: string;
+      latitude?: number;
+      longitude?: number;
+      rating?: number | null;
+    },
+  ) {
     const { id, description, dateTimeOriginal, latitude, longitude, rating } = dto;
     const writes = omitBy(
       {
@@ -492,101 +607,113 @@ export class AssetService extends BaseService {
       return false;
     }
 
-    await this.assetRepository.upsertExif({
+    yield* this.fx.asset.upsertExif({
       exif: updateLockedColumns({
         assetId: id,
         ...writes,
       }),
       lockedPropertiesBehavior: 'append',
     });
-    await this.jobRepository.queue({ name: JobName.SidecarWrite, data: { id } });
+    yield* this.fx.job.queue({ name: JobName.SidecarWrite, data: { id } });
     return true;
-  }
+  });
 
   async getAssetEdits(auth: AuthDto, id: string): Promise<AssetEditsResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.AssetRead, ids: [id] });
-    const edits = await this.assetEditRepository.getAll(id);
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetRead, ids: [id] });
+        const edits = yield* this.fx.assetEdit.getAll(id);
 
-    return {
-      assetId: id,
-      edits,
-    };
+        return {
+          assetId: id,
+          edits,
+        };
+      }),
+    );
   }
 
   async editAsset(auth: AuthDto, id: string, dto: AssetEditsCreateDto): Promise<AssetEditsResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.AssetEditCreate, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetEditCreate, ids: [id] });
 
-    const asset = await this.assetRepository.getForEdit(id);
-    if (!asset) {
-      throw new BadRequestException('Asset not found');
-    }
+        const asset = yield* this.fx.asset.getForEdit(id);
+        if (!asset) {
+          return yield* Effect.fail(new BadRequestException('Asset not found'));
+        }
 
-    if (asset.type !== AssetType.Image) {
-      throw new BadRequestException('Only images can be edited');
-    }
+        if (asset.type !== AssetType.Image) {
+          return yield* Effect.fail(new BadRequestException('Only images can be edited'));
+        }
 
-    if (asset.livePhotoVideoId) {
-      throw new BadRequestException('Editing live photos is not supported');
-    }
+        if (asset.livePhotoVideoId) {
+          return yield* Effect.fail(new BadRequestException('Editing live photos is not supported'));
+        }
 
-    if (isPanorama(asset)) {
-      throw new BadRequestException('Editing panorama images is not supported');
-    }
+        if (isPanorama(asset)) {
+          return yield* Effect.fail(new BadRequestException('Editing panorama images is not supported'));
+        }
 
-    if (asset.originalPath?.toLowerCase().endsWith('.gif')) {
-      throw new BadRequestException('Editing GIF images is not supported');
-    }
+        if (asset.originalPath?.toLowerCase().endsWith('.gif')) {
+          return yield* Effect.fail(new BadRequestException('Editing GIF images is not supported'));
+        }
 
-    if (asset.originalPath?.toLowerCase().endsWith('.svg')) {
-      throw new BadRequestException('Editing SVG images is not supported');
-    }
+        if (asset.originalPath?.toLowerCase().endsWith('.svg')) {
+          return yield* Effect.fail(new BadRequestException('Editing SVG images is not supported'));
+        }
 
-    // check that crop parameters will not go out of bounds
-    const { width: assetWidth, height: assetHeight } = getDimensions(asset);
+        // check that crop parameters will not go out of bounds
+        const { width: assetWidth, height: assetHeight } = getDimensions(asset);
 
-    if (!assetWidth || !assetHeight) {
-      throw new BadRequestException('Asset dimensions are not available for editing');
-    }
+        if (!assetWidth || !assetHeight) {
+          return yield* Effect.fail(new BadRequestException('Asset dimensions are not available for editing'));
+        }
 
-    const edits = dto.edits as AssetEditActionItem[];
-    const crop = edits.find((e) => e.action === AssetEditAction.Crop);
-    if (crop) {
-      if (edits[0].action !== AssetEditAction.Crop) {
-        throw new BadRequestException('Crop action must be the first edit action');
-      }
+        const edits = dto.edits as AssetEditActionItem[];
+        const crop = edits.find((e) => e.action === AssetEditAction.Crop);
+        if (crop) {
+          if (edits[0].action !== AssetEditAction.Crop) {
+            return yield* Effect.fail(new BadRequestException('Crop action must be the first edit action'));
+          }
 
-      // check that crop parameters will not go out of bounds
-      const { width: assetWidth, height: assetHeight } = getDimensions(asset);
+          // check that crop parameters will not go out of bounds
+          const { width: assetWidth, height: assetHeight } = getDimensions(asset);
 
-      if (!assetWidth || !assetHeight) {
-        throw new BadRequestException('Asset dimensions are not available for editing');
-      }
+          if (!assetWidth || !assetHeight) {
+            return yield* Effect.fail(new BadRequestException('Asset dimensions are not available for editing'));
+          }
 
-      const { x, y, width, height } = crop.parameters;
-      if (x + width > assetWidth || y + height > assetHeight) {
-        throw new BadRequestException('Crop parameters are out of bounds');
-      }
-    }
+          const { x, y, width, height } = crop.parameters;
+          if (x + width > assetWidth || y + height > assetHeight) {
+            return yield* Effect.fail(new BadRequestException('Crop parameters are out of bounds'));
+          }
+        }
 
-    const newEdits = await this.assetEditRepository.replaceAll(id, edits);
-    await this.jobRepository.queue({ name: JobName.AssetEditThumbnailGeneration, data: { id } });
+        const newEdits = yield* this.fx.assetEdit.replaceAll(id, edits);
+        yield* this.fx.job.queue({ name: JobName.AssetEditThumbnailGeneration, data: { id } });
 
-    // Return the asset and its applied edits
-    return {
-      assetId: id,
-      edits: newEdits,
-    };
+        // Return the asset and its applied edits
+        return {
+          assetId: id,
+          edits: newEdits,
+        };
+      }),
+    );
   }
 
   async removeAssetEdits(auth: AuthDto, id: string): Promise<void> {
-    await this.requireAccess({ auth, permission: Permission.AssetEditDelete, ids: [id] });
+    return runPromise(
+      Effect.gen({ self: this }, function* () {
+        yield* this.requireAccessFx({ auth, permission: Permission.AssetEditDelete, ids: [id] });
 
-    const asset = await this.assetRepository.getById(id);
-    if (!asset) {
-      throw new BadRequestException('Asset not found');
-    }
+        const asset = yield* this.fx.asset.getById(id);
+        if (!asset) {
+          return yield* Effect.fail(new BadRequestException('Asset not found'));
+        }
 
-    await this.assetEditRepository.replaceAll(id, []);
-    await this.jobRepository.queue({ name: JobName.AssetEditThumbnailGeneration, data: { id } });
+        yield* this.fx.assetEdit.replaceAll(id, []);
+        yield* this.fx.job.queue({ name: JobName.AssetEditThumbnailGeneration, data: { id } });
+      }),
+    );
   }
 }
