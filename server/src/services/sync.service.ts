@@ -45,25 +45,27 @@ const isEntityBackfillComplete = (createId: string, checkpoint: SyncAck | undefi
 const getStartId = (createId: string, checkpoint: SyncAck | undefined): string | undefined =>
   createId === checkpoint?.updateId ? checkpoint?.extraId : undefined;
 
-export const send = async <T extends keyof SyncItem, D extends SyncItem[T]>(
+/** Writes one sync item, failing with the original error (e.g. `ClientDisconnectedError`) and waiting for 'drain' on back pressure. */
+const sendFx = <T extends keyof SyncItem, D extends SyncItem[T]>(response: Writable, item: SerializeOptions<T, D>) =>
+  Effect.gen(function* () {
+    if (response.destroyed || response.writableEnded) {
+      return yield* Effect.fail(new ClientDisconnectedError());
+    }
+
+    // indicates back pressure, so we wait for 'drain' event
+    const ok = yield* Effect.try({ try: () => response.write(serialize(item)), catch: (cause) => cause });
+    if (!ok) {
+      yield* Effect.tryPromise({ try: () => waitForDrain(response), catch: (cause) => cause });
+    }
+  });
+
+/** Promise form of `sendFx`, kept as an export because the unit spec drives it directly. */
+export const send = <T extends keyof SyncItem, D extends SyncItem[T]>(
   response: Writable,
   item: SerializeOptions<T, D>,
-) => {
-  if (response.destroyed || response.writableEnded) {
-    throw new ClientDisconnectedError();
-  }
-
-  // indicates back pressure, so we wait for 'drain' event
-  if (!response.write(serialize(item))) {
-    await waitForDrain(response);
-  }
-};
+) => runPromise(sendFx(response, item));
 
 type SyncEffect = Effect.Effect<void, unknown>;
-
-/** `send` as an Effect: the write happens when the Effect runs, and it fails with the original error (e.g. `ClientDisconnectedError`). */
-const sendFx = <T extends keyof SyncItem, D extends SyncItem[T]>(response: Writable, item: SerializeOptions<T, D>) =>
-  Effect.tryPromise({ try: () => send(response, item), catch: (cause) => cause });
 
 /**
  * Consumes a lazy DB cursor one row at a time, running `f` (and so its backpressure-aware writes) before the next row

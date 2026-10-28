@@ -6,7 +6,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Context, Effect } from 'effect';
+import { Cause, Context, Effect } from 'effect';
 import { Server, Socket } from 'socket.io';
 import { AssetResponseDto } from 'src/dtos/asset-response.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
@@ -15,7 +15,7 @@ import { ReleaseEventV1, ServerVersionResponseDto } from 'src/dtos/server.dto.js
 import { SyncAssetEditV1, SyncAssetExifV1, SyncAssetV2 } from 'src/dtos/sync.dto.js';
 import { registerEffect } from 'src/effect/bridge.js';
 import { LibraryError } from 'src/effect/errors.js';
-import { runSync } from 'src/effect/run.js';
+import { runPromise, runSync, unwrap } from 'src/effect/run.js';
 import { type AppRestartEvent, type ArgsOf, EventRepository } from 'src/repositories/event.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { handlePromiseError } from 'src/utils/misc.js';
@@ -147,24 +147,49 @@ export class WebsocketRepository implements OnGatewayConnection, OnGatewayDiscon
   }
 
   async handleConnection(client: Socket) {
-    try {
-      this.logger.log(`Websocket Connect:    ${client.id}`);
-      const auth = await this.authenticate(client);
-      await client.join(auth.user.id);
-      if (auth.session) {
-        await client.join(auth.session.id);
-      }
-      await this.eventRepository.emit('WebsocketConnect', { userId: auth.user.id });
-    } catch (error: Error | any) {
-      this.logger.error(`Websocket connection error: ${error}`, error?.stack);
-      client.emit('error', 'unauthorized');
-      client.disconnect();
-    }
+    // gateway hook called by Nest/socket.io, so it keeps its Promise signature; `this` is captured outside the generator
+    const { logger, eventRepository } = this;
+    const authenticate = () => this.authenticate(client);
+    return runPromise(
+      Effect.gen(function* () {
+        logger.log(`Websocket Connect:    ${client.id}`);
+        const auth = yield* Effect.tryPromise({ try: authenticate, catch: (cause) => cause });
+        yield* Effect.tryPromise({
+          try: async () => {
+            await client.join(auth.user.id);
+            if (auth.session) {
+              await client.join(auth.session.id);
+            }
+          },
+          catch: (cause) => cause,
+        });
+        yield* Effect.tryPromise({
+          try: () => eventRepository.emit('WebsocketConnect', { userId: auth.user.id }),
+          catch: (cause) => cause,
+        });
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.sync(() => {
+            const error: Error | any = unwrap(Cause.squash(cause));
+            logger.error(`Websocket connection error: ${error}`, error?.stack);
+            client.emit('error', 'unauthorized');
+            client.disconnect();
+          }),
+        ),
+      ),
+    );
   }
 
   async handleDisconnect(client: Socket) {
     this.logger.log(`Websocket Disconnect: ${client.id}`);
-    await client.leave(client.nsp.name);
+    return runPromise(
+      Effect.tryPromise({
+        try: async () => {
+          await client.leave(client.nsp.name);
+        },
+        catch: (cause) => cause,
+      }),
+    );
   }
 
   clientSend<T extends keyof ClientEventMap>(event: T, room: string, ...data: ClientEventMap[T]) {

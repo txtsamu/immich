@@ -12,7 +12,7 @@ import type { JobOf } from 'src/types.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { Asset, AssetFile } from 'src/database.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
-import { runPromise } from 'src/effect/run.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetType,
@@ -126,12 +126,6 @@ const getLensModel = (exifTags: ImmichTags): string | null => {
   return lensModel || null;
 };
 
-/** The original thrown value behind a failure, unwrapping the tagged errors that carry it in `cause`. */
-const originalError = (cause: Cause.Cause<unknown>): any => {
-  const error = Cause.squash(cause);
-  return typeof error === 'object' && error !== null && '_tag' in error && 'cause' in error ? error.cause : error;
-};
-
 type Dates = {
   dateTimeOriginal: Date;
   localDateTime: Date;
@@ -172,7 +166,7 @@ export class MetadataService extends BaseService {
         this.logger.log(`Initialized local reverse geocoder`);
       }).pipe(
         Effect.catchCause((cause) => {
-          const error = originalError(cause);
+          const error: any = unwrap(Cause.squash(cause));
           this.logger.error(`Unable to initialize reverse geocoding: ${error}`, error?.stack);
           return Effect.fail(new Error('Metadata service init failed', { cause: error }));
         }),
@@ -790,7 +784,7 @@ export class MetadataService extends BaseService {
           return { motionAsset: createdAsset, isNew: true };
         }).pipe(
           Effect.catchCause((cause) => {
-            if (!isAssetChecksumConstraint(originalError(cause))) {
+            if (!isAssetChecksumConstraint(unwrap(Cause.squash(cause)))) {
               return Effect.failCause(cause);
             }
 
@@ -861,7 +855,7 @@ export class MetadataService extends BaseService {
       this.logger.debug(`Finished motion photo video extraction for asset ${asset.id}: ${asset.originalPath}`);
     }).pipe(
       Effect.catchCause((cause) => {
-        const error = originalError(cause);
+        const error: any = unwrap(Cause.squash(cause));
         this.logger.error(
           `Failed to extract motion video for ${asset.id}: ${asset.originalPath}: ${error}`,
           error?.stack,
