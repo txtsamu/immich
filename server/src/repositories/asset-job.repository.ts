@@ -240,7 +240,10 @@ const makeAssetJob = (db: Kysely<DB>) => {
                       .whereRef('stack_asset.stackId', '=', 'stack.id')
                       .whereRef('stack_asset.id', '!=', 'stack.primaryAssetId')
                       .where('stack_asset.visibility', '=', sql.val(AssetVisibility.Timeline))
-                      .where('stack_asset.status', '!=', sql.val(AssetStatus.Deleted)),
+                      .where('stack_asset.status', '!=', sql.val(AssetStatus.Deleted))
+                      .orderBy('stack_asset.fileCreatedAt', 'asc')
+                      .orderBy('stack_asset.createdAt', 'asc')
+                      .orderBy('stack_asset.id', 'asc'),
                   ).as('assets'),
                 ])
                 .as('stack_result'),

@@ -409,6 +409,10 @@ from
               and "stack_asset"."id" != "stack"."primaryAssetId"
               and "stack_asset"."visibility" = $1
               and "stack_asset"."status" != $2
+            order by
+              "stack_asset"."fileCreatedAt" asc,
+              "stack_asset"."createdAt" asc,
+              "stack_asset"."id" asc
           ) as agg
       ) as "assets"
     from
