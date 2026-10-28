@@ -36,7 +36,7 @@ const updatedConfig = Object.freeze<SystemConfig>({
     [QueueName.Sidecar]: { concurrency: 5 },
     [QueueName.Library]: { concurrency: 5 },
     [QueueName.Migration]: { concurrency: 5 },
-    [QueueName.ThumbnailGeneration]: { concurrency: 3 },
+    [QueueName.ThumbnailGeneration]: { concurrency: 1 },
     [QueueName.VideoConversion]: { concurrency: 1 },
     [QueueName.Notification]: { concurrency: 5 },
     [QueueName.Workflow]: { concurrency: 5 },

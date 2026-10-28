@@ -93,7 +93,7 @@ The default configuration looks like this:
       "concurrency": 5
     },
     "thumbnailGeneration": {
-      "concurrency": 3
+      "concurrency": 1
     },
     "videoConversion": {
       "concurrency": 1

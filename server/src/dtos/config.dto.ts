@@ -560,7 +560,7 @@ export const defaults = Object.freeze<SystemConfig>({
     },
   },
   job: {
-    thumbnailGeneration: { concurrency: 3 },
+    thumbnailGeneration: { concurrency: 1 },
     metadataExtraction: { concurrency: 5 },
     videoConversion: { concurrency: 1 },
     backgroundTask: { concurrency: 5 },
