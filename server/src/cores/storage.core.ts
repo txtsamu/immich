@@ -1,6 +1,9 @@
+import { Effect } from 'effect';
 import { dirname, join, resolve } from 'node:path';
 import type { VideoInterfaces } from 'src/types.js';
 import { StorageAsset } from 'src/database.js';
+import { effectOf } from 'src/effect/bridge.js';
+import { runPromise, unwrap } from 'src/effect/run.js';
 import {
   AssetFileType,
   AssetPathType,
@@ -10,15 +13,15 @@ import {
   StorageFolder,
   UserPathType,
 } from 'src/enum.js';
-import { AssetRepository } from 'src/repositories/asset.repository.js';
-import { ConfigRepository } from 'src/repositories/config.repository.js';
-import { CryptoRepository } from 'src/repositories/crypto.repository.js';
-import { LoggingRepository } from 'src/repositories/logging.repository.js';
-import { MoveRepository } from 'src/repositories/move.repository.js';
-import { StorageRepository } from 'src/repositories/storage.repository.js';
-import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
+import { AssetRepo, AssetRepository } from 'src/repositories/asset.repository.js';
+import { ConfigRepo, ConfigRepository } from 'src/repositories/config.repository.js';
+import { CryptoRepo, CryptoRepository } from 'src/repositories/crypto.repository.js';
+import { LoggingRepo, LoggingRepository } from 'src/repositories/logging.repository.js';
+import { MoveRepo, MoveRepository } from 'src/repositories/move.repository.js';
+import { StorageRepo, StorageRepository } from 'src/repositories/storage.repository.js';
+import { SystemMetadataRepo, SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
 import { getAssetFile } from 'src/utils/asset.util.js';
-import { getConfig } from 'src/utils/config.js';
+import { getConfigFx } from 'src/utils/config.js';
 
 export interface MoveRequest {
   entityId: string;
@@ -146,10 +149,22 @@ export class StorageCore {
     return normalizedPath.startsWith(normalizedAppMediaLocation);
   }
 
-  async moveAssetImage(asset: StorageAsset, fileType: AssetFileType, format: ImageFormat) {
+  private get fx() {
+    return {
+      asset: effectOf(AssetRepo, this.assetRepository),
+      config: effectOf(ConfigRepo, this.configRepository),
+      crypto: effectOf(CryptoRepo, this.cryptoRepository),
+      move: effectOf(MoveRepo, this.moveRepository),
+      storage: effectOf(StorageRepo, this.storageRepository),
+      systemMetadata: effectOf(SystemMetadataRepo, this.systemMetadataRepository),
+      logger: effectOf(LoggingRepo, this.logger),
+    };
+  }
+
+  moveAssetImageFx(asset: StorageAsset, fileType: AssetFileType, format: ImageFormat) {
     const { id: entityId, files } = asset;
     const oldFile = getAssetFile(files, fileType, { isEdited: false });
-    return this.moveFile({
+    return this.moveFileFx({
       entityId,
       pathType: fileType,
       oldPath: oldFile?.path || null,
@@ -157,9 +172,13 @@ export class StorageCore {
     });
   }
 
-  async moveAssetVideo(asset: StorageAsset) {
+  async moveAssetImage(asset: StorageAsset, fileType: AssetFileType, format: ImageFormat) {
+    return runPromise(this.moveAssetImageFx(asset, fileType, format));
+  }
+
+  moveAssetVideoFx(asset: StorageAsset) {
     const encodedVideoFile = getAssetFile(asset.files, AssetFileType.EncodedVideo, { isEdited: false });
-    return this.moveFile({
+    return this.moveFileFx({
       entityId: asset.id,
       pathType: AssetPathType.EncodedVideo,
       oldPath: encodedVideoFile?.path || null,
@@ -167,137 +186,163 @@ export class StorageCore {
     });
   }
 
-  async moveFile(request: MoveRequest) {
-    const { entityId, pathType, oldPath, newPath, assetInfo } = request;
-    if (!oldPath || oldPath === newPath) {
-      return;
-    }
+  async moveAssetVideo(asset: StorageAsset) {
+    return runPromise(this.moveAssetVideoFx(asset));
+  }
 
-    this.ensureFolders(newPath);
-
-    let move = await this.moveRepository.getByEntity(entityId, pathType);
-    if (move) {
-      this.logger.log(`Attempting to finish incomplete move: ${move.oldPath} => ${move.newPath}`);
-      const isOldPathExists = await this.storageRepository.checkFileExists(move.oldPath);
-      const isNewPathExists = await this.storageRepository.checkFileExists(move.newPath);
-      const newPathCheck = isNewPathExists ? move.newPath : null;
-      const actualPath = isOldPathExists ? move.oldPath : newPathCheck;
-      if (!actualPath) {
-        this.logger.warn('Unable to complete move. File does not exist at either location.');
+  moveFileFx(request: MoveRequest) {
+    return Effect.gen({ self: this }, function* () {
+      const { entityId, pathType, oldPath, newPath, assetInfo } = request;
+      if (!oldPath || oldPath === newPath) {
         return;
       }
 
-      const isFileAtNewLocation = actualPath === move.newPath;
-      this.logger.log(`Found file at ${isFileAtNewLocation ? 'new' : 'old'} location`);
+      yield* this.ensureFoldersFx(newPath);
 
-      if (
-        isFileAtNewLocation &&
-        !(await this.verifyNewPathContentsMatchesExpected(move.oldPath, move.newPath, assetInfo))
-      ) {
-        this.logger.fatal(
-          `Skipping move as file verification failed, old file is missing and new file is different to what was expected`,
-        );
-        return;
-      }
+      let move = yield* this.fx.move.getByEntity(entityId, pathType);
+      if (move) {
+        this.logger.log(`Attempting to finish incomplete move: ${move.oldPath} => ${move.newPath}`);
+        const isOldPathExists = yield* this.fx.storage.checkFileExists(move.oldPath);
+        const isNewPathExists = yield* this.fx.storage.checkFileExists(move.newPath);
+        const newPathCheck = isNewPathExists ? move.newPath : null;
+        const actualPath = isOldPathExists ? move.oldPath : newPathCheck;
+        if (!actualPath) {
+          this.logger.warn('Unable to complete move. File does not exist at either location.');
+          return;
+        }
 
-      move = await this.moveRepository.update(move.id, { id: move.id, oldPath: actualPath, newPath });
-    } else {
-      move = await this.moveRepository.create({ entityId, pathType, oldPath, newPath });
-    }
+        const isFileAtNewLocation = actualPath === move.newPath;
+        this.logger.log(`Found file at ${isFileAtNewLocation ? 'new' : 'old'} location`);
 
-    if (pathType === AssetPathType.Original && !assetInfo) {
-      this.logger.warn(`Unable to complete move. Missing asset info for ${entityId}`);
-      return;
-    }
-
-    if (move.oldPath !== newPath) {
-      try {
-        this.logger.debug(`Attempting to rename file: ${move.oldPath} => ${newPath}`);
-        await this.storageRepository.rename(move.oldPath, newPath);
-      } catch (error: any) {
-        if (error.code !== 'EXDEV') {
-          this.logger.warn(
-            `Unable to complete move. Error renaming file with code ${error.code} and message: ${error.message}`,
+        if (
+          isFileAtNewLocation &&
+          !(yield* this.verifyNewPathContentsMatchesExpectedFx(move.oldPath, move.newPath, assetInfo))
+        ) {
+          this.logger.fatal(
+            `Skipping move as file verification failed, old file is missing and new file is different to what was expected`,
           );
           return;
         }
-        this.logger.debug(`Unable to rename file. Falling back to copy, verify and delete`);
-        await this.storageRepository.copyFile(move.oldPath, newPath);
 
-        if (!(await this.verifyNewPathContentsMatchesExpected(move.oldPath, newPath, assetInfo))) {
-          this.logger.warn(`Skipping move due to file size mismatch`);
-          await this.storageRepository.unlink(newPath);
-          return;
-        }
+        move = yield* this.fx.move.update(move.id, { id: move.id, oldPath: actualPath, newPath });
+      } else {
+        move = yield* this.fx.move.create({ entityId, pathType, oldPath, newPath });
+      }
 
-        const { atime, mtime } = await this.storageRepository.stat(move.oldPath);
-        await this.storageRepository.utimes(newPath, atime, mtime);
+      if (pathType === AssetPathType.Original && !assetInfo) {
+        this.logger.warn(`Unable to complete move. Missing asset info for ${entityId}`);
+        return;
+      }
 
-        try {
-          await this.storageRepository.unlink(move.oldPath);
-        } catch (error: any) {
-          this.logger.warn(`Unable to delete old file, it will now no longer be tracked by Immich: ${error.message}`);
+      if (move.oldPath !== newPath) {
+        this.logger.debug(`Attempting to rename file: ${move.oldPath} => ${newPath}`);
+        const renameFailure = yield* this.fx.storage.rename(move.oldPath, newPath).pipe(
+          Effect.as(undefined),
+          Effect.catch((error) => Effect.succeed({ error: unwrap(error) as any })),
+        );
+        if (renameFailure) {
+          const { error } = renameFailure;
+          if (error.code !== 'EXDEV') {
+            this.logger.warn(
+              `Unable to complete move. Error renaming file with code ${error.code} and message: ${error.message}`,
+            );
+            return;
+          }
+          this.logger.debug(`Unable to rename file. Falling back to copy, verify and delete`);
+          yield* this.fx.storage.copyFile(move.oldPath, newPath);
+
+          if (!(yield* this.verifyNewPathContentsMatchesExpectedFx(move.oldPath, newPath, assetInfo))) {
+            this.logger.warn(`Skipping move due to file size mismatch`);
+            yield* this.fx.storage.unlink(newPath);
+            return;
+          }
+
+          const { atime, mtime } = yield* this.fx.storage.stat(move.oldPath);
+          yield* this.fx.storage.utimes(newPath, atime, mtime);
+
+          yield* this.fx.storage.unlink(move.oldPath).pipe(
+            Effect.catch((error_) => {
+              const error = unwrap(error_) as any;
+              this.logger.warn(
+                `Unable to delete old file, it will now no longer be tracked by Immich: ${error.message}`,
+              );
+              return Effect.void;
+            }),
+          );
         }
       }
-    }
 
-    await this.savePath(pathType, entityId, newPath);
-    await this.moveRepository.delete(move.id);
+      yield* this.savePathFx(pathType, entityId, newPath);
+      yield* this.fx.move.delete(move.id);
+    });
   }
 
-  private async verifyNewPathContentsMatchesExpected(
+  async moveFile(request: MoveRequest) {
+    return runPromise(this.moveFileFx(request));
+  }
+
+  private verifyNewPathContentsMatchesExpectedFx(
     oldPath: string,
     newPath: string,
     assetInfo?: { sizeInBytes: number; checksum: Buffer },
   ) {
-    const oldStat = await this.storageRepository.stat(oldPath);
-    const newStat = await this.storageRepository.stat(newPath);
-    const oldPathSize = assetInfo ? assetInfo.sizeInBytes : oldStat.size;
-    const newPathSize = newStat.size;
-    this.logger.debug(`File size check: ${newPathSize} === ${oldPathSize}`);
-    if (newPathSize !== oldPathSize) {
-      this.logger.warn(`Unable to complete move. File size mismatch: ${newPathSize} !== ${oldPathSize}`);
-      return false;
-    }
-    const repos = {
-      configRepo: this.configRepository,
-      metadataRepo: this.systemMetadataRepository,
-      logger: this.logger,
-    };
-    const config = await getConfig(repos, { withCache: true });
-    if (assetInfo && config.storageTemplate.hashVerificationEnabled) {
-      const { checksum } = assetInfo;
-      const newChecksum = await this.cryptoRepository.hashFile(newPath);
-      if (!newChecksum.equals(checksum)) {
-        this.logger.warn(
-          `Unable to complete move. File checksum mismatch: ${newChecksum.toString('base64')} !== ${checksum.toString(
-            'base64',
-          )}`,
-        );
+    return Effect.gen({ self: this }, function* () {
+      const oldStat = yield* this.fx.storage.stat(oldPath);
+      const newStat = yield* this.fx.storage.stat(newPath);
+      const oldPathSize = assetInfo ? assetInfo.sizeInBytes : oldStat.size;
+      const newPathSize = newStat.size;
+      this.logger.debug(`File size check: ${newPathSize} === ${oldPathSize}`);
+      if (newPathSize !== oldPathSize) {
+        this.logger.warn(`Unable to complete move. File size mismatch: ${newPathSize} !== ${oldPathSize}`);
         return false;
       }
-      this.logger.debug(`File checksum check: ${newChecksum.toString('base64')} === ${checksum.toString('base64')}`);
-    }
-    return true;
+      const { config: configRepo, systemMetadata: metadataRepo, logger } = this.fx;
+      const config = yield* getConfigFx({ configRepo, metadataRepo, logger }, { withCache: true });
+      if (assetInfo && config.storageTemplate.hashVerificationEnabled) {
+        const { checksum } = assetInfo;
+        const newChecksum = yield* this.fx.crypto.hashFile(newPath);
+        if (!newChecksum.equals(checksum)) {
+          this.logger.warn(
+            `Unable to complete move. File checksum mismatch: ${newChecksum.toString('base64')} !== ${checksum.toString(
+              'base64',
+            )}`,
+          );
+          return false;
+        }
+        this.logger.debug(`File checksum check: ${newChecksum.toString('base64')} === ${checksum.toString('base64')}`);
+      }
+      return true;
+    });
+  }
+
+  ensureFoldersFx(input: string) {
+    return this.fx.storage.mkdirSync(dirname(input));
   }
 
   ensureFolders(input: string) {
     this.storageRepository.mkdirSync(dirname(input));
   }
 
+  removeEmptyDirsFx(folder: StorageFolder) {
+    return this.fx.storage.removeEmptyDirs(StorageCore.getBaseFolder(folder));
+  }
+
   removeEmptyDirs(folder: StorageFolder) {
-    return this.storageRepository.removeEmptyDirs(StorageCore.getBaseFolder(folder));
+    return runPromise(this.removeEmptyDirsFx(folder));
+  }
+
+  getVideoInterfacesFx(): Effect.Effect<VideoInterfaces, unknown> {
+    return Effect.all({ dri: this.getDevicesFx(), mali: this.hasMaliOpenCLFx() }, { concurrency: 'unbounded' });
   }
 
   async getVideoInterfaces(): Promise<VideoInterfaces> {
-    const [dri, mali] = await Promise.all([this.getDevices(), this.hasMaliOpenCL()]);
-    return { dri, mali };
+    return runPromise(this.getVideoInterfacesFx());
   }
 
-  private savePath(pathType: PathType, id: string, newPath: string) {
+  private savePathFx(pathType: PathType, id: string, newPath: string) {
     switch (pathType) {
       case AssetPathType.Original: {
-        return this.assetRepository.update({ id, originalPath: newPath });
+        return this.fx.asset.update({ id, originalPath: newPath });
       }
 
       case AssetFileType.FullSize:
@@ -306,12 +351,12 @@ export class StorageCore {
       case AssetFileType.Preview:
       case AssetFileType.Sidecar:
       case AssetPathType.EncodedVideo: {
-        return this.assetRepository.upsertFile({ assetId: id, type: pathType as AssetFileType, path: newPath });
+        return this.fx.asset.upsertFile({ assetId: id, type: pathType as AssetFileType, path: newPath });
       }
 
       case UserPathType.Profile: {
         this.logger.warn('Unexpected path type:', pathType);
-        return;
+        return Effect.void;
       }
     }
   }
@@ -324,25 +369,29 @@ export class StorageCore {
     return join(StorageCore.getNestedFolder(folder, ownerId, filename), filename);
   }
 
-  private async getDevices() {
-    try {
-      return await this.storageRepository.readdir('/dev/dri');
-    } catch {
-      this.logger.debug('No devices found in /dev/dri.');
-      return [];
-    }
+  private getDevicesFx() {
+    return this.fx.storage.readdir('/dev/dri').pipe(
+      Effect.catchCause(() => {
+        this.logger.debug('No devices found in /dev/dri.');
+        return Effect.succeed([] as string[]);
+      }),
+    );
   }
 
-  private async hasMaliOpenCL() {
-    try {
-      const [maliIcdStat, maliDeviceStat] = await Promise.all([
-        this.storageRepository.stat('/etc/OpenCL/vendors/mali.icd'),
-        this.storageRepository.stat('/dev/mali0'),
-      ]);
-      return maliIcdStat.isFile() && maliDeviceStat.isCharacterDevice();
-    } catch {
-      this.logger.debug('OpenCL not available for transcoding, so RKMPP acceleration will use CPU tonemapping');
-      return false;
-    }
+  private hasMaliOpenCLFx() {
+    return Effect.all([this.fx.storage.stat('/etc/OpenCL/vendors/mali.icd'), this.fx.storage.stat('/dev/mali0')], {
+      concurrency: 'unbounded',
+    }).pipe(
+      Effect.flatMap(([maliIcdStat, maliDeviceStat]) =>
+        Effect.try({
+          try: () => maliIcdStat.isFile() && maliDeviceStat.isCharacterDevice(),
+          catch: (error) => error,
+        }),
+      ),
+      Effect.catchCause(() => {
+        this.logger.debug('OpenCL not available for transcoding, so RKMPP acceleration will use CPU tonemapping');
+        return Effect.succeed(false);
+      }),
+    );
   }
 }

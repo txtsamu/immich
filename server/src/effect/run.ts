@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit } from 'effect';
+import { appRuntime } from 'src/effect/runtime.js';
 
 /** Errors wrapping the original thrown value in `cause` (see `errors.ts`). */
 type Wrapped = { _tag: string; cause: unknown };
@@ -14,7 +15,7 @@ export const unwrap = (error: unknown) => (isWrapped(error) ? error.cause : erro
  * e.g. Postgres error code checks and the global exception filter, behaves identically.
  */
 export const runPromise = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
-  const exit = await Effect.runPromiseExit(effect);
+  const exit = await appRuntime.runPromiseExit(effect);
   if (Exit.isSuccess(exit)) {
     return exit.value;
   }
@@ -23,7 +24,7 @@ export const runPromise = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> 
 
 /** Synchronous variant of `runPromise`. */
 export const runSync = <A, E>(effect: Effect.Effect<A, E>): A => {
-  const exit = Effect.runSyncExit(effect);
+  const exit = appRuntime.runSyncExit(effect);
   if (Exit.isSuccess(exit)) {
     return exit.value;
   }

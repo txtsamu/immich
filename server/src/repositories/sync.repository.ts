@@ -49,6 +49,22 @@ const dummyQueryOptions = {
   },
 };
 
+/** The audit table behind each sync group that is pruned by `cleanupAuditTable`. */
+const auditTables = {
+  album: 'album_audit',
+  albumToAsset: 'album_asset_audit',
+  albumUser: 'album_user_audit',
+  asset: 'asset_audit',
+  assetEdit: 'asset_edit_audit',
+  assetMetadata: 'asset_metadata_audit',
+  memory: 'memory_audit',
+  memoryToAsset: 'memory_asset_audit',
+  partner: 'partner_audit',
+  stack: 'stack_audit',
+  user: 'user_audit',
+  userMetadata: 'user_metadata_audit',
+} as const satisfies Record<string, keyof DB>;
+
 const makeSyncService = (db: Kysely<DB>) => {
   // `db.dynamic` is read lazily: unit tests construct the repository with a stub Kysely
   const dyn = () => db.dynamic;
@@ -87,19 +103,27 @@ const makeSyncService = (db: Kysely<DB>) => {
       .orderBy(updateIdRef, 'asc');
   };
 
+  const auditCleanup = Effect.fn('Sync.auditCleanup')(function* <T extends keyof DB>(t: T, days: number) {
+    const { table, ref } = dyn();
+    return yield* query(db, () =>
+      db
+        .deleteFrom(table(t).as(t))
+        .where(ref(`${t}.deletedAt`), '<', sql.raw(`now() - interval '${days} days'`))
+        .execute(),
+    );
+  });
+
+  /** Per-group cleanup of one audit table, built on the generic `auditCleanup`. */
+  const cleanupAuditTable = (t: (typeof auditTables)[keyof typeof auditTables]) => (days: number) =>
+    auditCleanup(t, days);
+
   // The stream-returning methods below hand back the lazy Kysely stream untouched (via Effect.sync); nothing is buffered.
   return {
-    auditCleanup: Effect.fn('Sync.auditCleanup')(function* <T extends keyof DB>(t: T, days: number) {
-      const { table, ref } = dyn();
-      return yield* query(db, () =>
-        db
-          .deleteFrom(table(t).as(t))
-          .where(ref(`${t}.deletedAt`), '<', sql.raw(`now() - interval '${days} days'`))
-          .execute(),
-      );
-    }),
+    auditCleanup,
 
     album: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.album),
+
       getCreatedAfter: Effect.fn('Sync.album.getCreatedAfter')(function* (options: SyncCreatedAfterOptions) {
         const { nowId, userId, afterCreateId } = options;
         return yield* query(db, () =>
@@ -271,6 +295,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     albumToAsset: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.albumToAsset),
+
       getBackfill: Effect.fn('Sync.albumToAsset.getBackfill')(function* (
         options: SyncBackfillOptions,
         albumId: string,
@@ -315,6 +341,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     albumUser: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.albumUser),
+
       getBackfill: Effect.fn('Sync.albumUser.getBackfill')(function* (options: SyncBackfillOptions, albumId: string) {
         return yield* Effect.sync(() =>
           backfillQuery('album_user', options)
@@ -366,6 +394,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     asset: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.asset),
+
       getDeletes: Effect.fn('Sync.asset.getDeletes')(function* (options: SyncQueryOptions) {
         return yield* Effect.sync(() =>
           auditQuery('asset_audit', options).select(['id', 'assetId']).where('ownerId', '=', options.userId).stream(),
@@ -408,6 +438,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     assetEdit: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.assetEdit),
+
       getDeletes: Effect.fn('Sync.assetEdit.getDeletes')(function* (options: SyncQueryOptions) {
         return yield* Effect.sync(() =>
           auditQuery('asset_edit_audit', options)
@@ -430,6 +462,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     memory: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.memory),
+
       getDeletes: Effect.fn('Sync.memory.getDeletes')(function* (options: SyncQueryOptions) {
         return yield* Effect.sync(() =>
           auditQuery('memory_audit', options).select(['id', 'memoryId']).where('userId', '=', options.userId).stream(),
@@ -461,6 +495,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     memoryToAsset: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.memoryToAsset),
+
       getDeletes: Effect.fn('Sync.memoryToAsset.getDeletes')(function* (options: SyncQueryOptions) {
         return yield* Effect.sync(() =>
           auditQuery('memory_asset_audit', options)
@@ -500,6 +536,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     partner: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.partner),
+
       getCreatedAfter: Effect.fn('Sync.partner.getCreatedAfter')(function* (options: SyncCreatedAfterOptions) {
         const { nowId, userId, afterCreateId } = options;
         return yield* query(db, () =>
@@ -609,6 +647,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     stack: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.stack),
+
       getDeletes: Effect.fn('Sync.stack.getDeletes')(function* (options: SyncQueryOptions) {
         return yield* Effect.sync(() =>
           auditQuery('stack_audit', options).select(['id', 'stackId']).where('userId', '=', options.userId).stream(),
@@ -665,6 +705,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     user: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.user),
+
       getDeletes: Effect.fn('Sync.user.getDeletes')(function* (options: SyncQueryOptions) {
         return yield* Effect.sync(() => auditQuery('user_audit', options).select(['id', 'userId']).stream());
       }),
@@ -675,6 +717,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     userMetadata: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.userMetadata),
+
       getDeletes: Effect.fn('Sync.userMetadata.getDeletes')(function* (options: SyncQueryOptions) {
         return yield* Effect.sync(() =>
           auditQuery('user_metadata_audit', options)
@@ -695,6 +739,8 @@ const makeSyncService = (db: Kysely<DB>) => {
     },
 
     assetMetadata: {
+      cleanupAuditTable: cleanupAuditTable(auditTables.assetMetadata),
+
       getDeletes: Effect.fn('Sync.assetMetadata.getDeletes')(function* (options: SyncQueryOptions, userId: string) {
         return yield* Effect.sync(() =>
           auditQuery('asset_metadata_audit', options)
@@ -802,7 +848,7 @@ class AlbumSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('album_audit', daysAgo);
+    return this.auditCleanup(auditTables.album, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -862,7 +908,7 @@ class AlbumToAssetSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('album_asset_audit', daysAgo);
+    return this.auditCleanup(auditTables.albumToAsset, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -883,7 +929,7 @@ class AlbumUserSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('album_user_audit', daysAgo);
+    return this.auditCleanup(auditTables.albumUser, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -899,7 +945,7 @@ class AssetSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('asset_audit', daysAgo);
+    return this.auditCleanup(auditTables.asset, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -929,7 +975,7 @@ class AssetEditSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('asset_edit_audit', daysAgo);
+    return this.auditCleanup(auditTables.assetEdit, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -945,7 +991,7 @@ class MemorySync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('memory_audit', daysAgo);
+    return this.auditCleanup(auditTables.memory, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -961,7 +1007,7 @@ class MemoryToAssetSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('memory_asset_audit', daysAgo);
+    return this.auditCleanup(auditTables.memoryToAsset, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -987,7 +1033,7 @@ class PartnerSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('partner_audit', daysAgo);
+    return this.auditCleanup(auditTables.partner, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -1032,7 +1078,7 @@ class StackSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('stack_audit', daysAgo);
+    return this.auditCleanup(auditTables.stack, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -1065,7 +1111,7 @@ class UserSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('user_audit', daysAgo);
+    return this.auditCleanup(auditTables.user, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -1081,7 +1127,7 @@ class UserMetadataSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('user_metadata_audit', daysAgo);
+    return this.auditCleanup(auditTables.userMetadata, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions], stream: true })
@@ -1097,7 +1143,7 @@ class AssetMetadataSync extends BaseSync {
   }
 
   cleanupAuditTable(daysAgo: number) {
-    return this.auditCleanup('asset_metadata_audit', daysAgo);
+    return this.auditCleanup(auditTables.assetMetadata, daysAgo);
   }
 
   @GenerateSql({ params: [dummyQueryOptions, DummyValue.UUID], stream: true })

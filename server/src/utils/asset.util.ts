@@ -1,17 +1,47 @@
 import { BadRequestException } from '@nestjs/common';
+import { Context, Effect } from 'effect';
 import type { IBulkAsset, ImmichFile, UploadFile, UploadRequest } from 'src/types.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { AssetFile } from 'src/database.js';
 import { BulkIdErrorReason, BulkIdResponseDto } from 'src/dtos/asset-ids.response.dto.js';
 import { UploadFieldName } from 'src/dtos/asset-media.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
+import { effectOf } from 'src/effect/bridge.js';
+import { LiftedError } from 'src/effect/errors.js';
+import { runPromise } from 'src/effect/run.js';
 import { AssetFileType, AssetType, AssetVisibility, Permission } from 'src/enum.js';
 import { AuthRequest } from 'src/middleware/auth.guard.js';
-import { AccessRepository } from 'src/repositories/access.repository.js';
-import { AssetRepository } from 'src/repositories/asset.repository.js';
-import { EventRepository } from 'src/repositories/event.repository.js';
-import { PartnerRepository } from 'src/repositories/partner.repository.js';
-import { checkAccess } from 'src/utils/access.js';
+import { AccessRepo, AccessRepository } from 'src/repositories/access.repository.js';
+import { AssetRepo, AssetRepository } from 'src/repositories/asset.repository.js';
+import { EventRepo, EventRepository } from 'src/repositories/event.repository.js';
+import { PartnerRepo, PartnerRepository } from 'src/repositories/partner.repository.js';
+import { AccessFx, checkAccessFx } from 'src/utils/access.js';
+
+/** Effect version of `IBulkAsset` (see `src/types.ts`). */
+export interface IBulkAssetFx<E = never> {
+  getAssetIds: (id: string, assetIds: string[]) => Effect.Effect<Set<string>, E>;
+  addAssetIds: (id: string, assetIds: string[]) => Effect.Effect<void, E>;
+  removeAssetIds: (id: string, assetIds: string[]) => Effect.Effect<void, E>;
+}
+
+/** Lifts a Promise-based `IBulkAsset` (e.g. a repository adapter) to its Effect shape. */
+const liftBulk = (bulk: IBulkAsset): IBulkAssetFx<LiftedError> => ({
+  getAssetIds: (id, assetIds) =>
+    Effect.tryPromise({
+      try: async () => await bulk.getAssetIds(id, assetIds),
+      catch: (cause) => new LiftedError({ cause }),
+    }),
+  addAssetIds: (id, assetIds) =>
+    Effect.tryPromise({
+      try: async () => await bulk.addAssetIds(id, assetIds),
+      catch: (cause) => new LiftedError({ cause }),
+    }),
+  removeAssetIds: (id, assetIds) =>
+    Effect.tryPromise({
+      try: async () => await bulk.removeAssetIds(id, assetIds),
+      catch: (cause) => new LiftedError({ cause }),
+    }),
+});
 
 export const getAssetFile = (files: AssetFile[], type: AssetFileType, { isEdited }: { isEdited: boolean }) => {
   return files.find((file) => file.type === type && file.isEdited === isEdited);
@@ -30,85 +60,109 @@ export const getAssetFiles = (files: AssetFile[]) => ({
   encodedVideoFile: getAssetFile(files, AssetFileType.EncodedVideo, { isEdited: false }),
 });
 
-export const addAssets = async (
+export const addAssetsFx = <E>(
+  auth: AuthDto,
+  repositories: { access: AccessFx; bulk: IBulkAssetFx<E> },
+  dto: { parentId: string; assetIds: string[]; permission: Permission },
+) =>
+  Effect.gen(function* () {
+    const { access, bulk } = repositories;
+    const existingAssetIds = yield* bulk.getAssetIds(dto.parentId, dto.assetIds);
+    const notPresentAssetIds = dto.assetIds.filter((id) => !existingAssetIds.has(id));
+    const allowedAssetIds = yield* checkAccessFx(access, {
+      auth,
+      permission: dto.permission,
+      ids: notPresentAssetIds,
+    });
+
+    const results: BulkIdResponseDto[] = [];
+    for (const assetId of dto.assetIds) {
+      const hasAsset = existingAssetIds.has(assetId);
+      if (hasAsset) {
+        results.push({ id: assetId, success: false, error: BulkIdErrorReason.DUPLICATE });
+        continue;
+      }
+
+      const hasAccess = allowedAssetIds.has(assetId);
+      if (!hasAccess) {
+        results.push({ id: assetId, success: false, error: BulkIdErrorReason.NO_PERMISSION });
+        continue;
+      }
+
+      existingAssetIds.add(assetId);
+      results.push({ id: assetId, success: true });
+    }
+
+    const newAssetIds = results.filter(({ success }) => success).map(({ id }) => id);
+    if (newAssetIds.length > 0) {
+      yield* bulk.addAssetIds(dto.parentId, newAssetIds);
+    }
+
+    return results;
+  });
+
+export const addAssets = (
   auth: AuthDto,
   repositories: { access: AccessRepository; bulk: IBulkAsset },
   dto: { parentId: string; assetIds: string[]; permission: Permission },
-) => {
-  const { access, bulk } = repositories;
-  const existingAssetIds = await bulk.getAssetIds(dto.parentId, dto.assetIds);
-  const notPresentAssetIds = dto.assetIds.filter((id) => !existingAssetIds.has(id));
-  const allowedAssetIds = await checkAccess(access, {
-    auth,
-    permission: dto.permission,
-    ids: notPresentAssetIds,
+): Promise<BulkIdResponseDto[]> =>
+  runPromise(
+    addAssetsFx(auth, { access: effectOf(AccessRepo, repositories.access), bulk: liftBulk(repositories.bulk) }, dto),
+  );
+
+export const removeAssetsFx = <E>(
+  auth: AuthDto,
+  repositories: { access: AccessFx; bulk: IBulkAssetFx<E> },
+  dto: { parentId: string; assetIds: string[]; canAlwaysRemove: Permission },
+) =>
+  Effect.gen(function* () {
+    const { access, bulk } = repositories;
+
+    // check if the user can always remove from the parent album, memory, etc.
+    const canAlwaysRemove = yield* checkAccessFx(access, {
+      auth,
+      permission: dto.canAlwaysRemove,
+      ids: [dto.parentId],
+    });
+    const existingAssetIds = yield* bulk.getAssetIds(dto.parentId, dto.assetIds);
+    const allowedAssetIds = canAlwaysRemove.has(dto.parentId)
+      ? existingAssetIds
+      : yield* checkAccessFx(access, { auth, permission: Permission.AssetShare, ids: existingAssetIds });
+
+    const results: BulkIdResponseDto[] = [];
+    for (const assetId of dto.assetIds) {
+      const hasAsset = existingAssetIds.has(assetId);
+      if (!hasAsset) {
+        results.push({ id: assetId, success: false, error: BulkIdErrorReason.NOT_FOUND });
+        continue;
+      }
+
+      const hasAccess = allowedAssetIds.has(assetId);
+      if (!hasAccess) {
+        results.push({ id: assetId, success: false, error: BulkIdErrorReason.NO_PERMISSION });
+        continue;
+      }
+
+      existingAssetIds.delete(assetId);
+      results.push({ id: assetId, success: true });
+    }
+
+    const removedIds = results.filter(({ success }) => success).map(({ id }) => id);
+    if (removedIds.length > 0) {
+      yield* bulk.removeAssetIds(dto.parentId, removedIds);
+    }
+
+    return results;
   });
 
-  const results: BulkIdResponseDto[] = [];
-  for (const assetId of dto.assetIds) {
-    const hasAsset = existingAssetIds.has(assetId);
-    if (hasAsset) {
-      results.push({ id: assetId, success: false, error: BulkIdErrorReason.DUPLICATE });
-      continue;
-    }
-
-    const hasAccess = allowedAssetIds.has(assetId);
-    if (!hasAccess) {
-      results.push({ id: assetId, success: false, error: BulkIdErrorReason.NO_PERMISSION });
-      continue;
-    }
-
-    existingAssetIds.add(assetId);
-    results.push({ id: assetId, success: true });
-  }
-
-  const newAssetIds = results.filter(({ success }) => success).map(({ id }) => id);
-  if (newAssetIds.length > 0) {
-    await bulk.addAssetIds(dto.parentId, newAssetIds);
-  }
-
-  return results;
-};
-
-export const removeAssets = async (
+export const removeAssets = (
   auth: AuthDto,
   repositories: { access: AccessRepository; bulk: IBulkAsset },
   dto: { parentId: string; assetIds: string[]; canAlwaysRemove: Permission },
-) => {
-  const { access, bulk } = repositories;
-
-  // check if the user can always remove from the parent album, memory, etc.
-  const canAlwaysRemove = await checkAccess(access, { auth, permission: dto.canAlwaysRemove, ids: [dto.parentId] });
-  const existingAssetIds = await bulk.getAssetIds(dto.parentId, dto.assetIds);
-  const allowedAssetIds = canAlwaysRemove.has(dto.parentId)
-    ? existingAssetIds
-    : await checkAccess(access, { auth, permission: Permission.AssetShare, ids: existingAssetIds });
-
-  const results: BulkIdResponseDto[] = [];
-  for (const assetId of dto.assetIds) {
-    const hasAsset = existingAssetIds.has(assetId);
-    if (!hasAsset) {
-      results.push({ id: assetId, success: false, error: BulkIdErrorReason.NOT_FOUND });
-      continue;
-    }
-
-    const hasAccess = allowedAssetIds.has(assetId);
-    if (!hasAccess) {
-      results.push({ id: assetId, success: false, error: BulkIdErrorReason.NO_PERMISSION });
-      continue;
-    }
-
-    existingAssetIds.delete(assetId);
-    results.push({ id: assetId, success: true });
-  }
-
-  const removedIds = results.filter(({ success }) => success).map(({ id }) => id);
-  if (removedIds.length > 0) {
-    await bulk.removeAssetIds(dto.parentId, removedIds);
-  }
-
-  return results;
-};
+): Promise<BulkIdResponseDto[]> =>
+  runPromise(
+    removeAssetsFx(auth, { access: effectOf(AccessRepo, repositories.access), bulk: liftBulk(repositories.bulk) }, dto),
+  );
 
 export type PartnerIdOptions = {
   userId: string;
@@ -116,78 +170,115 @@ export type PartnerIdOptions = {
   /** only include partners with `inTimeline: true` */
   timelineEnabled?: boolean;
 };
-export const getMyPartnerIds = async ({ userId, repository, timelineEnabled }: PartnerIdOptions) => {
-  const partnerIds = new Set<string>();
-  const partners = await repository.getAll(userId);
-  for (const partner of partners) {
-    // ignore deleted users
-    if (!partner.sharedBy || !partner.sharedWith) {
-      continue;
-    }
-
-    // wrong direction
-    if (partner.sharedWithId !== userId) {
-      continue;
-    }
-
-    if (timelineEnabled && !partner.inTimeline) {
-      continue;
-    }
-
-    partnerIds.add(partner.sharedById);
-  }
-
-  return [...partnerIds];
+export type PartnerIdOptionsFx = {
+  userId: string;
+  repository: Context.Service.Shape<typeof PartnerRepo>;
+  /** only include partners with `inTimeline: true` */
+  timelineEnabled?: boolean;
 };
+export const getMyPartnerIdsFx = ({ userId, repository, timelineEnabled }: PartnerIdOptionsFx) =>
+  Effect.gen(function* () {
+    const partnerIds = new Set<string>();
+    const partners = yield* repository.getAll(userId);
+    for (const partner of partners) {
+      // ignore deleted users
+      if (!partner.sharedBy || !partner.sharedWith) {
+        continue;
+      }
+
+      // wrong direction
+      if (partner.sharedWithId !== userId) {
+        continue;
+      }
+
+      if (timelineEnabled && !partner.inTimeline) {
+        continue;
+      }
+
+      partnerIds.add(partner.sharedById);
+    }
+
+    return [...partnerIds];
+  });
+
+export const getMyPartnerIds = ({ userId, repository, timelineEnabled }: PartnerIdOptions): Promise<string[]> =>
+  runPromise(getMyPartnerIdsFx({ userId, repository: effectOf(PartnerRepo, repository), timelineEnabled }));
 
 export type AssetHookRepositories = { asset: AssetRepository; event: EventRepository };
 
-export const onBeforeLink = async (
-  { asset: assetRepository, event: eventRepository }: AssetHookRepositories,
+/** The Effect shapes of `AssetHookRepositories`. */
+export type AssetHookFx = {
+  asset: Context.Service.Shape<typeof AssetRepo>;
+  event: Context.Service.Shape<typeof EventRepo>;
+};
+
+const toHookFx = ({ asset, event }: AssetHookRepositories): AssetHookFx => ({
+  asset: effectOf(AssetRepo, asset),
+  event: effectOf(EventRepo, event),
+});
+
+export const onBeforeLinkFx = (
+  { asset: assetRepository, event: eventRepository }: AssetHookFx,
   { userId, livePhotoVideoId }: { userId: string; livePhotoVideoId: string },
-) => {
-  const motionAsset = await assetRepository.getById(livePhotoVideoId);
-  if (!motionAsset) {
-    throw new BadRequestException('Live photo video not found');
-  }
-  if (motionAsset.type !== AssetType.Video) {
-    throw new BadRequestException('Live photo video must be a video');
-  }
-  if (motionAsset.ownerId !== userId) {
-    throw new BadRequestException('Live photo video does not belong to the user');
-  }
+) =>
+  Effect.gen(function* () {
+    const motionAsset = yield* assetRepository.getById(livePhotoVideoId);
+    if (!motionAsset) {
+      return yield* Effect.fail(new BadRequestException('Live photo video not found'));
+    }
+    if (motionAsset.type !== AssetType.Video) {
+      return yield* Effect.fail(new BadRequestException('Live photo video must be a video'));
+    }
+    if (motionAsset.ownerId !== userId) {
+      return yield* Effect.fail(new BadRequestException('Live photo video does not belong to the user'));
+    }
 
-  if (!motionAsset || motionAsset.visibility !== AssetVisibility.Timeline) {
-    return;
-  }
+    if (!motionAsset || motionAsset.visibility !== AssetVisibility.Timeline) {
+      return;
+    }
 
-  await assetRepository.update({ id: livePhotoVideoId, visibility: AssetVisibility.Hidden });
-  await eventRepository.emit('AssetHide', { assetId: motionAsset.id, userId });
-};
+    yield* assetRepository.update({ id: livePhotoVideoId, visibility: AssetVisibility.Hidden });
+    yield* eventRepository.emit('AssetHide', { assetId: motionAsset.id, userId });
+  });
 
-export const onBeforeUnlink = async (
-  { asset: assetRepository }: AssetHookRepositories,
+export const onBeforeLink = (
+  repositories: AssetHookRepositories,
+  options: { userId: string; livePhotoVideoId: string },
+): Promise<void> => runPromise(onBeforeLinkFx(toHookFx(repositories), options));
+
+export const onBeforeUnlinkFx = (
+  { asset: assetRepository }: Pick<AssetHookFx, 'asset'>,
   { livePhotoVideoId }: { livePhotoVideoId: string },
-) => {
-  const motion = await assetRepository.getById(livePhotoVideoId);
-  if (!motion) {
-    return null;
-  }
+) =>
+  Effect.gen(function* () {
+    const motion = yield* assetRepository.getById(livePhotoVideoId);
+    if (!motion) {
+      return null;
+    }
 
-  if (StorageCore.isAndroidMotionPath(motion.originalPath)) {
-    throw new BadRequestException('Cannot unlink Android motion photos');
-  }
+    if (StorageCore.isAndroidMotionPath(motion.originalPath)) {
+      return yield* Effect.fail(new BadRequestException('Cannot unlink Android motion photos'));
+    }
 
-  return motion;
-};
+    return motion;
+  });
 
-export const onAfterUnlink = async (
-  { asset: assetRepository, event: eventRepository }: AssetHookRepositories,
+export const onBeforeUnlink = (repositories: AssetHookRepositories, options: { livePhotoVideoId: string }) =>
+  runPromise(onBeforeUnlinkFx({ asset: effectOf(AssetRepo, repositories.asset) }, options));
+
+export const onAfterUnlinkFx = (
+  { asset: assetRepository, event: eventRepository }: AssetHookFx,
   { userId, livePhotoVideoId, visibility }: { userId: string; livePhotoVideoId: string; visibility: AssetVisibility },
-) => {
-  await assetRepository.update({ id: livePhotoVideoId, visibility });
-  await eventRepository.emit('AssetShow', { assetId: livePhotoVideoId, userId });
-};
+) =>
+  Effect.gen(function* () {
+    yield* assetRepository.update({ id: livePhotoVideoId, visibility });
+    yield* eventRepository.emit('AssetShow', { assetId: livePhotoVideoId, userId });
+  });
+
+export const onAfterUnlink = (
+  repositories: AssetHookRepositories,
+  options: { userId: string; livePhotoVideoId: string; visibility: AssetVisibility },
+): Promise<void> => runPromise(onAfterUnlinkFx(toHookFx(repositories), options));
 
 export function mapToUploadFile(file: ImmichFile): UploadFile {
   return {

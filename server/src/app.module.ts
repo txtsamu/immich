@@ -9,6 +9,7 @@ import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { commandsAndQuestions } from 'src/commands/index.js';
 import { IWorker } from 'src/constants.js';
 import { controllers } from 'src/controllers/index.js';
+import { disposeAppRuntime } from 'src/effect/runtime.js';
 import { ImmichWorker } from 'src/enum.js';
 import { MaintenanceAuthGuard } from 'src/maintenance/maintenance-auth.guard.js';
 import { MaintenanceHealthRepository } from 'src/maintenance/maintenance-health.repository.js';
@@ -99,6 +100,7 @@ export class BaseModule implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy() {
     await this.eventRepository.emit('AppShutdown');
     await teardownTelemetry();
+    await disposeAppRuntime();
   }
 }
 

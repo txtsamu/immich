@@ -7,6 +7,7 @@ import {
   SwaggerDocumentOptions,
   SwaggerModule,
 } from '@nestjs/swagger';
+import { Effect } from 'effect';
 import { get, isArray, isDate, isEmpty, isObject, orderBy, unset } from 'lodash-es';
 import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { writeFileSync } from 'node:fs';
@@ -15,6 +16,8 @@ import picomatch from 'picomatch';
 import { JOBS_ASSET_PAGINATION_SIZE, endpointTags, serverVersion } from 'src/constants.js';
 import { extraModels } from 'src/decorators.js';
 import { SystemConfig } from 'src/dtos/config.dto.js';
+import { LiftedError } from 'src/effect/errors.js';
+import { runPromise } from 'src/effect/run.js';
 import { ApiCustomExtension, ImmichCookie, ImmichHeader, MetadataKey } from 'src/enum.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 
@@ -99,14 +102,26 @@ export const handlePromiseError = <T>(promise: Promise<T>, logger: LoggingReposi
 
 export const hasSomeDefined = (values: unknown[]) => values.some((value) => value !== undefined);
 
-export const findOrFail = async <T>(find: () => Promise<T>, entity: string): Promise<NonNullable<T>> => {
-  const value = await find();
-  if (!value) {
-    throw new BadRequestException(`${entity} not found`);
-  }
+export const findOrFailFx = <T, E>(
+  find: Effect.Effect<T, E>,
+  entity: string,
+): Effect.Effect<NonNullable<T>, E | BadRequestException> =>
+  Effect.gen(function* () {
+    const value = yield* find;
+    if (!value) {
+      return yield* Effect.fail(new BadRequestException(`${entity} not found`));
+    }
 
-  return value;
-};
+    return value;
+  });
+
+export const findOrFail = <T>(find: () => Promise<T>, entity: string): Promise<NonNullable<T>> =>
+  runPromise(
+    findOrFailFx(
+      Effect.tryPromise({ try: async () => await find(), catch: (cause) => new LiftedError({ cause }) }),
+      entity,
+    ),
+  );
 
 export async function* batched<T>(items: AsyncIterable<T>, size = JOBS_ASSET_PAGINATION_SIZE): AsyncGenerator<T[]> {
   let batch: T[] = [];

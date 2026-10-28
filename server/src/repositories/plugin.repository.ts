@@ -45,6 +45,9 @@ const levels = {
 const asExtismLogLevel = (logLevel: LogLevel) => levels[logLevel] || 'info';
 
 const makePluginService = (db: Kysely<DB>) => {
+  // Loaded wasm plugins by key. Lives in this closure, so every `PluginRepo` instance owns its pools.
+  const pluginMap = new Map<string, { label: string; pool: Pool<ExtismPlugin> }>();
+
   const queryBuilder = () =>
     db.selectFrom('plugin').select((eb) => [
       'plugin.id',
@@ -202,6 +205,81 @@ const makePluginService = (db: Kysely<DB>) => {
         }),
       );
     }),
+
+    /** Builds the extism worker pool for a plugin and registers it under `key`. */
+    load: Effect.fn('Plugin.load')(function* (
+      { key, label, wasmBytes }: PluginLoad,
+      { runInWorker, functions }: PluginLoadOptions,
+    ) {
+      const pool = yield* Effect.try({
+        try: () => {
+          const data = new Uint8Array(wasmBytes.buffer, wasmBytes.byteOffset, wasmBytes.byteLength);
+          const logger = LoggingRepository.create(`Plugin:${label}`);
+          return createPool<ExtismPlugin>(
+            {
+              create: () =>
+                newPlugin(
+                  { wasm: [{ data }] },
+                  {
+                    useWasi: true,
+                    runInWorker,
+                    functions: {
+                      'extism:host/user': functions ?? {},
+                    },
+                    logger: {
+                      trace: (message) => logger.verbose(message),
+                      info: (message) => logger.log(message),
+                      debug: (message) => logger.debug(message),
+                      warn: (message) => logger.warn(message),
+                      error: (message) => logger.error(message),
+                    } as Console,
+                    logLevel: asExtismLogLevel(logger.getLogLevel()),
+                    enableWasiOutput: true,
+                  },
+                ),
+              destroy: (plugin) => plugin.close(),
+            },
+            { min: 1, max: 5 },
+          );
+        },
+        catch: (error) => error as Error,
+      });
+
+      yield* Effect.tryPromise({
+        try: async () => {
+          await pool.ready();
+          pluginMap.set(key, { pool, label });
+        },
+        catch: (error) => new Error(`Unable to instantiate plugin: ${key}`, { cause: error }),
+      });
+    }),
+
+    /** Runs a method of a loaded plugin on a pooled instance, returning its JSON result. */
+    callMethod: Effect.fn('Plugin.callMethod')(function* <T>(
+      { pluginKey, methodName }: PluginMethod,
+      input: unknown,
+      context?: unknown,
+    ) {
+      const item = pluginMap.get(pluginKey);
+      if (!item) {
+        return yield* Effect.fail(new Error(`No loaded plugin found for ${pluginKey}`));
+      }
+
+      const { pool, label } = item;
+
+      return yield* Effect.tryPromise({
+        try: async () => {
+          const plugin = await pool.acquire();
+          try {
+            const result = await plugin.call(methodName, JSON.stringify(input), context);
+            return (result ? result.json() : result) as T;
+          } finally {
+            await pool.release(plugin);
+          }
+        },
+        catch: (error) => new Error(`Plugin method call failed: ${label}#${methodName}`, { cause: error }),
+      });
+    }),
   };
 };
 
@@ -218,14 +296,10 @@ export class PluginRepo extends Context.Service<PluginRepo, ReturnType<typeof ma
   );
 }
 
-/**
- * Promise-facing adapter for the Nest services. Delegates the database methods to `PluginRepo`.
- * `load` and `callMethod` own the in-process wasm plugin pools and stay direct (see the note on `load`).
- */
+/** Promise-facing adapter for the Nest services. Delegates to `PluginRepo`, which owns the wasm plugin pools. */
 @Injectable()
 export class PluginRepository {
   private readonly effect: Context.Service.Shape<typeof PluginRepo>;
-  private pluginMap: Map<string, { label: string; pool: Pool<ExtismPlugin> }> = new Map();
 
   constructor(
     @InjectKysely() db: Kysely<DB>,
@@ -275,64 +349,11 @@ export class PluginRepository {
     return runPromise(this.effect.upsert(dto, initialMethods));
   }
 
-  // Direct passthrough: builds stateful extism worker pools, mutates pluginMap, and rethrows
-  // plain `Error`s with `cause`; none of that is a typed-error/DB concern, so it is not converted.
-  async load({ key, label, wasmBytes }: PluginLoad, { runInWorker, functions }: PluginLoadOptions) {
-    const data = new Uint8Array(wasmBytes.buffer, wasmBytes.byteOffset, wasmBytes.byteLength);
-    const logger = LoggingRepository.create(`Plugin:${label}`);
-    const pool = createPool<ExtismPlugin>(
-      {
-        create: () =>
-          newPlugin(
-            { wasm: [{ data }] },
-            {
-              useWasi: true,
-              runInWorker,
-              functions: {
-                'extism:host/user': functions ?? {},
-              },
-              logger: {
-                trace: (message) => logger.verbose(message),
-                info: (message) => logger.log(message),
-                debug: (message) => logger.debug(message),
-                warn: (message) => logger.warn(message),
-                error: (message) => logger.error(message),
-              } as Console,
-              logLevel: asExtismLogLevel(logger.getLogLevel()),
-              enableWasiOutput: true,
-            },
-          ),
-        destroy: (plugin) => plugin.close(),
-      },
-      { min: 1, max: 5 },
-    );
-
-    try {
-      await pool.ready();
-      this.pluginMap.set(key, { pool, label });
-    } catch (error: Error | any) {
-      throw new Error(`Unable to instantiate plugin: ${key}`, { cause: error });
-    }
+  load(plugin: PluginLoad, options: PluginLoadOptions): Promise<void> {
+    return runPromise(this.effect.load(plugin, options));
   }
 
-  async callMethod<T>({ pluginKey, methodName }: PluginMethod, input: unknown, context?: unknown) {
-    const item = this.pluginMap.get(pluginKey);
-    if (!item) {
-      throw new Error(`No loaded plugin found for ${pluginKey}`);
-    }
-
-    const { pool, label } = item;
-
-    try {
-      const plugin = await pool.acquire();
-      try {
-        const result = await plugin.call(methodName, JSON.stringify(input), context);
-        return (result ? result.json() : result) as T;
-      } finally {
-        await pool.release(plugin);
-      }
-    } catch (error: Error | any) {
-      throw new Error(`Plugin method call failed: ${label}#${methodName}`, { cause: error });
-    }
+  callMethod<T>(method: PluginMethod, input: unknown, context?: unknown): Promise<T> {
+    return runPromise(this.effect.callMethod<T>(method, input, context));
   }
 }
