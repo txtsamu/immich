@@ -15,9 +15,7 @@ export const registerEffect = <S extends AnyService>(adapter: object, service: S
   registry.set(adapter, service);
 };
 
-const liftCache = new WeakMap<object, unknown>();
-
-const liftFunction =
+export const liftFunction =
   (target: object, fn: (...args: unknown[]) => unknown) =>
   (...args: unknown[]) =>
     Effect.tryPromise({
@@ -25,38 +23,8 @@ const liftFunction =
       catch: (cause) => new LiftedError({ cause }),
     });
 
-const isPlainObject = (value: unknown): value is object =>
+export const isPlainObject = (value: unknown): value is object =>
   typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype;
-
-/**
- * Wraps every function on a Promise-based object (typically a vitest mock) so it returns an Effect.
- * Used when no Effect service is registered for the object, which keeps the existing mock-based specs working.
- */
-const lift = (target: object): unknown => {
-  const cached = liftCache.get(target);
-  if (cached) {
-    return cached;
-  }
-
-  const lifted = new Proxy(
-    {},
-    {
-      get: (_, property) => {
-        const value = Reflect.get(target, property);
-        // nested groups, e.g. the access repository's `asset`, `album`, ... sub-objects
-        if (isPlainObject(value)) {
-          return lift(value);
-        }
-        if (typeof value !== 'function') {
-          return value;
-        }
-        return liftFunction(target, value);
-      },
-    },
-  );
-  liftCache.set(target, lifted);
-  return lifted;
-};
 
 const guardCache = new WeakMap<object, unknown>();
 
@@ -96,11 +64,29 @@ const guard = (adapter: object, service: object): unknown => {
   return guarded;
 };
 
-/** The Effect service behind a repository adapter; falls back to lifting the adapter's Promise methods. */
+type Fallback = (adapter: object) => unknown;
+
+let fallback: Fallback | undefined;
+
+/**
+ * Installs the strategy used for objects that no adapter registered. Production never needs it, because every
+ * repository adapter registers itself; the unit test setup uses it to turn Promise-based vitest mocks into Effect services.
+ */
+export const setEffectFallback = (next: Fallback | undefined) => {
+  fallback = next;
+};
+
+/** The Effect service behind a repository adapter. */
 export const effectOf = <S extends AnyService>(_tag: S, adapter: object): Shape<S> => {
   if (typeof adapter !== 'object' || adapter === null) {
     return adapter as never;
   }
   const service = registry.get(adapter);
-  return (service ? guard(adapter, service as object) : lift(adapter)) as Shape<S>;
+  if (service) {
+    return guard(adapter, service as object) as Shape<S>;
+  }
+  if (!fallback) {
+    throw new Error('No Effect service registered for this repository');
+  }
+  return fallback(adapter) as Shape<S>;
 };

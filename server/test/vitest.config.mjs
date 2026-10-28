@@ -13,6 +13,7 @@ export default defineConfig({
     name: 'server:unit',
     root: serverRoot,
     globals: true,
+    setupFiles: ['test/setup.ts'],
     include: ['src/**/*.spec.ts'],
     coverage: {
       provider: 'v8',
