@@ -78,7 +78,7 @@ The default configuration looks like this:
       "concurrency": 5
     },
     "metadataExtraction": {
-      "concurrency": 5
+      "concurrency": 2
     },
     "migration": {
       "concurrency": 5

@@ -31,7 +31,7 @@ const partialConfig = {
 const updatedConfig = Object.freeze<SystemConfig>({
   job: {
     [QueueName.BackgroundTask]: { concurrency: 5 },
-    [QueueName.MetadataExtraction]: { concurrency: 5 },
+    [QueueName.MetadataExtraction]: { concurrency: 2 },
     [QueueName.Search]: { concurrency: 5 },
     [QueueName.Sidecar]: { concurrency: 5 },
     [QueueName.Library]: { concurrency: 5 },
