@@ -228,6 +228,12 @@ export interface IEntityJob extends IBaseJob {
 
 export interface IAssetDeleteJob extends IEntityJob {
   deleteOnDisk: boolean;
+  /**
+   * Also delete the original file of an offline asset when it is still on disk (an asset offlined by an
+   * exclusion pattern or import path change keeps its file). Only set when a user empties the trash or deletes
+   * from it, never for the automatic expiry.
+   */
+  deleteOffline?: boolean;
 }
 
 export interface ILibraryFileJob {

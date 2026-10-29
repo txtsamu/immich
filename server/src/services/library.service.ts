@@ -361,20 +361,29 @@ export class LibraryService extends BaseService {
           return JobStatus.Failed;
         }
 
+        // The watcher reports files by path, including files that already have an asset (a change, or a file that
+        // came back after being taken offline). Those are updated instead of imported.
+        const paths = job.paths.map((jobPath) => path.normalize(jobPath));
+        const newPaths = new Set(yield* this.fx.asset.filterNewExternalAssetPaths(job.libraryId, paths));
+        const knownPaths = paths.filter((knownPath) => !newPaths.has(knownPath));
+        const syncedIds = yield* this.syncKnownFiles(job.libraryId, knownPaths);
+
         const fileImports: ExternalFileImport[] = [];
         yield* Effect.all(
-          job.paths.map((path) =>
-            this.processEntity(path, library.ownerId, job.libraryId).pipe(
-              Effect.map((fileImport) => {
-                fileImports.push(fileImport);
-              }),
-              Effect.catchCause((cause) => {
-                const error = unwrap(Cause.squash(cause));
-                this.logger.error(`Error processing ${path} for library ${job.libraryId}: ${error}`);
-                return Effect.void;
-              }),
+          paths
+            .filter((newPath) => newPaths.has(newPath))
+            .map((path) =>
+              this.processEntity(path, library.ownerId, job.libraryId).pipe(
+                Effect.map((fileImport) => {
+                  fileImports.push(fileImport);
+                }),
+                Effect.catchCause((cause) => {
+                  const error = unwrap(Cause.squash(cause));
+                  this.logger.error(`Error processing ${path} for library ${job.libraryId}: ${error}`);
+                  return Effect.void;
+                }),
+              ),
             ),
-          ),
           { concurrency: 'unbounded' },
         );
 
@@ -397,12 +406,42 @@ export class LibraryService extends BaseService {
           { concurrency: 'unbounded' },
         );
 
-        yield* this.queuePostSyncJobsFx([...relinkedIds, ...assetIds]);
+        yield* this.queuePostSyncJobsFx([...syncedIds, ...relinkedIds, ...assetIds]);
 
         return JobStatus.Success;
       }),
     );
   }
+
+  /** Brings assets whose file changed, or came back after being taken offline, up to date. Returns the ids to re-scan. */
+  private readonly syncKnownFiles = Effect.fn('LibraryService.syncKnownFiles')(function* (
+    this: LibraryService,
+    libraryId: string,
+    knownPaths: string[],
+  ) {
+    const syncedIds: string[] = [];
+    for (const knownPath of knownPaths) {
+      const asset = yield* this.fx.asset.getByLibraryIdAndOriginalPath(libraryId, knownPath);
+      const stat = yield* this.fx.storage.stat(knownPath).pipe(Effect.catch(() => Effect.succeed<Stats | null>(null)));
+      if (!asset || !stat || asset.status === AssetStatus.Deleted) {
+        continue;
+      }
+
+      if (asset.isOffline) {
+        this.logger.debug(`Offline asset ${knownPath} is back on disk in library ${libraryId}`);
+        // a file that was trashed by the user stays in the trash
+        yield* this.fx.asset.updateAll(
+          [asset.id],
+          asset.status === AssetStatus.Trashed ? { isOffline: false } : { isOffline: false, deletedAt: null },
+        );
+        syncedIds.push(asset.id);
+      } else if (stat.mtime.valueOf() !== asset.fileModifiedAt.valueOf()) {
+        syncedIds.push(asset.id);
+      }
+    }
+
+    return syncedIds;
+  });
 
   /**
    * External assets are identified by the checksum of their path, so a file that moved or was renamed shows up as a
@@ -970,13 +1009,29 @@ export class LibraryService extends BaseService {
   async handleAssetRemoval(job: JobOf<JobName.LibraryRemoveAsset>): Promise<JobStatus> {
     return runPromise(
       Effect.gen({ self: this }, function* () {
-        // This is only for handling file unlink events via the file watcher
-        this.logger.verbose(`Deleting asset(s) ${job.paths} from library ${job.libraryId}`);
+        // This is only for handling file unlink events via the file watcher. Like a library scan, it takes the asset
+        // offline (into the trash) instead of deleting it, so a file that was moved or renamed can be relinked.
+        this.logger.verbose(`Taking asset(s) ${job.paths} offline in library ${job.libraryId}`);
         for (const assetPath of job.paths) {
           const asset = yield* this.fx.asset.getByLibraryIdAndOriginalPath(job.libraryId, assetPath);
-          if (asset) {
-            yield* this.fx.asset.remove(asset);
+          if (!asset || asset.isOffline) {
+            continue;
           }
+
+          // an editor that saves by replacing the file unlinks it for a moment
+          const stillOnDisk = yield* this.fx.storage.stat(assetPath).pipe(
+            Effect.map(() => true),
+            Effect.catch(() => Effect.succeed(false)),
+          );
+          if (stillOnDisk) {
+            this.logger.verbose(`File ${assetPath} is back on disk, keeping asset ${asset.id} online`);
+            continue;
+          }
+
+          yield* this.fx.asset.updateAll(
+            [asset.id],
+            asset.status === AssetStatus.Trashed ? { isOffline: true } : { isOffline: true, deletedAt: new Date() },
+          );
         }
 
         return JobStatus.Success;

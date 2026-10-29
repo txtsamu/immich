@@ -95,7 +95,7 @@ describe(TrashService.name, () => {
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
         {
           name: JobName.AssetDelete,
-          data: { id: 'asset-1', deleteOnDisk: true },
+          data: { id: 'asset-1', deleteOnDisk: true, deleteOffline: true },
         },
       ]);
     });

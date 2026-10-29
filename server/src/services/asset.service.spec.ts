@@ -631,6 +631,56 @@ describe(AssetService.name, () => {
       ]);
     });
 
+    it('should not delete the file of an offline asset unless the user asked for it', async () => {
+      const asset = AssetFactory.from({ isOffline: true }).build();
+      mocks.assetJob.getForAssetDeletion.mockResolvedValue(getForAssetDeletion(asset));
+
+      await sut.handleAssetDeletion({ id: asset.id, deleteOnDisk: true });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.FileDelete,
+        data: { files: [] },
+      });
+    });
+
+    it('should delete the file of an offline asset when the user emptied the trash', async () => {
+      const asset = AssetFactory.from({ isOffline: true }).build();
+      mocks.assetJob.getForAssetDeletion.mockResolvedValue(getForAssetDeletion(asset));
+
+      await sut.handleAssetDeletion({ id: asset.id, deleteOnDisk: true, deleteOffline: true });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.FileDelete,
+        data: { files: [asset.originalPath] },
+      });
+    });
+
+    it('should not delete the file of an offline asset when files are not to be deleted', async () => {
+      const asset = AssetFactory.from({ isOffline: true }).build();
+      mocks.assetJob.getForAssetDeletion.mockResolvedValue(getForAssetDeletion(asset));
+
+      await sut.handleAssetDeletion({ id: asset.id, deleteOnDisk: false, deleteOffline: true });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.FileDelete,
+        data: { files: [] },
+      });
+    });
+
+    it('should pass the offline choice on to the live photo motion part', async () => {
+      const motionAsset = AssetFactory.from({ type: AssetType.Video, visibility: AssetVisibility.Hidden }).build();
+      const asset = AssetFactory.from({ livePhotoVideoId: motionAsset.id, isOffline: true }).build();
+      mocks.assetJob.getForAssetDeletion.mockResolvedValue(getForAssetDeletion(asset));
+      mocks.asset.getLivePhotoCount.mockResolvedValue(0);
+
+      await sut.handleAssetDeletion({ id: asset.id, deleteOnDisk: true, deleteOffline: true });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.AssetDelete,
+        data: { id: motionAsset.id, deleteOnDisk: true, deleteOffline: true },
+      });
+    });
+
     it('should not delete a live motion part if it is being used by another asset', async () => {
       const asset = AssetFactory.create({ livePhotoVideoId: newUuid() });
       mocks.asset.getLivePhotoCount.mockResolvedValue(2);

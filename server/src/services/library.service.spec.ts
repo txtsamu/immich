@@ -557,6 +557,7 @@ describe(LibraryService.name, () => {
         ctime: new Date('2023-01-01'),
       } as Stats);
       mocks.asset.findExternalRelinkCandidates.mockResolvedValue([]);
+      mocks.asset.filterNewExternalAssetPaths.mockImplementation((_libraryId, paths) => Promise.resolve(paths));
     });
 
     it('should import a new asset', async () => {
@@ -597,6 +598,68 @@ describe(LibraryService.name, () => {
           },
         },
       ]);
+    });
+
+    describe('files that already have an asset', () => {
+      const path = '/data/user1/photo.jpg';
+
+      it('should bring an offline asset back when its file reappears', async () => {
+        const library = factory.library();
+        const asset = AssetFactory.create({ isOffline: true, deletedAt: new Date(), libraryId: library.id });
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.filterNewExternalAssetPaths.mockResolvedValue([]);
+        mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(asset);
+        mocks.asset.createAll.mockResolvedValue([]);
+
+        await expect(sut.handleSyncFiles({ libraryId: library.id, paths: [path] })).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.asset.updateAll).toHaveBeenCalledWith([asset.id], { isOffline: false, deletedAt: null });
+        expect(mocks.asset.createAll).toHaveBeenCalledWith([]);
+        expect(mocks.job.queueAll).toHaveBeenCalledWith([
+          { name: JobName.SidecarCheck, data: { id: asset.id, source: 'upload' } },
+        ]);
+      });
+
+      it('should keep an asset that the user trashed in the trash when its file reappears', async () => {
+        const library = factory.library();
+        const asset = AssetFactory.create({
+          isOffline: true,
+          status: AssetStatus.Trashed,
+          deletedAt: new Date(),
+          libraryId: library.id,
+        });
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.filterNewExternalAssetPaths.mockResolvedValue([]);
+        mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(asset);
+        mocks.asset.createAll.mockResolvedValue([]);
+
+        await sut.handleSyncFiles({ libraryId: library.id, paths: [path] });
+
+        expect(mocks.asset.updateAll).toHaveBeenCalledWith([asset.id], { isOffline: false });
+      });
+
+      it('should refresh the metadata of a changed file and ignore an unchanged one', async () => {
+        const library = factory.library();
+        const changed = AssetFactory.create({ fileModifiedAt: new Date('2022-01-01'), libraryId: library.id });
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.filterNewExternalAssetPaths.mockResolvedValue([]);
+        mocks.asset.createAll.mockResolvedValue([]);
+
+        mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(changed);
+        await sut.handleSyncFiles({ libraryId: library.id, paths: [path] });
+        expect(mocks.job.queueAll).toHaveBeenLastCalledWith([
+          { name: JobName.SidecarCheck, data: { id: changed.id, source: 'upload' } },
+        ]);
+        expect(mocks.asset.updateAll).not.toHaveBeenCalled();
+
+        mocks.job.queueAll.mockClear();
+        mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue({
+          ...changed,
+          fileModifiedAt: new Date('2023-01-01'),
+        });
+        await sut.handleSyncFiles({ libraryId: library.id, paths: [path] });
+        expect(mocks.job.queueAll).toHaveBeenLastCalledWith([]);
+      });
     });
 
     describe('moved or renamed files', () => {
@@ -731,6 +794,66 @@ describe(LibraryService.name, () => {
       await expect(sut.handleSyncFiles(mockLibraryJob)).resolves.toBe(JobStatus.Failed);
 
       expect(mocks.asset.createAll.mock.calls).toEqual([]);
+    });
+  });
+
+  describe('handleAssetRemoval', () => {
+    beforeEach(() => {
+      mocks.storage.stat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+
+    it('should take the asset offline and into the trash instead of deleting it', async () => {
+      const library = factory.library();
+      const asset = AssetFactory.create({ libraryId: library.id, isExternal: true });
+      mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(asset);
+
+      await expect(sut.handleAssetRemoval({ libraryId: library.id, paths: [asset.originalPath] })).resolves.toBe(
+        JobStatus.Success,
+      );
+
+      expect(mocks.asset.updateAll).toHaveBeenCalledWith([asset.id], {
+        isOffline: true,
+        deletedAt: expect.any(Date),
+      });
+      expect(mocks.asset.remove).not.toHaveBeenCalled();
+    });
+
+    it('should leave the trash date of an asset that was already trashed', async () => {
+      const library = factory.library();
+      const asset = AssetFactory.create({
+        libraryId: library.id,
+        isExternal: true,
+        status: AssetStatus.Trashed,
+        deletedAt: new Date(),
+      });
+      mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(asset);
+
+      await sut.handleAssetRemoval({ libraryId: library.id, paths: [asset.originalPath] });
+
+      expect(mocks.asset.updateAll).toHaveBeenCalledWith([asset.id], { isOffline: true });
+    });
+
+    it('should ignore unknown and already offline assets', async () => {
+      const library = factory.library();
+
+      mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(void 0);
+      await sut.handleAssetRemoval({ libraryId: library.id, paths: ['/foo/unknown.jpg'] });
+
+      mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(AssetFactory.create({ isOffline: true }));
+      await sut.handleAssetRemoval({ libraryId: library.id, paths: ['/foo/offline.jpg'] });
+
+      expect(mocks.asset.updateAll).not.toHaveBeenCalled();
+    });
+
+    it('should keep the asset online when the file is back on disk', async () => {
+      const library = factory.library();
+      const asset = AssetFactory.create({ libraryId: library.id, isExternal: true });
+      mocks.asset.getByLibraryIdAndOriginalPath.mockResolvedValue(asset);
+      mocks.storage.stat.mockResolvedValue({ size: 100, mtime: new Date() } as Stats);
+
+      await sut.handleAssetRemoval({ libraryId: library.id, paths: [asset.originalPath] });
+
+      expect(mocks.asset.updateAll).not.toHaveBeenCalled();
     });
   });
 

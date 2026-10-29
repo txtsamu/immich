@@ -69,6 +69,8 @@ For more information on the glob syntax supported by exclusion patterns, refer t
 
 This feature is considered experimental and for advanced users only. If enabled, it will allow automatic watching of the filesystem which means new assets are automatically imported to Immich without needing to rescan.
 
+When a watched file is deleted, its asset is taken offline and moved to the trash, the same as when a library scan finds the file missing. If the file turns out to have been moved or renamed, the asset is relinked (see [Moved and renamed files](#moved-and-renamed-files)); if the file comes back at the same path, the asset comes back online.
+
 If your photos are on a network drive, automatic file watching likely won't work. In that case, you will have to rely on a [periodic library refresh](#set-custom-scan-interval) to pull in your changes.
 
 #### Troubleshooting
@@ -91,7 +93,13 @@ This job also cleans up any libraries stuck in deletion. It is possible to trigg
 
 If a file in a library is no longer at its old path, its asset is marked offline and moved to the trash. When a library scan then finds exactly one new file with the same size and modification time, that asset is pointed at the new path instead of importing a duplicate, so its albums, favorites, tags and edits are kept. This works for files that were moved, renamed, or both, as long as the move keeps the modification time (as `mv` does, but a copy does not unless it preserves timestamps).
 
-If more than one missing asset or more than one new file has the same size and modification time, Immich cannot tell which belongs to which and imports the new files as new assets. A file that is still present at its old path is never relinked, so copies stay separate assets. The library watcher does not relink: it removes an asset as soon as its file is deleted, so a move seen by the watcher still creates a new asset.
+If more than one missing asset or more than one new file has the same size and modification time, Immich cannot tell which belongs to which and imports the new files as new assets. A file that is still present at its old path is never relinked, so copies stay separate assets.
+
+### Deleting from the trash
+
+Deleting an external asset permanently, either with "Delete" on selected trash items or with "Empty trash", also deletes its original file (and sidecar) from disk, so it frees the storage. This includes assets that were taken offline because of an exclusion pattern or a changed import path, whose files are still on disk. "Empty trash" also removes assets that were taken offline because their file went missing.
+
+Trash that expires automatically after the configured number of days only deletes the original files of assets that are online. The files of offline assets are never deleted automatically, so adding an exclusion pattern cannot cause files to be removed from disk without you deleting them from the trash.
 
 ### Deleting a Library
 

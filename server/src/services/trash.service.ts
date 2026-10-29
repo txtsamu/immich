@@ -80,7 +80,10 @@ export class TrashService extends BaseService {
 
             const assets = next.value;
             yield* this.fx.job.queueAll(
-              assets.map(({ id }) => ({ name: JobName.AssetDelete, data: { id, deleteOnDisk: true } })),
+              assets.map(({ id }) => ({
+                name: JobName.AssetDelete,
+                data: { id, deleteOnDisk: true, deleteOffline: true },
+              })),
             );
             count += assets.length;
           }

@@ -357,7 +357,7 @@ export class AssetService extends BaseService {
   async handleAssetDeletion(job: JobOf<JobName.AssetDelete>): Promise<JobStatus> {
     return runPromise(
       Effect.gen({ self: this }, function* () {
-        const { id, deleteOnDisk: isDeleteOnDiskRequest } = job;
+        const { id, deleteOnDisk: isDeleteOnDiskRequest, deleteOffline = false } = job;
 
         const asset = yield* this.fx.assetJob.getForAssetDeletion(id);
 
@@ -365,8 +365,9 @@ export class AssetService extends BaseService {
           return JobStatus.Failed;
         }
 
-        // isOffline is an alias for excluded library assets
-        const deleteOnDisk = isDeleteOnDiskRequest && !asset.isOffline;
+        // an offline asset is trashed because its file is gone or excluded from the library, so its file is only
+        // deleted when the user asked for that (an excluded file is still on disk)
+        const deleteOnDisk = isDeleteOnDiskRequest && (!asset.isOffline || deleteOffline);
 
         if (asset.stack) {
           // asset.stack.assets only includes timeline visible assets and excludes the primary asset
@@ -403,7 +404,7 @@ export class AssetService extends BaseService {
           if (count === 0) {
             yield* this.fx.job.queue({
               name: JobName.AssetDelete,
-              data: { id: asset.livePhotoVideoId, deleteOnDisk },
+              data: { id: asset.livePhotoVideoId, deleteOnDisk, deleteOffline: deleteOffline || undefined },
             });
           }
         }

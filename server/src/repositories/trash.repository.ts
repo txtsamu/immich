@@ -34,7 +34,17 @@ const methods = (db: Kysely<DB>) => ({
       db
         .updateTable('asset')
         .where('ownerId', '=', userId)
-        .where('status', '=', AssetStatus.Trashed)
+        // an asset taken offline by a library scan or the watcher sits in the trash with its status still active
+        .where((eb) =>
+          eb.or([
+            eb('status', '=', AssetStatus.Trashed),
+            eb.and([
+              eb('status', '=', AssetStatus.Active),
+              eb('isOffline', '=', true),
+              eb('deletedAt', 'is not', null),
+            ]),
+          ]),
+        )
         .set({ status: AssetStatus.Deleted })
         .executeTakeFirst(),
     );
