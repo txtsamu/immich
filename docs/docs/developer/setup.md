@@ -57,6 +57,18 @@ You can access the web from `http://your-machine-ip:3000` or `http://localhost:3
 
 - The "web" development container runs with uid 1000. If that uid does not have read/write permissions on the mounted volumes, you may encounter errors
 
+#### Memory needed to build
+
+Measured on a cold build with default settings (peak memory of the whole process tree):
+
+| Step                                         | Peak memory | Notes                                                                                            |
+| -------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| `tsc --noEmit` (server, native TypeScript 7) | ~2.4 GB     | `--checkers 1` lowers it to ~1.4 GB and takes about 1.5 times as long                            |
+| `nest build` (server)                        | ~1.4 GB     | fails with an out-of-memory error if the Node heap is 1 GB or less                               |
+| `vite build` (web)                           | ~4 GB       | the memory is native, so `--max-old-space-size` has no effect; `RAYON_NUM_THREADS=4` gives ~3 GB |
+
+The steps run one after another, so a builder with about 4 GB free is enough for all of them.
+
 #### Connect web to a remote backend
 
 If you only want to do web development connected to an existing, remote backend, run from the repo root:
