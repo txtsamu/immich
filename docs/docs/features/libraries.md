@@ -87,6 +87,12 @@ There is an automatic scan job that is scheduled to run once a day. Its schedule
 
 This job also cleans up any libraries stuck in deletion. It is possible to trigger the cleanup by clicking "Scan all libraries" in the library management page.
 
+### Moved and renamed files
+
+If a file in a library is no longer at its old path, its asset is marked offline and moved to the trash. When a library scan then finds exactly one new file with the same size and modification time, that asset is pointed at the new path instead of importing a duplicate, so its albums, favorites, tags and edits are kept. This works for files that were moved, renamed, or both, as long as the move keeps the modification time (as `mv` does, but a copy does not unless it preserves timestamps).
+
+If more than one missing asset or more than one new file has the same size and modification time, Immich cannot tell which belongs to which and imports the new files as new assets. A file that is still present at its old path is never relinked, so copies stay separate assets. The library watcher does not relink: it removes an asset as soon as its file is deleted, so a move seen by the watcher still creates a new asset.
+
 ### Deleting a Library
 
 When deleting an external library, all assets inside are immediately deleted along with the library. Note that while a library can take a long time to fully delete in the background, it is immediately removed from the library list. If the deletion process is interrupted (for example, due to server restart), it will be cleaned up in the next nightly cron job. The cleanup process can also be manually initiated by clicking the "Scan All Libraries" button in the library list.

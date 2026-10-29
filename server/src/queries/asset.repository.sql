@@ -527,6 +527,27 @@ where
       and "isExternal" = $3
   )
 
+-- AssetRepository.findExternalRelinkCandidates
+select
+  "asset"."id",
+  "asset"."originalPath",
+  "asset"."fileModifiedAt",
+  "asset"."type",
+  "asset"."status",
+  "asset_exif"."fileSizeInByte" as "size"
+from
+  "asset"
+  inner join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+where
+  "asset"."libraryId" = $1::uuid
+  and "asset"."isExternal" = $2
+  and "asset"."status" != $3
+  and (
+    "asset"."fileModifiedAt" = $4
+    and "asset_exif"."fileSizeInByte" = $5
+    and "asset"."type" = $6
+  )
+
 -- AssetRepository.getForOriginal
 select
   "asset"."id",

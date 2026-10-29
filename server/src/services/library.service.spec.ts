@@ -5,7 +5,7 @@ import type { ILibraryBulkIdsJob, ILibraryFileJob } from 'src/types.js';
 import { JOBS_LIBRARY_PAGINATION_SIZE } from 'src/constants.js';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
 import { mapLibrary } from 'src/dtos/library.dto.js';
-import { AssetType, CronJob, ImmichWorker, JobName, JobStatus } from 'src/enum.js';
+import { AssetStatus, AssetType, CronJob, ImmichWorker, JobName, JobStatus } from 'src/enum.js';
 import { LibraryService } from 'src/services/library.service.js';
 import { AssetFactory } from 'test/factories/asset.factory.js';
 import { authStub } from 'test/fixtures/auth.stub.js';
@@ -18,6 +18,11 @@ async function* mockWalk() {
   // eslint-disable-next-line unicorn/no-useless-promise-resolve-reject
   yield await Promise.resolve(['/data/user1/photo.jpg']);
 }
+
+const relinkJob = (library: { id: string }, paths = ['/data/user1/new/renamed.jpg']): ILibraryFileJob => ({
+  libraryId: library.id,
+  paths,
+});
 
 describe(LibraryService.name, () => {
   let sut: LibraryService;
@@ -551,6 +556,7 @@ describe(LibraryService.name, () => {
         mtime: new Date('2023-01-01'),
         ctime: new Date('2023-01-01'),
       } as Stats);
+      mocks.asset.findExternalRelinkCandidates.mockResolvedValue([]);
     });
 
     it('should import a new asset', async () => {
@@ -591,6 +597,125 @@ describe(LibraryService.name, () => {
           },
         },
       ]);
+    });
+
+    describe('moved or renamed files', () => {
+      const mtime = new Date('2023-01-01');
+      const candidate = (overrides: Partial<{ id: string; originalPath: string; status: AssetStatus }> = {}) => ({
+        id: 'asset-1',
+        originalPath: '/data/user1/old/photo.jpg',
+        fileModifiedAt: mtime,
+        size: 100,
+        type: AssetType.Image,
+        status: AssetStatus.Active,
+        ...overrides,
+      });
+      const missing = (...gone: string[]) =>
+        mocks.storage.stat.mockImplementation((path) =>
+          gone.includes(path)
+            ? Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+            : Promise.resolve({ size: 100, mtime, ctime: mtime } as Stats),
+        );
+
+      it('should point an offline asset at the new path instead of importing a copy', async () => {
+        const library = factory.library();
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.findExternalRelinkCandidates.mockResolvedValue([candidate()]);
+        mocks.asset.createAll.mockResolvedValue([]);
+        mocks.crypto.hashSha1.mockReturnValue(Buffer.from('new-checksum'));
+        missing('/data/user1/old/photo.jpg');
+
+        await expect(sut.handleSyncFiles(relinkJob(library))).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.asset.findExternalRelinkCandidates).toHaveBeenCalledWith(library.id, [
+          { fileModifiedAt: mtime, size: 100, type: AssetType.Image },
+        ]);
+        expect(mocks.asset.update).toHaveBeenCalledWith({
+          id: 'asset-1',
+          originalPath: '/data/user1/new/renamed.jpg',
+          originalFileName: 'renamed.jpg',
+          checksum: Buffer.from('new-checksum'),
+          isOffline: false,
+          deletedAt: null,
+        });
+        expect(mocks.asset.createAll).toHaveBeenCalledWith([]);
+        expect(mocks.event.emit).not.toHaveBeenCalledWith('AssetCreate', expect.anything());
+        expect(mocks.job.queueAll).toHaveBeenCalledWith([
+          { name: JobName.SidecarCheck, data: { id: 'asset-1', source: 'upload' } },
+        ]);
+      });
+
+      it('should keep an asset that was trashed by the user in the trash', async () => {
+        const library = factory.library();
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.findExternalRelinkCandidates.mockResolvedValue([candidate({ status: AssetStatus.Trashed })]);
+        mocks.asset.createAll.mockResolvedValue([]);
+        missing('/data/user1/old/photo.jpg');
+
+        await sut.handleSyncFiles(relinkJob(library));
+
+        expect(mocks.asset.update).toHaveBeenCalledWith(expect.not.objectContaining({ deletedAt: expect.anything() }));
+        expect(mocks.asset.update).toHaveBeenCalledWith(expect.objectContaining({ id: 'asset-1', isOffline: false }));
+      });
+
+      it('should import a new asset when the matching asset still has its file', async () => {
+        const library = factory.library();
+        const asset = AssetFactory.create();
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.findExternalRelinkCandidates.mockResolvedValue([candidate()]);
+        mocks.asset.createAll.mockResolvedValue([asset.id]);
+        missing();
+
+        await sut.handleSyncFiles(relinkJob(library));
+
+        expect(mocks.asset.update).not.toHaveBeenCalled();
+        expect(mocks.asset.createAll).toHaveBeenCalledWith([
+          expect.objectContaining({ originalPath: '/data/user1/new/renamed.jpg' }),
+        ]);
+      });
+
+      it('should import a new asset when several missing assets match', async () => {
+        const library = factory.library();
+        const asset = AssetFactory.create();
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.findExternalRelinkCandidates.mockResolvedValue([
+          candidate(),
+          candidate({ id: 'asset-2', originalPath: '/data/user1/old/other.jpg' }),
+        ]);
+        mocks.asset.createAll.mockResolvedValue([asset.id]);
+        missing('/data/user1/old/photo.jpg', '/data/user1/old/other.jpg');
+
+        await sut.handleSyncFiles(relinkJob(library));
+
+        expect(mocks.asset.update).not.toHaveBeenCalled();
+        expect(mocks.asset.createAll).toHaveBeenCalledWith([expect.anything()]);
+      });
+
+      it('should import new assets when several new files look the same', async () => {
+        const library = factory.library();
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.createAll.mockResolvedValue([]);
+
+        await sut.handleSyncFiles(relinkJob(library, ['/data/user1/new/a.jpg', '/data/user1/new/b.jpg']));
+
+        expect(mocks.asset.findExternalRelinkCandidates).not.toHaveBeenCalled();
+        expect(mocks.asset.update).not.toHaveBeenCalled();
+        expect(mocks.asset.createAll).toHaveBeenCalledWith([expect.anything(), expect.anything()]);
+      });
+
+      it('should import a new asset when relinking fails', async () => {
+        const library = factory.library();
+        const asset = AssetFactory.create();
+        mocks.library.get.mockResolvedValue(library);
+        mocks.asset.findExternalRelinkCandidates.mockResolvedValue([candidate()]);
+        mocks.asset.update.mockRejectedValue(new Error('duplicate key'));
+        mocks.asset.createAll.mockResolvedValue([asset.id]);
+        missing('/data/user1/old/photo.jpg');
+
+        await expect(sut.handleSyncFiles(relinkJob(library))).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.asset.createAll).toHaveBeenCalledWith([expect.anything()]);
+      });
     });
 
     it('should not import an asset to a soft deleted library', async () => {

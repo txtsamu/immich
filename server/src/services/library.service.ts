@@ -5,6 +5,7 @@ import { R_OK } from 'node:constants';
 import { Stats } from 'node:fs';
 import path, { isAbsolute, parse } from 'node:path';
 import picomatch from 'picomatch';
+import type { ExternalFileSignature } from 'src/repositories/asset.repository.js';
 import type { ArgOf } from 'src/repositories/event.repository.js';
 import type { JobOf } from 'src/types.js';
 import { JOBS_LIBRARY_PAGINATION_SIZE } from 'src/constants.js';
@@ -65,6 +66,23 @@ const forEachAwait = <T, E, R>(iterable: AsyncIterable<T>, body: (item: T) => Ef
         }
       }),
   );
+
+const signatureKey = ({ fileModifiedAt, size, type }: ExternalFileSignature) =>
+  `${fileModifiedAt.valueOf()}:${size}:${type}`;
+
+/** How many file signatures one relink candidate query matches at once. */
+const RELINK_QUERY_SIZE = 500;
+
+type ExternalFileImport = { asset: Insertable<AssetTable>; signature: ExternalFileSignature };
+
+type RelinkCandidate = {
+  id: string;
+  originalPath: string;
+  fileModifiedAt: Date;
+  size: number;
+  type: AssetType;
+  status: AssetStatus;
+};
 
 @Injectable()
 export class LibraryService extends BaseService {
@@ -343,12 +361,12 @@ export class LibraryService extends BaseService {
           return JobStatus.Failed;
         }
 
-        const assetImports: Insertable<AssetTable>[] = [];
+        const fileImports: ExternalFileImport[] = [];
         yield* Effect.all(
           job.paths.map((path) =>
             this.processEntity(path, library.ownerId, job.libraryId).pipe(
-              Effect.map((asset) => {
-                assetImports.push(asset);
+              Effect.map((fileImport) => {
+                fileImports.push(fileImport);
               }),
               Effect.catchCause((cause) => {
                 const error = unwrap(Cause.squash(cause));
@@ -360,7 +378,10 @@ export class LibraryService extends BaseService {
           { concurrency: 'unbounded' },
         );
 
-        const assetIds = yield* this.fx.asset.createAll(assetImports);
+        // A file that was moved or renamed is the same asset at a new path, so keep it instead of importing a copy
+        const { relinkedIds, remaining } = yield* this.relinkMovedAssets(job.libraryId, fileImports);
+
+        const assetIds = yield* this.fx.asset.createAll(remaining.map(({ asset }) => asset));
 
         const progressMessage =
           job.progressCounter && job.totalAssets
@@ -376,12 +397,109 @@ export class LibraryService extends BaseService {
           { concurrency: 'unbounded' },
         );
 
-        yield* this.queuePostSyncJobsFx(assetIds);
+        yield* this.queuePostSyncJobsFx([...relinkedIds, ...assetIds]);
 
         return JobStatus.Success;
       }),
     );
   }
+
+  /**
+   * External assets are identified by the checksum of their path, so a file that moved or was renamed shows up as a
+   * new path next to an asset whose file is gone. When exactly one asset that is missing from disk has the size and
+   * modification time of exactly one new file, that asset is pointed at the new path (keeping its albums, tags and
+   * edits). Anything ambiguous is left alone and imported as a new asset.
+   */
+  private readonly relinkMovedAssets = Effect.fn('LibraryService.relinkMovedAssets')(function* (
+    this: LibraryService,
+    libraryId: string,
+    imports: ExternalFileImport[],
+  ) {
+    const importsBySignature = new Map<string, ExternalFileImport[]>();
+    for (const fileImport of imports) {
+      const key = signatureKey(fileImport.signature);
+      importsBySignature.set(key, [...(importsBySignature.get(key) ?? []), fileImport]);
+    }
+
+    const unambiguous = importsBySignature
+      .values()
+      .filter((group) => group.length === 1)
+      .map(([item]) => item)
+      .toArray();
+    if (unambiguous.length === 0) {
+      return { relinkedIds: [] as string[], remaining: imports };
+    }
+
+    const candidates: RelinkCandidate[] = [];
+    const signatures = unambiguous.map(({ signature }) => signature);
+    for (let i = 0; i < signatures.length; i += RELINK_QUERY_SIZE) {
+      const chunk = signatures.slice(i, i + RELINK_QUERY_SIZE);
+      candidates.push(...(yield* this.fx.asset.findExternalRelinkCandidates(libraryId, chunk)));
+    }
+    if (candidates.length === 0) {
+      return { relinkedIds: [] as string[], remaining: imports };
+    }
+
+    // Only an asset whose file is gone can have moved
+    const stats = yield* Effect.all(
+      candidates.map((candidate) =>
+        this.fx.storage.stat(candidate.originalPath).pipe(Effect.catch(() => Effect.succeed<Stats | null>(null))),
+      ),
+      { concurrency: 'unbounded' },
+    );
+    const candidatesBySignature = new Map<string, RelinkCandidate[]>();
+    for (const [i, candidate] of candidates.entries()) {
+      if (stats[i]) {
+        continue;
+      }
+      const key = signatureKey({
+        fileModifiedAt: candidate.fileModifiedAt,
+        size: candidate.size,
+        type: candidate.type,
+      });
+      candidatesBySignature.set(key, [...(candidatesBySignature.get(key) ?? []), candidate]);
+    }
+
+    const relinkedIds: string[] = [];
+    const relinked = new Set<ExternalFileImport>();
+    for (const fileImport of unambiguous) {
+      const matches = candidatesBySignature.get(signatureKey(fileImport.signature));
+      if (matches?.length !== 1) {
+        continue;
+      }
+
+      const [candidate] = matches;
+      const { asset } = fileImport;
+      const result = yield* this.fx.asset
+        .update({
+          id: candidate.id,
+          originalPath: asset.originalPath,
+          originalFileName: asset.originalFileName,
+          checksum: asset.checksum,
+          isOffline: false,
+          // a file that was trashed by the user stays in the trash, one that was only offlined comes back
+          deletedAt: candidate.status === AssetStatus.Trashed ? undefined : null,
+        })
+        .pipe(
+          Effect.map(() => true),
+          Effect.catchCause((cause) => {
+            this.logger.warn(
+              `Could not relink asset ${candidate.id} from ${candidate.originalPath} to ${asset.originalPath}: ${unwrap(Cause.squash(cause))}`,
+            );
+            return Effect.succeed(false);
+          }),
+        );
+      if (!result) {
+        continue;
+      }
+
+      this.logger.log(`Asset ${candidate.id} moved from ${candidate.originalPath} to ${asset.originalPath}`);
+      relinkedIds.push(candidate.id);
+      relinked.add(fileImport);
+    }
+
+    return { relinkedIds, remaining: imports.filter((fileImport) => !relinked.has(fileImport)) };
+  });
 
   private readonly validateImportPath = Effect.fn('LibraryService.validateImportPath')(function* (
     this: LibraryService,
@@ -529,21 +647,26 @@ export class LibraryService extends BaseService {
     const assetPath = path.normalize(filePath);
     const stat = yield* this.fx.storage.stat(assetPath);
 
-    return {
-      ownerId,
-      libraryId,
-      checksum: yield* this.fx.crypto.hashSha1(`path:${assetPath}`),
-      checksumAlgorithm: ChecksumAlgorithm.sha1Path,
-      originalPath: assetPath,
+    const type = mimeTypes.isVideo(assetPath) ? AssetType.Video : AssetType.Image;
 
-      fileCreatedAt: stat.mtime,
-      fileModifiedAt: stat.mtime,
-      localDateTime: stat.mtime,
-      type: mimeTypes.isVideo(assetPath) ? AssetType.Video : AssetType.Image,
-      originalFileName: parse(assetPath).base,
-      isExternal: true,
-      livePhotoVideoId: null,
-    };
+    return {
+      asset: {
+        ownerId,
+        libraryId,
+        checksum: yield* this.fx.crypto.hashSha1(`path:${assetPath}`),
+        checksumAlgorithm: ChecksumAlgorithm.sha1Path,
+        originalPath: assetPath,
+
+        fileCreatedAt: stat.mtime,
+        fileModifiedAt: stat.mtime,
+        localDateTime: stat.mtime,
+        type,
+        originalFileName: parse(assetPath).base,
+        isExternal: true,
+        livePhotoVideoId: null,
+      },
+      signature: { fileModifiedAt: stat.mtime, size: stat.size, type },
+    } satisfies ExternalFileImport;
   });
 
   async queuePostSyncJobs(assetIds: string[]) {

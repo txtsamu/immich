@@ -57,6 +57,9 @@ import { globToPostgresRegex } from 'src/utils/misc.js';
 
 export type AssetStats = Record<AssetType, number>;
 
+/** What identifies a file across a move or rename: it keeps its size and modification time. */
+export type ExternalFileSignature = { fileModifiedAt: Date; size: number; type: AssetType };
+
 export interface BoundingBox {
   west: number;
   south: number;
@@ -1139,6 +1142,45 @@ const makeAsset = (db: Kysely<DB>) => {
 
       return result.map((row) => row.path as string);
     }),
+    findExternalRelinkCandidates: Effect.fn('Asset.findExternalRelinkCandidates')(function* (
+      libraryId: string,
+      signatures: ExternalFileSignature[],
+    ) {
+      if (signatures.length === 0) {
+        return [];
+      }
+
+      const rows = yield* query(db, (db) =>
+        db
+          .selectFrom('asset')
+          .innerJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+          .select([
+            'asset.id',
+            'asset.originalPath',
+            'asset.fileModifiedAt',
+            'asset.type',
+            'asset.status',
+            'asset_exif.fileSizeInByte as size',
+          ])
+          .where('asset.libraryId', '=', asUuid(libraryId))
+          .where('asset.isExternal', '=', true)
+          .where('asset.status', '!=', AssetStatus.Deleted)
+          .where((eb) =>
+            eb.or(
+              signatures.map((signature) =>
+                eb.and([
+                  eb('asset.fileModifiedAt', '=', signature.fileModifiedAt),
+                  eb('asset_exif.fileSizeInByte', '=', signature.size),
+                  eb('asset.type', '=', signature.type),
+                ]),
+              ),
+            ),
+          )
+          .execute(),
+      );
+
+      return rows.map((row) => ({ ...row, size: Number(row.size) }));
+    }),
     getLibraryAssetCount: Effect.fn('Asset.getLibraryAssetCount')(function* (libraryId: string) {
       const { count } = yield* query(db, (db) =>
         db
@@ -1473,6 +1515,11 @@ export class AssetRepository {
   @GenerateSql({ params: [DummyValue.UUID, [DummyValue.STRING]] })
   filterNewExternalAssetPaths(libraryId: string, paths: string[]): Promise<string[]> {
     return runPromise(this.effect.filterNewExternalAssetPaths(libraryId, paths));
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID, [{ fileModifiedAt: DummyValue.DATE, size: 1, type: AssetType.Image }]] })
+  findExternalRelinkCandidates(libraryId: string, signatures: ExternalFileSignature[]) {
+    return runPromise(this.effect.findExternalRelinkCandidates(libraryId, signatures));
   }
 
   getLibraryAssetCount(libraryId: string): Promise<number> {
